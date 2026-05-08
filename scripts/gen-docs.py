@@ -287,10 +287,11 @@ def write_outputs(outputs: dict[str, str], check: bool = False) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         rel = path.relative_to(PROJECT_ROOT)
 
+        cleaned = content.rstrip("\n") + "\n"
         if check:
             if path.exists():
                 existing = path.read_text(encoding="utf-8")
-                if existing == content:
+                if existing == cleaned:
                     print(f"  OK {rel}")
                 else:
                     print(f"  DRIFT {rel} — content differs")
@@ -299,7 +300,7 @@ def write_outputs(outputs: dict[str, str], check: bool = False) -> bool:
                 print(f"  MISSING {rel} — will be generated on write")
                 all_match = False
         else:
-            path.write_text(content, encoding="utf-8")
+            path.write_text(cleaned, encoding="utf-8")
             print(f"  WRITTEN {rel}")
 
     return all_match
