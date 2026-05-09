@@ -10,7 +10,7 @@ Project conventions for lspz (LSP compression proxy).
 
 ### Edition & Toolchain
 
-- Edition 2021
+- Edition 2024
 - Stable toolchain (pinned in `rust-toolchain.toml`)
 - All cargo commands use `--workspace` flag (workspace split planned per PRD)
 
@@ -207,6 +207,75 @@ just gen-check     # 检查文档是否过时 (CI 使用)
 
 ---
 
+---
+
+## SSOT Harness (代码即 SSOT)
+
+### 原则
+
+**代码是唯一的真相源 (Single Source of Truth)**。所有衍生文档从代码注释中自动生成，禁止手写 `.gen.` 文件。
+
+### 生成规则
+
+| SSOT 位置 | 生成物 | 生成命令 |
+|-----------|--------|---------|
+| `///` / `//!` 注释 | `docs/api/*.gen.md` | `just gen-api-docs` |
+| `pub trait Interceptor` 定义 + 实现者 | `docs/specs/interceptors.gen.md` | `just gen-api-docs` |
+| `pub struct Config` 字段 + 文档 | `docs/reference/config.gen.md` | `just gen-config-docs` |
+| `pub enum LspzError` 变体 | `docs/reference/error-types.gen.md` | `just gen-error-docs` |
+| `Cargo.toml` 工作区成员 + 依赖 | README.md 版本区块 | `just gen-meta-docs` |
+
+### 架构不变量 (Architecture Invariants)
+
+以下规则在代码实现中必须遵守，任何偏离需在 AGENTS.md 和设计评审中记录：
+
+1. **Interceptor chain 是核心抽象**: 所有 Server→Client 消息转换必须通过 `Interceptor` trait，禁止在 Proxy 核心中直接硬编码消息处理逻辑
+2. **Fail-open**: 任何压缩/转换失败 → 只记录 WARN 日志，透明转发原始消息，禁止抛出异常或中断 LSP 通信
+3. **Transport-agnostic core**: `lspz-core` 不依赖任何特定传输实现（stdio/TCP/WS），只依赖 `Transport` trait
+4. **Config-driven**: 所有运行时行为通过 `Config` 结构体控制，禁止硬编码开关或行为
+5. **Zero-copy preference**: 在 Hot Path（消息收发、拦截器处理）中优先使用引用 `&str` / `&[u8]`、`Cow`、`Arc`，避免不必要的克隆
+6. **LSP version locked**: 明确锁定 LSP 3.17 规范，不引入 3.18+ 特性直到项目正式声明支持
+
+### 文档漂移检测
+
+`just qa` 包含以下检查：
+
+1. `just gen-check` → 检查 `.gen.` 文件是否与当前源码同步（修改时间、内容哈希）
+2. `.gen.` 文件如果有手工编辑痕迹（git diff 检测）则 CI 失败
+3. 缺少文档注释 → 全局 `#![warn(missing_docs)]` 或 clippy 规则
+4. 架构不变量 → 代码审查中人工核对
+
+### 架构级代码注释规范
+
+公共 API 必须包含模块级（`//!`）注释，格式如下：
+
+```rust
+//! # 模块名
+//!
+//! 一句话说明模块职责。
+//!
+//! ## 核心概念
+//!
+//! - **概念 A**: 解释
+//! - **概念 B**: 解释
+//!
+//! ## 架构图
+//!
+//! [MermaidChart:./docs/mmd/module-name.mmd]
+//!
+//! ## 注意事项
+//!
+//! - 扩展点预留说明
+//! - 线程安全说明
+//! - 错误处理说明
+```
+
+公共结构体、trait、枚举必须包含 `///` 文档注释，包含：
+
+- 一句话说明（必须）
+- 使用示例（复杂类型必须）
+- 通过 `[`TypeName`]` 引用关联类型
+
 ## 依赖管理
 
 ### Cargo.toml
@@ -276,6 +345,38 @@ just gen-check     # 检查文档是否过时 (CI 使用)
 - LSP 兼容性: 永不破坏标准 LSP 协议
 
 ---
+
+---
+
+## 检查点规则 (Checkpoint Save)
+
+### 原则
+
+每个阶段或重要模块完成后，必须进行验证 → 提交 → 版本号更新 → 打 tag，以此建立可追溯的检查点链。
+
+### 执行流程
+
+1. **验证**: 运行 `just qa` (lint + test + gen-check) 确保无错误
+2. **提交**: 按照 Conventional Commits 格式提交，消息中注明当前阶段/模块
+3. **版本号更新**: 在 Cargo.toml 中递增版本号（语义化版本）
+4. **打 tag**: 创建对应版本的 git tag: `git tag v{版本号}`
+
+### 检查点示例
+
+| 里程碑 | 版本 | 说明 |
+|--------|------|------|
+| 项目初始化 | v0.0.1 | crate name locking |
+| Codec 层完成 | v0.1.0-alpha.1 | JSON-RPC 编解码 |
+| Transport 层完成 | v0.1.0-alpha.2 | StdioTransport |
+| Proxy Core 完成 | v0.1.0-beta.1 | LSP 握手 + 路由 |
+| 诊断压缩完成 | v0.1.0-rc.1 | MVP 功能冻结 |
+| MVP 发布 | v0.1.0 | 正式版 |
+
+### 历史版本管理
+
+- `git tag` 列表展示所有已发布的检查点
+- `git diff v0.1.0-alpha.1..v0.1.0-alpha.2` 查看阶段间变更
+- 禁止在打 tag 后修改历史（如有紧急修复，递增 patch 版本）
 
 ## 参考资源
 

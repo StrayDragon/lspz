@@ -59,29 +59,17 @@ lspz 支持三种产品形态，满足不同使用场景：
 
 ### Phase 1: MVP - v0.1 (Library + Proxy)
 
-**状态**: ⏳ 待开始 | **预计**: Q1 2026
+**状态**: ⏳ 待开始 | **计划**: 4-6 周
 
 **目标**: 实现核心压缩功能，支持作为库和代理两种模式
 
-**核心功能**:
-- [x] `lspz-core` 基础架构
-- [ ] JSON-RPC 2.0 编解码
-- [ ] stdio 传输层
-- [ ] LSP 初始化握手
-- [ ] 诊断压缩拦截器
-  - [ ] 去重合并
-  - [ ] 字段裁剪
-  - [ ] 枚举缩减
-  - [ ] Range 编码
-- [ ] 配置管理（环境变量 + 结构体）
-- [ ] `lspz` CLI 二进制
-- [ ] 基础测试（rust-analyzer, gopls）
+**实施计划**: 参见 [docs/plan/01-mvp-phase.md](docs/plan/01-mvp-phase.md) 中的 Task A→D 拆分
 
-**交付物**:
-- [ ] `lspz-core` crate (v0.1.0)
-- [ ] `lspz` CLI (v0.1.0)
-- [ ] 作为库使用示例
-- [ ] CLI 使用文档
+**检查点序列**:
+- ✅ Task A (Codec + Transport) → `v0.1.0-alpha.1`
+- ✅ Task B (Proxy Core + CLI) → `v0.1.0-alpha.2`
+- ✅ Task C (Interceptor + 诊断压缩) → `v0.1.0-rc.1`
+- ✅ Task D (测试 + 文档 + 发布) → `v0.1.0`
 
 **详细计划**: [docs/plan/01-mvp-phase.md](docs/plan/01-mvp-phase.md)
 

@@ -1,79 +1,265 @@
 # lspz 三模态架构规格
 
 **版本**: v0.1.0
-**状态**: 草案
+**状态**: 定稿
 **最后更新**: 2026-05-09
 
 ## 概述
 
 lspz 采用三模态架构设计，支持作为库、LSP 代理、MCP 服务器三种产品形态。本文档定义这三种模式的设计原则、接口边界和协作方式。
 
+---
+
 ## 架构总览
 
+```mermaid
+graph TB
+    subgraph Core["lspz-core (纯逻辑库)"]
+        PROXY["Proxy Core<br/>生命周期管理<br/>消息路由"]
+        INTERCEPTOR["Interceptor Chain<br/>转换/压缩/过滤"]
+        CODEC["Codec Layer<br/>JSON-RPC 编解码<br/>紧凑格式"]
+        TRANSPORT["Transport Trait<br/>抽象 I/O 通道"]
+        CONFIG["Config<br/>Builder + Env"]
+        ERROR["Error Types<br/>thiserror"]
+    end
+
+    subgraph Delivery["交付形态"]
+        LIB["Library Mode<br/>use lspz_core::Proxy"]
+        CLIBIN["Proxy Mode<br/>lspz --backend ra"]
+        MCP["MCP Mode<br/>lspz-mcp (Future)"]
+    end
+
+    PROXY --> INTERCEPTOR
+    PROXY --> CODEC
+    PROXY --> TRANSPORT
+    PROXY --> CONFIG
+    PROXY --> ERROR
+    INTERCEPTOR --> CODEC
+    CODEC --> ERROR
+
+    CLIBIN --> PROXY
+    LIB --> PROXY
+
+    classDef core fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef delivery fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    class Core core
+    class LIB,CLIBIN,MCP delivery
 ```
-                    ┌─────────────────┐
-                    │    lspz-core    │
-                    │   (纯逻辑库)     │
-                    │                 │
-                    │  - Proxy Core   │
-                    │  - Interceptors │
-                    │  - Codec Layer  │
-                    │  - Config       │
-                    └────────┬────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        │                    │                    │
-        ▼                    ▼                    ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│Library Mode │    │ Proxy Mode   │    │  MCP Mode    │
-│              │    │              │    │              │
-│ lspz-core    │    │ lspz-core    │    │ lspz-core    │
-│   + direct   │    │   + CLI      │    │   + MCP      │
-│   integration│    │   + stdio    │    │   + tools    │
-└──────────────┘    └──────────────┘    └──────────────┘
+
+---
+
+## 完整消息流
+
+```mermaid
+sequenceDiagram
+    participant Agent as AI Agent (LSP Client)
+    participant Proxy as lspz Proxy
+    participant Server as LSP Server
+
+    rect rgb(240, 248, 255)
+        Note over Agent,Server: Phase 1: Handshake
+        Agent->>Proxy: initialize (params + clientCapabilities)
+        Proxy->>Server: initialize (forward, unmodified)
+        Server-->>Proxy: capabilities + serverInfo
+        Proxy-->>Agent: capabilities (transparent forward)
+        Agent->>Proxy: initialized notification
+        Proxy->>Server: initialized (forward)
+    end
+
+    rect rgb(240, 255, 240)
+        Note over Agent,Server: Phase 2: Document Lifecycle
+        Agent->>Proxy: textDocument/didOpen
+        Proxy->>Server: didOpen (forward)
+        Note over Server: Analyzes file
+        Server-->>Proxy: textDocument/publishDiagnostics (raw)
+        Note over Proxy: Interceptor Chain executes
+        Note over Proxy: ① Dedup (msg+severity)
+        Note over Proxy: ② Prune fields
+        Note over Proxy: ③ Encode enums
+        Note over Proxy: ④ Delta encode ranges
+        Proxy-->>Agent: publishDiagnostics (compact)
+    end
+
+    rect rgb(255, 248, 220)
+        Note over Agent,Server: Phase 3: Transparent Passthrough
+        Agent->>Proxy: textDocument/hover
+        Proxy->>Server: hover (forward)
+        Server-->>Proxy: hover result
+        Proxy-->>Agent: hover result (unmodified)
+    end
 ```
+
+---
+
+## Proxy 核心状态机
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created: Proxy::new(config)
+    Created --> Initializing: initialize()
+    Initializing --> Ready: initialized received
+    Initializing --> ShuttingDown: shutdown received
+    Ready --> Working: message loop
+    Working --> Ready: continue
+    Working --> ShuttingDown: shutdown received
+    ShuttingDown --> Exited: exit notification
+    Exited --> [*]
+
+    state Ready {
+        [*] --> Idle
+        Idle --> Forwarding: Client→Server msg
+        Forwarding --> Idle: msg forwarded
+        Idle --> Intercepting: Server→Client msg
+        Intercepting --> Compressing: matched interceptor
+        Intercepting --> Forwarding: no match (passthrough)
+        Compressing --> Idle: compressed msg sent
+        Compressing --> Forwarding: compression failed (fallback)
+    }
+```
+
+---
+
+## 拦截器链架构
+
+```mermaid
+flowchart TB
+    subgraph Incoming["Server → Client Messages"]
+        MSG["LSP Message (JSON-RPC 2.0)"]
+    end
+
+    subgraph Chain["Interceptor Chain"]
+        direction TB
+        D1["MessageTypeRouter<br/>Route by method name"]
+        D2["DiagnosticsCompressor<br/>Compress publishDiagnostics"]
+        D3["PassthroughInterceptor<br/>Fallback: forward unchanged"]
+
+        D1 -->|publishDiagnostics| D2
+        D1 -->|other| D3
+    end
+
+    subgraph ErrorPath["Error Handling"]
+        ERR["Compression Failed"]
+        FALLBACK["Transparent Forward (original message)"]
+        LOG["Log WARN + Continue"]
+        ERR --> FALLBACK
+        ERR --> LOG
+    end
+
+    subgraph Outgoing["→ AI Agent"]
+        COMPRESSED["Compact Diagnostics"]
+        RAW["Original Message"]
+    end
+
+    MSG --> D1
+    D2 -->|Success| COMPRESSED
+    D2 -->|Failure| ERR
+    D3 --> RAW
+    FALLBACK --> RAW
+
+    classDef incoming fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef chain fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef error fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+    classDef outgoing fill:#9013FE,stroke:#6A0DAD,stroke-width:2px,color:#fff
+
+    class MSG incoming
+    class D1,D2,D3 chain
+    class ERR,FALLBACK,LOG error
+    class COMPRESSED,RAW outgoing
+```
+
+---
 
 ## 模式 1: Library Mode (作为库)
 
 ### 设计目标
 
-为自研 Agent CLI 提供完全控制的作为 Rust 库的 LSP 压缩能力，零运行时开销。
+为自研 Agent CLI 提供完全控制的 Rust 库 LSP 压缩能力，零运行时开销。
 
-### 架构
+### 核心 Traits
 
 ```rust
-// Agent 代码中直接使用
-use lspz_core::{Proxy, Config, Transport};
+/// 传输层抽象，定义 I/O 通道的基本操作。
+///
+/// # 实现者
+///
+/// - `StdioTransport` (MVP)
+/// - `TcpTransport` (Future)
+/// - `WebSocketTransport` (Future)
+#[async_trait]
+pub trait Transport: Send + Sync {
+    /// 接收一条原始 LSP 消息（按 Content-Length 分割）。
+    async fn receive(&mut self) -> Result<Vec<u8>, LspzError>;
+    /// 发送一条原始 LSP 消息。
+    async fn send(&mut self, data: &[u8]) -> Result<(), LspzError>;
+}
+
+/// 拦截器 trait，核心扩展点。
+///
+/// 每个拦截器可以检查并选择性转换消息。
+/// 拦截器链在 Proxy 内部按注册顺序执行。
+#[async_trait]
+pub trait Interceptor: Send + Sync {
+    /// 拦截器唯一名称（用于排序和配置）。
+    fn name(&self) -> &str;
+    /// 判断是否处理该消息。
+    fn applies_to(&self, method: &str, direction: Direction) -> bool;
+    /// 转换消息 params。Ok(None) = 丢弃，Ok(Some(params)) = 替换。
+    /// 默认实现：不做任何修改。
+    async fn intercept(
+        &self,
+        method: &str,
+        params: serde_json::Value,
+        direction: Direction,
+    ) -> Result<Option<serde_json::Value>, LspzError> {
+        Ok(Some(params))
+    }
+}
+
+/// 消息方向。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Direction {
+    ClientToServer,
+    ServerToClient,
+}
+
+/// 解析后的 LSP 消息。
+#[derive(Debug)]
+pub enum LspMessage {
+    Request { id: i64, method: String, params: serde_json::Value },
+    Response { id: i64, result: Option<serde_json::Value>, error: Option<JsonRpcError> },
+    Notification { method: String, params: serde_json::Value },
+}
+```
+
+### 使用示例
+
+```rust
+use lspz_core::{Proxy, Config, StdioTransport};
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let config = Config::builder()
         .backend_cmd("rust-analyzer")
         .enable_diag_compress(true)
-        .build();
+        .build()?;
 
-    let proxy = Proxy::new(config).await?;
+    let transport = StdioTransport::new("rust-analyzer")?;
+    let mut proxy = Proxy::new(config, Box::new(transport));
 
-    // Agent 作为 LSP Client
-    proxy.initialize().await?;
+    proxy.start().await?;          // 执行握手
+    proxy.open_file(uri).await?;   // 打开文件
+    let diags = proxy.diagnostics(uri).await?; // 获取（已压缩的）诊断
 
-    // 处理诊断（已自动压缩）
-    let diagnostics = proxy.get_diagnostics(uri).await?;
-
-    // 转换为 Model 友好格式
-    let formatted = format_for_model(&diagnostics);
-
+    // diags 已经是 CompactDiagnostics 格式
     Ok(())
 }
 ```
 
-### 接口边界
+### 关键约束
 
-**lspz-core 公共 API**:
-- `Proxy`: 核心代理类
-- `Config`: 配置构建器
-- `Transport`: 传输层 trait
-- `Interceptor`: 拦截器 trait
+1. **API 稳定性**: lspz-core 公共 API 在主版本不变时承诺向后兼容
+2. **异步设计**: 所有 I/O 操作基于 tokio 异步
+3. **错误处理**: 使用 `Result<T, LspzError>` 统一错误类型
 
 ### 特点
 
@@ -85,32 +271,41 @@ async fn main() -> Result<()> {
 | 配置方式 | Rust 结构体，类型安全 |
 | 适用场景 | 自研 Agent，需要完全控制 |
 
-### 关键约束
-
-1. **API 稳定性**: lspz-core 公共 API 在主版本不变时承诺向后兼容
-2. **异步设计**: 所有 I/O 操作基于 tokio 异步
-3. **错误处理**: 使用 `Result<T, LspzError>` 统一错误类型
-
 ---
 
 ## 模式 2: Proxy Mode (LSP 代理)
 
 ### 设计目标
 
-为现有 Agent（Claude Code、Continue、Cody）提供即插即用的透明代理。
+为现有 Agent（Claude Code、Continue、Cody、OpenCode）提供即插即用的透明代理。
 
 ### 架构
 
-```
-┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-│             │       │             │       │             │
-│   Agent     │◄─────►│    lspz     │◄─────►│ LSP Server  │
-│  (LSP Client)│      │   (Proxy)   │       │             │
-│             │       │  stdio:0    │       │             │
-└─────────────┘       └─────────────┘       └─────────────┘
-                            │
-                    压缩 Server→Client 消息
-                    透明转发 Client→Server 消息
+```mermaid
+flowchart LR
+    subgraph Client["Agent (LSP Client)"]
+        C1["stdio: client side"]
+    end
+    subgraph Proxy["lspz Proxy"]
+        P1["stdio client<br/>read/write"]
+        P2["Proxy Core"]
+        P3["stdio server<br/>read/write"]
+    end
+    subgraph Server["LSP Server"]
+        S1["stdio: server side"]
+    end
+
+    C1 <-->|"stdin/stdout"| P1
+    P1 --- P2
+    P2 --- P3
+    P3 <-->|"stdin/stdout"| S1
+
+    classDef client fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef proxy fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef server fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+    class C1 client
+    class P1,P2,P3 proxy
+    class S1 server
 ```
 
 ### 使用方式
@@ -120,18 +315,8 @@ async fn main() -> Result<()> {
 lspz --backend rust-analyzer --stdio
 
 # lspz 自动启动真实 LSP server 并代理通信
+# 所有 Server→Client 的诊断消息被自动压缩
 ```
-
-### 接口边界
-
-**stdin/stdout 协议**:
-- 输入: 标准 JSON-RPC 2.0 (LSP)
-- 输出: 标准 JSON-RPC 2.0 (LSP，但诊断被压缩)
-
-**环境变量配置**:
-- `LSPZ_BACKEND_CMD`: 后端 LSP 命令
-- `LSPZ_ENABLE_DIAG_COMPRESS`: 启用诊断压缩
-- `LSPZ_LOG_LEVEL`: 日志级别
 
 ### 特点
 
@@ -151,7 +336,7 @@ lspz --backend rust-analyzer --stdio
 
 ---
 
-## 模式 3: MCP Mode (MCP 服务器)
+## 模式 3: MCP Mode (MCP 服务器) — Future
 
 ### 设计目标
 
@@ -159,37 +344,38 @@ lspz --backend rust-analyzer --stdio
 
 ### 架构
 
+```mermaid
+flowchart LR
+    subgraph Client["Agent (MCP Client)"]
+        C1["MCP Protocol"]
+    end
+    subgraph Mcp["lspz-mcp"]
+        M1["MCP Tools:<br/>- get_diagnostics<br/>- get_completions<br/>- get_symbols"]
+        M2["lspz-core"]
+        M3["LSP Server Pool"]
+    end
+    subgraph Servers["LSP Servers"]
+        S1["rust-analyzer"]
+        S2["gopls"]
+        S3["basedpyright"]
+    end
+
+    C1 <--> M1
+    M1 --- M2
+    M2 --- M3
+    M3 --- S1
+    M3 --- S2
+    M3 --- S3
+
+    classDef client fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef mcp fill:#9013FE,stroke:#6A0DAD,stroke-width:2px,color:#fff
+    classDef server fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+    class C1 client
+    class M1,M2,M3 mcp
+    class S1,S2,S3 server
 ```
-┌─────────────┐       ┌─────────────┐       ┌─────────────┐
-│             │       │             │       │             │
-│   Agent     │◄─────►│  lspz-mcp   │◄─────►│ LSP Server  │
-│ (MCP Client)│       │  (MCP Server)│       │             │
-│             │       │             │       │             │
-└─────────────┘       └─────────────┘       └─────────────┘
-                            │
-                    暴露 MCP tools：
-                    - get_diagnostics
-                    - get_completions
-                    - get_symbols
-```
 
-### 使用方式
-
-```json
-// Claude Desktop 配置
-{
-  "mcpServers": {
-    "lspz": {
-      "command": "lspz-mcp",
-      "args": ["--backend", "rust-analyzer"]
-    }
-  }
-}
-```
-
-### 接口边界
-
-**MCP Tools**:
+### MCP Tools
 
 | Tool | 描述 | 返回值 |
 |------|------|--------|
@@ -207,82 +393,33 @@ lspz --backend rust-analyzer --stdio
 | 配置方式 | MCP 配置文件 |
 | 适用场景 | 快速实验，多工具协同 |
 
-### 关键约束
-
-1. **MCP 协议**: 符合 MCP 规范
-2. **按需查询**: Agent 显式调用 tools
-3. **状态管理**: 维护 LSP server 连接池
-
----
-
-## 核心抽象: lspz-core
-
-### 设计原则
-
-lspz-core 是纯逻辑库，不依赖任何特定传输方式或产品形态。
-
-### 模块结构
-
-```
-lspz-core/
-├── lib.rs              # 公共 API
-├── proxy.rs            # Proxy 核心
-├── interceptors/
-│   ├── mod.rs
-│   └── diagnostics.rs  # 诊断压缩拦截器
-├── codec/
-│   ├── mod.rs
-│   ├── json_rpc.rs     # JSON-RPC 编解码
-│   └── compact.rs      # 紧凑格式编解码
-├── transport/
-│   ├── mod.rs
-│   └── stdio.rs        # stdio 传输实现
-├── config.rs           # 配置管理
-└── error.rs            # 错误类型
-```
-
-### 关键 Traits
-
-```rust
-// 传输层抽象
-#[async_trait]
-pub trait Transport: Send + Sync {
-    async fn send(&self, message: JsonRpcMessage) -> Result<()>;
-    async fn receive(&self) -> Result<JsonRpcMessage>;
-}
-
-// 拦截器抽象
-#[async_trait]
-pub trait Interceptor: Send + Sync {
-    async fn intercept(
-        &self,
-        message: &JsonRpcMessage,
-        direction: Direction,
-    ) -> Result<Option<JsonRpcMessage>>;
-}
-```
-
 ---
 
 ## 模式选择指南
 
-### 选择 Library Mode 当：
-- ✅ 你控制 Agent 的代码
-- ✅ 需要自定义压缩策略
-- ✅ 需要零开销集成
-- ✅ 使用 Rust 开发 Agent
+```mermaid
+flowchart TD
+    START["开发 AI Coding Agent?"] -->|"是, 自研 Agent CLI"| Q1
+    START -->|"否, 使用第三方 Agent"| Q2
 
-### 选择 Proxy Mode 当：
-- ✅ 使用第三方 Agent（Claude Code/Continue/Cody）
-- ✅ 无法修改 Agent 代码
-- ✅ 需要快速验证效果
-- ✅ 希望透明集成
+    Q1["使用 Rust 开发?"] -->|"是"| LIB["Library Mode<br/>use lspz_core"]
+    Q1 -->|"否"| Q2
 
-### 选择 MCP Mode 当：
-- ✅ 需要多工具协同
-- ✅ 进行快速实验
-- ✅ Agent 已支持 MCP
-- ✅ 需要按需查询
+    Q2["Agent 支持 MCP?"] -->|"是, 且只需按需查询"| MCP["MCP Mode<br/>lspz-mcp"]
+    Q2 -->|"否, 或需要实时诊断推送"| PROXY["Proxy Mode<br/>lspz --backend"]
+
+    LIB -->|"最终方案"| DONE["✅ 零开销, 完全控制"]
+    PROXY -->|"立即可用"| DONE2["✅ 透明集成, 无需改代码"]
+    MCP -->|"适合实验"| DONE3["✅ 生态兼容, 按需查询"]
+
+    classDef start fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef mode fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef done fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+
+    class START start
+    class LIB,PROXY,MCP mode
+    class DONE,DONE2,DONE3 done
+```
 
 ---
 
@@ -295,22 +432,77 @@ pub trait Interceptor: Send + Sync {
 | 运行时配置 | ✅ | ⚠️ | ⚠️ |
 | 热加载 | ✅ | ❌ | ⚠️ |
 | 多 server | ✅ | ⚠️ | ✅ |
+| 零额外开销 | ✅ | ❌ (进程间) | ❌ (MCP 协议) |
 
 ✅ 完全支持 | ⚠️ 部分支持 | ❌ 不支持
 
 ---
 
+## Crate 工作区结构
+
+```mermaid
+graph TD
+    subgraph Workspace["lspz Workspace"]
+        CORE["lspz-core<br/>(pure logic library)"]
+        CLI["lspz<br/>(CLI binary)"]
+        MCP2["lspz-mcp<br/>(Future)"]
+    end
+
+    subgraph CoreModules["lspz-core Modules"]
+        PROXY["proxy.rs<br/>Proxy lifecycle<br/>Message routing<br/>State machine"]
+        INTERCEPTOR["interceptors/<br/>mod.rs - Interceptor trait<br/>diagnostics.rs - DiagnosticsCompressor"]
+        CODEC["codec/<br/>mod.rs - codec traits<br/>json_rpc.rs - JSON-RPC 2.0 parse/serialize<br/>compact.rs - Compact format compress/decompress"]
+        TRANSPORT["transport/<br/>mod.rs - Transport trait<br/>stdio.rs - StdioTransport impl"]
+        CONFIG["config.rs<br/>Config + builder<br/>Env var parsing<br/>CompressionConfig"]
+        ERROR["error.rs<br/>LspzError enum<br/>thiserror derive"]
+    end
+
+    subgraph SSOT["SSOT Output (.gen files)"]
+        APIDOC["docs/api/*.gen.md<br/>from code comments"]
+        CONFIGDOC["docs/reference/config.gen.md<br/>from Config struct"]
+        ERRDOC["docs/reference/error-types.gen.md<br/>from LspzError enum"]
+        INTERCEPTORDOC["docs/specs/interceptors.gen.md<br/>from Interceptor + impls"]
+    end
+
+    CLI --> CORE
+    MCP2 --> CORE
+    PROXY --> INTERCEPTOR
+    PROXY --> CODEC
+    PROXY --> TRANSPORT
+    PROXY --> CONFIG
+    PROXY --> ERROR
+    INTERCEPTOR --> CODEC
+    INTERCEPTOR --> ERROR
+    CODEC --> ERROR
+
+    CORE -.-> APIDOC
+    CONFIG -.-> CONFIGDOC
+    ERROR -.-> ERRDOC
+    INTERCEPTOR -.-> INTERCEPTORDOC
+
+    classDef workspace fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef module fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef ssot fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+
+    class CORE,CLI,MCP2 workspace
+    class PROXY,INTERCEPTOR,CODEC,TRANSPORT,CONFIG,ERROR module
+    class APIDOC,CONFIGDOC,ERRDOC,INTERCEPTORDOC ssot
+```
+
+---
+
 ## 未来扩展
 
-### v0.2
+### v0.2 (MCP 集成)
 - [ ] 实现完整的 MCP Mode
 - [ ] 添加更多 MCP tools
+- [ ] 多 LSP server 连接池
 
-### v0.3
+### v0.3 (Agent SDK)
 - [ ] Agent SDK 和宏
 - [ ] Skill 生成器
 
-### v0.4
+### v0.4 (高级特性)
 - [ ] TCP/WebSocket 传输层
 - [ ] 动态配置热加载
 - [ ] Metrics 和 Tracing
@@ -322,3 +514,5 @@ pub trait Interceptor: Send + Sync {
 - [ROADMAP.md](../../ROADMAP.md) - 项目路线图
 - [plan/01-mvp-phase.md](../plan/01-mvp-phase.md) - MVP 实施计划
 - [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范
+- [specs/003-lsp-compatibility.md](003-lsp-compatibility.md) - LSP 兼容性
+- [specs/004-ssot-rules.md](004-ssot-rules.md) - 文档生成和 SSOT 规则

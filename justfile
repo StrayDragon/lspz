@@ -19,17 +19,40 @@ lint:
 test:
     cargo test --workspace
 
-# Run all checks (lint, test).
-qa: lint test
+# Run all checks (qa = fmt-check + lint + test + gen-check).
+qa: gen-check fmt-check lint test
     @echo "All checks passed!"
     prek run --all-files
 
+alias check := qa
 alias ci := qa
 
-# Generate documentation from code (SSOT).
+# fmt-check only
+fmt-check:
+    cargo fmt -- --check
+
+# --- SSOT Documentation Generation ---
+
+# Generate all documentation from code (SSOT).
 gen-docs:
     python3 scripts/gen-docs.py
 
-# Check if documentation is up-to-date (for CI).
+# Check documentation drift (CI).
 gen-check:
     python3 scripts/gen-docs.py --check
+
+# Generate API docs from code comments.
+gen-api-docs:
+    python3 scripts/gen-docs.py
+
+# Generate config docs from Config struct.
+gen-config-docs:
+    python3 scripts/gen-docs.py
+
+# Generate error type docs from LspzError enum.
+gen-error-docs:
+    python3 scripts/gen-docs.py
+
+# Generate metadata docs from Cargo.toml.
+gen-meta-docs:
+    @echo "TODO: extract workspace members and deps from Cargo.toml"

@@ -5,22 +5,31 @@
 ## 必读顺序（请严格按此顺序阅读）
 
 1. **[ROADMAP.md](../ROADMAP.md)** - 项目总览和路线图
-   - 了解项目愿景和三模态架构
-   - 理解各阶段交付目标
+   - 了解项目愿景、三模态架构和研究结论
+   - 理解各阶段交付目标和检查点
 
-2. **[specs/001-tri-modal-architecture.md](specs/001-tri-modal-architecture.md)** - 三模态架构规格
+2. **[AGENTS.md](../AGENTS.md)** - 开发规范和 SSOT 框架
+   - 阅读 Rust 编码约定
+   - **必须理解**: SSOT Harness 节（代码即 SSOT、架构不变量、检查点规则）
+
+3. **[specs/001-tri-modal-architecture.md](specs/001-tri-modal-architecture.md)** - 三模态架构规格
    - 深入理解三种产品形态的设计
-   - 掌握核心抽象和接口边界
+   - 掌握核心 Trait（Transport, Interceptor, LspMessage）和状态机
+   - 阅读所有 Mermaid 流程图
 
-3. **[plan/01-mvp-phase.md](plan/01-mvp-phase.md)** - MVP 阶段计划
-   - v0.1 的具体实施计划
-   - 技术选型和依赖说明
+4. **[plan/01-mvp-phase.md](plan/01-mvp-phase.md)** - MVP 实施计划
+   - v0.1 的具体实施计划（Task A→D）
+   - 技术选型（自实现 JSON-RPC，四步压缩策略优先级）
 
-4. **[guides/coding-conventions.md](guides/coding-conventions.md)** - 编码约定
-   - Rust 代码风格要求
-   - 错误处理、日志等规范
+5. **[specs/002-compression-format.md](specs/002-compression-format.md)** - 压缩格式规范
+   - 理解紧凑格式 Schema
+   - **必须理解**: 去重合并是 #1 收益策略
 
-5. **[specs/004-ssot-rules.md](specs/004-ssot-rules.md)** - 文档生成和 SSOT 规则
+6. **[specs/003-lsp-compatibility.md](specs/003-lsp-compatibility.md)** - LSP 兼容性规范
+   - 理解 OpenCode 等 Agent 如何消费诊断
+   - 理解 lspz 的 Fail-open 错误处理
+
+7. **[specs/004-ssot-rules.md](specs/004-ssot-rules.md)** - 文档生成和 SSOT 规则
    - 理解代码→文档的生成流程
    - 掌握 `.gen.` 文件的使用规范
 
@@ -28,21 +37,25 @@
 
 ```
 docs/
-├── README.md                    # 本文档
+├── README.md                    # 本文档（开发者导航）
 ├── plan/                        # 阶段性实施计划
-│   ├── 00-prd.md               # 产品需求文档（历史参考）
-│   ├── 01-mvp-phase.md         # v0.1 MVP 阶段
-│   ├── 02-mcp-phase.md         # v0.2 MCP 集成阶段
-│   └── 03-agent-sdk-phase.md   # v0.3 Agent SDK 阶段
-├── specs/                       # 技术规格文档
-│   ├── 001-tri-modal-architecture.md  # 三模态架构
-│   ├── 002-compression-format.md      # 压缩格式规范
-│   ├── 003-lsp-compatibility.md       # LSP 兼容性规范
+│   ├── 00-prd.md               # 产品需求文档（含调研结论）
+│   └── 01-mvp-phase.md         # v0.1 MVP 阶段（当前）
+├── specs/                       # 技术规格文档（核心 SSOT）
+│   ├── 001-tri-modal-architecture.md  # 三模态架构（含 Mermaid 图）
+│   ├── 002-compression-format.md      # 压缩格式规范（含调研数据）
+│   ├── 003-lsp-compatibility.md       # LSP 兼容性规范（含 Agent 分析）
 │   └── 004-ssot-rules.md              # 文档生成和 SSOT 规则
-└── guides/                      # 开发指南
-    ├── coding-conventions.md    # 编码约定
-    ├── testing-guide.md         # 测试指南
-    └── contributing.md          # 贡献指南
+├── guides/                      # 开发指南
+│   ├── coding-conventions.md    # 编码约定
+│   ├── testing-guide.md         # 测试指南
+│   └── contributing.md          # 贡献指南
+├── api/                         # 自动生成（.gen. 文件，不手改）
+│   ├── modules.gen.md          # 模块索引（从 //! 注释生成）
+│   └── *.gen.md                # API 文档（从 /// 注释生成）
+└── reference/                   # 自动生成（.gen. 文件，不手改）
+    ├── config.gen.md           # 配置参考（从 Config 生成）
+    └── error-types.gen.md      # 错误类型（从 LspzError 生成）
 ```
 
 ## 快速导航
