@@ -1,12 +1,21 @@
-[package]
-name = "lspz"
-version = "0.0.1"
+[workspace]
+members = ["lspz-core", "lspz"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
 edition = "2024"
-description = "AI-friendly LSP compression proxy"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/straydragon/lspz"
+description = "AI-friendly LSP compression proxy"
 readme = "README.md"
 keywords = ["lsp", "proxy", "compression", "ai", "agent"]
 categories = ["development-tools"]
 
-[dependencies]
+[workspace.dependencies]
+tokio = { version = "1.35", features = ["full"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+async-trait = "0.1"
+thiserror = "1.0"
+tracing = "0.1"
