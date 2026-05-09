@@ -2,6 +2,8 @@
 //!
 //! All Server→Client message transformations go through the interceptor chain.
 
+pub mod diagnostics;
+
 use crate::error::LspzError;
 
 /// Direction of an LSP message.

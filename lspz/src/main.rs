@@ -9,7 +9,9 @@
 use std::process::ExitCode;
 
 use clap::Parser;
+use lspz_core::interceptors::Interceptor;
 use lspz_core::interceptors::InterceptorChain;
+use lspz_core::interceptors::diagnostics::DiagnosticsCompressor;
 use lspz_core::{Config, Proxy, StdioTransport};
 use tracing_subscriber::EnvFilter;
 
@@ -63,8 +65,13 @@ async fn main() -> ExitCode {
         }
     };
 
-    // Create interceptor chain (empty for now, will be filled in Task C)
-    let interceptor_chain = InterceptorChain::new(vec![]);
+    // Build interceptor chain
+    let mut interceptors: Vec<Box<dyn Interceptor>> = Vec::new();
+    if config.enable_diag_compress {
+        interceptors.push(Box::new(DiagnosticsCompressor::default()));
+        tracing::info!("Diagnostic compression enabled");
+    }
+    let interceptor_chain = InterceptorChain::new(interceptors);
 
     // Create and start proxy
     let mut proxy = Proxy::new(config, transport, interceptor_chain);
