@@ -1,0 +1,56 @@
+# prek.toml - Git hook configuration for lspz
+# Docs: https://github.com/j178/prek
+
+[[repos]]
+repo = "builtin"
+hooks = [
+  { id = "trailing-whitespace" },
+  { id = "end-of-file-fixer" },
+  { id = "check-toml" },
+  { id = "check-yaml" },
+  { id = "check-merge-conflict" },
+  { id = "check-added-large-files", args = ["--maxkb=512"] },
+  { id = "mixed-line-ending", args = ["--fix=lf"] },
+  { id = "detect-private-key" },
+  { id = "check-case-conflict" },
+]
+
+[[repos]]
+repo = "local"
+
+[[repos.hooks]]
+id = "cargo-fmt"
+name = "cargo fmt (check)"
+language = "system"
+entry = "uv run scripts/check-rust-fmt.py"
+types = ["rust"]
+pass_filenames = false
+require_serial = true
+
+[[repos.hooks]]
+id = "cargo-clippy"
+name = "cargo clippy"
+language = "system"
+entry = "uv run scripts/check-rust-clippy.py"
+types = ["rust"]
+pass_filenames = false
+require_serial = true
+
+[[repos.hooks]]
+id = "cargo-test"
+name = "cargo test"
+language = "system"
+entry = "uv run scripts/check-rust-test.py"
+types = ["rust"]
+pass_filenames = false
+require_serial = true
+stages = ["pre-push"]
+
+[[repos.hooks]]
+id = "conventional-commits"
+name = "conventional commits"
+language = "system"
+entry = "uv run scripts/check-conventional-commit.py"
+stages = ["commit-msg"]
+always_run = true
+pass_filenames = false
