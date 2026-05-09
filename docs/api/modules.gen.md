@@ -2,6 +2,7 @@
 
 > 自动从 `//!` 模块级注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 
+- **`lspz/src/main`**: CLI entry point for lspz — LSP compression proxy.
 - **`lspz-core/src/codec/json_rpc`**: JSON-RPC 2.0 Content-Length frame parser.
 - **`lspz-core/src/codec/mod`**: JSON-RPC 2.0 message codec.
 - **`lspz-core/src/config`**: Runtime configuration.
