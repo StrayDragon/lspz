@@ -73,6 +73,58 @@
   - LspMessage 枚举 (Request/Response/Notification)
   - 单元测试 ≥ 90%
 
+#### Content-Length 帧解析算法
+
+LSP 协议使用 HTTP 风格的 `Content-Length: N\r\n\r\n{body}` 帧格式。解析器需要正确处理粘包、拆包和无效输入。
+
+```mermaid
+flowchart LR
+    subgraph 缓冲区["输入缓冲区"]
+        RAW["stdin 字节流"]
+    end
+
+    subgraph 解析头["解析 Content-Length 头"]
+        H1["逐字节读取，查找 '\\r\\n\\r\\n'"]
+        H2["提取 Content-Length 数值"]
+        H3["计算 body 起始偏移 = header 长度 + 4"]
+    end
+
+    subgraph 提取帧["提取帧"]
+        E1["已读取字节数 - 偏移 < Content-Length?"]
+        E2["继续读取，等待更多数据"]
+        E3["从缓冲区切出 body 字节"]
+        E4["serde_json::from_slice(&body)"]
+    end
+
+    subgraph 分类["消息分类"]
+        R1["有 id + method → Request"]
+        R2["有 id + error/result → Response"]
+        R3["有 method，无 id → Notification"]
+    end
+
+    RAW --> H1 --> H2 --> H3
+    H3 --> E1
+    E1 -->|"数据不够"| E2 --> E1
+    E1 -->|"数据齐了"| E3 --> E4
+    E4 --> R1
+    E4 --> R2
+    E4 --> R3
+
+    classDef parse fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef result fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+
+    class H1,H2,H3,E1,E2,E3,E4 parse
+    class R1,R2,R3 result
+```
+
+**关键实现细节**:
+
+- 使用 `tokio::io::BufReader` 逐字节读取 header，避免预读超过 header 的数据（那些属于下一个帧）
+- `Content-Length` 大小写不敏感（LSP 规范要求）
+- 空 Content-Length 或非数字值 → `LspzError::Protocol`
+- body 解析失败 → `LspzError::JsonParse`，不终止连接
+- 最大 body 大小限制（默认 16MB），防止内存耗尽
+
 [Task A3] Transport 层
   - Transport trait 定义
   - StdioTransport 实现（子进程启动 + stdio）

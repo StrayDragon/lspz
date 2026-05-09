@@ -169,6 +169,60 @@ flowchart TB
 
 ---
 
+## Proxy 消息循环
+
+```mermaid
+flowchart TB
+    subgraph 初始化["初始化阶段"]
+        I1["Proxy::start()"]
+        I2["发送 initialize 请求"]
+        I3["等待 initialize 响应"]
+        I4["发送 initialized 通知"]
+        I5["保存 ServerCapabilities"]
+    end
+
+    subgraph 主循环["消息循环"]
+        L1["等待下一条消息 (tokio::select!)"]
+        L2["消息来源?"]
+        L3["Client→Server: 透明转发给 LSP 后端"]
+        L4["Server→Client: 进入拦截器链"]
+        L5["拦截器链处理"]
+        L6["发送给 Client"]
+    end
+
+    subgraph 关闭["关闭流程"]
+        S1["shutdown() 被调用"]
+        S2["发送 shutdown 请求"]
+        S3["发送 exit 通知"]
+        S4["杀死 server 子进程"]
+    end
+
+    I1 --> I2 --> I3 --> I4 --> I5
+    I5 --> L1
+    L1 --> L2
+    L2 -->|"来自 Client (stdin)"| L3 --> L1
+    L2 -->|"来自 Server (子进程 stdout)"| L4 --> L5 --> L6 --> L1
+    L1 -->|"退出信号 / 错误"| S1 --> S2 --> S3 --> S4
+
+    classDef init fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef loop fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef end fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+
+    class I1,I2,I3,I4,I5 init
+    class L1,L2,L3,L4,L5,L6 loop
+    class S1,S2,S3,S4 end
+```
+
+**消息循环关键细节**:
+
+- 使用 `tokio::select!` 同时等待 Client stdin 和 Server stdout 两条消息源
+- Client→Server 消息**不做任何处理**，直接序列化写入子进程 stdin
+- Server→Client 消息**通过拦截器链后再发送**给 Client
+- 拦截器链中任何一步失败 → `tracing::warn!` + 透明转发原始消息
+- 信号处理: SIGTERM/SIGINT → 触发 `shutdown()` → 优雅关闭
+
+---
+
 ## 模式 1: Library Mode (作为库)
 
 ### 设计目标
