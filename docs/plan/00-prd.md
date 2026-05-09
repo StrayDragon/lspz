@@ -2,6 +2,49 @@
 
 > NOTE: LSP 服务器信息已整合到 [docs/specs/003-lsp-compatibility.md](../specs/003-lsp-compatibility.md)
 
+---
+
+## 0. 调研发现 (Research Findings)
+
+### 0.1 OpenCode 的诊断处理分析
+
+通过分析 OpenCode（流行的 AI Coding Agent），发现其对 LSP 诊断做了一层有损压缩：
+
+| 措施 | 效果 | 丢失的信号 |
+|------|------|-----------|
+| 只保留 `severity===1` (ERROR) | 大幅减少 token | WARNING/INFO/HINT 全部丢弃 |
+| 每文件上限 `MAX_PER_FILE=20` | 限制长度 | 超出部分丢失 |
+| 格式化为 `"ERROR [L:C] msg"` | 紧凑文本 | 结构化信息丢失 |
+| 工具输出截断 2000 chars/50KB | 防止溢出 | 可能截断诊断 |
+
+**结论**: Agent 端的有损压缩会丢弃 WARNING 级别信息。lspz 可以在协议层以紧凑格式保留更多信号，同时保持结构化。去重合并是收益最大的策略，因为大量同类型错误（如 30 个 "unused variable"）可以被合并为 1 条 + 30 个 range 引用。
+
+### 0.2 真实 LSP 服务器字段使用分析
+
+| 字段 | jinja-lsp | typescript-LS | yaml-LS | lspz 处理 |
+|------|-----------|---------------|---------|-----------|
+| range | ✅ | ✅ | ✅ | ✅ 保留 |
+| message | ✅ | ✅ | ✅ | ✅ 保留 |
+| severity | ✅ | ✅ | ✅ | ✅ 编码为 E/W/I/H |
+| source | ✅ (固定"jinja-lsp") | ✅ | ✅ (固定"YAML") | ❌ 丢弃 (AI 不需要) |
+| code | ❌ | ✅ | ✅ | ⚠️ 可选保留 |
+| relatedInformation | ❌ | ✅ | ❌ | ❌ 丢弃 |
+| tags | ❌ | ✅ | ❌ | ⚠️ 编码为 U/D |
+| data/codeDescription | ❌ | ❌ | ❌ | ❌ 丢弃 |
+
+**结论**: 字段裁剪的收益有限，去重合并才是核心。大多数服务器只发射 4-6 个字段。
+
+### 0.3 核心策略调整
+
+根据调研，压缩策略优先级调整：
+
+1. **去重合并** (新 #1): 相同 message+severity+code 的诊断合并，range 平铺
+2. **Range 编码** (新 #2): 数组格式 + delta 编码，消除 JSON 对象嵌套
+3. **枚举缩减** (新 #3): severity→E/W/I/H，tags→单字符
+4. **字段裁剪** (新 #4): 移除 source/data/codeDescription/relatedInformation
+
+---
+
 ## 1. 项目代号与含义
 **lspz**
 - 全称：**lsp zip**（LSP 压缩代理）

@@ -2,7 +2,7 @@
 
 **版本**: v0.1.0
 **LSP 版本**: 3.17
-**状态**: 草案
+**状态**: 定稿
 **最后更新**: 2026-05-09
 
 ## 概述
@@ -15,6 +15,50 @@ lspz 必须完全符合 [Language Server Protocol 3.17](https://microsoft.github
 2. **透明转发**: 非目标消息必须透明转发
 3. **能力协商**: 正确处理 server/client capabilities
 4. **错误隔离**: 压缩失败不影响 LSP 通信
+
+---
+
+## 现有 AI Agent 处理诊断的方式
+
+### OpenCode 参考实现
+
+通过对 OpenCode 代码的分析，我们看到 AI Agent 通常会自己格式化诊断：
+
+| 步骤 | OpenCode 做法 | 说明 |
+|------|-------------|------|
+| 过滤 | 只保留 `severity === 1` (ERROR) | WARNING/INFO/HINT 全部丢弃 |
+| 截断 | 每文件最多 `MAX_PER_FILE = 20` 条 | 超出部分用 `"... and N more"` |
+| 格式化 | `"ERROR [line:col] message"` | 单行文本，丢失结构化信息 |
+| 存储 | `Map<string, Diagnostic[]>` 内存映射 | 每个 LSP client 实例独立存储 |
+| 输出 | 包裹在 `<diagnostics file="uri">` XML 标签中 | 添加到 edit/write 等工具的输出中 |
+| 去重 | 基于 JSON.stringify({code, severity, message, source, range}) | 确保 push 和 pull 诊断不重复 |
+
+**关键结论**: Agent 端的格式化是**有损的**——它丢弃 WARNING，截断超出部分，丢失结构化信息。lspz 可以在协议层以**无损紧凑形式**提供更多信号，而 Agent 可以根据需要选择使用多少。
+
+### lspz 在 Agent 生态中的定位
+
+```mermaid
+flowchart LR
+    subgraph LSP["LSP Layer"]
+        SERVER["LSP Server"]
+        LSPZ["lspz Proxy<br/>compact diagnostics"]
+    end
+    subgraph AGENT["AI Agent Internal"]
+        CLIENT["LSP Client<br/>receives diagnostics"]
+        FORMAT["Formatter<br/>(opencode: 有损压缩)"]
+        LLM["LLM Prompt<br/>context"]
+    end
+
+    SERVER -->|"raw JSON (verbose)"| LSPZ
+    LSPZ -->|"compact (40%+ savings)"| CLIENT
+    CLIENT --> FORMAT
+    FORMAT -->|"text (lossy)"| LLM
+
+    classDef lsp fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef agent fill:#9013FE,stroke:#6A0DAD,stroke-width:2px,color:#fff
+    class LSPZ lsp
+    class CLIENT,FORMAT,LLM agent
+```
 
 ---
 
@@ -50,8 +94,6 @@ lspz 必须完全符合 [Language Server Protocol 3.17](https://microsoft.github
 ---
 
 ## LSP 初始化流程
-
-### 标准握手序列
 
 ```mermaid
 sequenceDiagram
@@ -198,6 +240,28 @@ sequenceDiagram
 
 ---
 
+## 紧凑格式兼容性
+
+### 未感知压缩的 Client
+
+当 Client 未感知压缩时（如标准 LSP Client 或旧版 Agent）：
+
+1. lspz 可以通过配置禁用压缩 → 透明转发标准 LSP 消息
+2. 或者：Client 收到紧凑格式后，通过 `params.version` 字段检测到非标准格式
+
+### 感知压缩的 Agent
+
+Agent 端可以主动声明支持压缩：
+
+```rust
+// 自研 Agent 在初始化时配置
+let config = Config::builder()
+    .enable_diag_compress(true)  // 启用压缩输出
+    .build();
+```
+
+---
+
 ## 错误处理
 
 ### JSON-RPC 错误
@@ -241,16 +305,15 @@ lspz 透明转发 LSP 错误响应：
 | 传输错误 | 返回 JSON-RPC 错误 | ERROR |
 | 解析错误 | 返回 JSON-RPC 错误 | ERROR |
 
-**示例**:
+**实现**:
 
 ```rust
-// 压缩失败时的降级处理
+// 压缩失败时的降级处理 — 符合 "Fail-open" 不变量
 match compress_diagnostics(diagnostics) {
-    Ok(compressed) => send_compressed(compressed),
+    Ok(compressed) => send(compressed),
     Err(e) => {
-        warn!("Compression failed: {}", e);
-        // 降级到透明转发
-        send_original(diagnostics);
+        tracing::warn!(error = %e, "Diagnostic compression failed, falling back to transparent forward");
+        send_original(diagnostics);  // 透明转发原始消息
     }
 }
 ```
@@ -261,73 +324,21 @@ match compress_diagnostics(diagnostics) {
 
 ### 目标 LSP 服务器
 
-| LSP Server | 语言 | 测试优先级 | 调用方式 | 参考源码 | 已测试 |
-|-----------|------|-----------|----------|----------|--------|
-| basedpyright | Python | P0 | `basedpyright` | `../basedpyright` | ⏳ |
-| rust-analyzer | Rust | P0 | `rust-analyzer` | `../rust-analyzer` | ⏳ |
-| typescript-language-server | TypeScript/JavaScript | P1 | `typescript-language-server` | `../typescript-language-server` | ⏳ |
-| gopls | Go | P2 | `gopls` | `../golang.tools/gopls/` | ⏳ |
-
-**说明**:
-- 对于实施阶段，可以使用当前环境中已有的相关 server
-- 参考源码可以在项目父目录 `../` 中找到
-- 测试前确保 LSP server 已安装并可调用
+| LSP Server | 语言 | 测试优先级 | 诊断字段数 | 调用方式 |
+|-----------|------|-----------|-----------|----------|
+| rust-analyzer | Rust | P0 | 6 (range, severity, message, code, source, tags) | `rust-analyzer` |
+| basedpyright | Python | P0 | 5 (range, severity, message, code, source) | `basedpyright --language-server` |
+| typescript-language-server | TypeScript | P1 | 7 (range, severity, message, code, source, relatedInformation, tags) | `typescript-language-server --stdio` |
+| gopls | Go | P2 | 4 (range, severity, message, source) | `gopls` |
 
 ### 测试矩阵
 
-| LSP Server | initialize | diagnostics | hover | completion | 其他 |
-|-----------|-----------|-------------|-------|-----------|------|
-| rust-analyzer | ✅ | ✅ | ✅ | ✅ | ⏳ |
-| gopls | ✅ | ✅ | ✅ | ✅ | ⏳ |
-| basedpyright | ✅ | ✅ | ✅ | ✅ | ⏳ |
-| typescript-language-server | ✅ | ✅ | ✅ | ✅ | ⏳ |
-
----
-
-## 客户端兼容性
-
-### 目标 LSP 客户端
-
-| 客户端 | 压缩感知 | 兼容性 |
-|-------|----------|--------|
-| Claude Code | ❌ | ✅ 透明 |
-| Continue | ❌ | ✅ 透明 |
-| VS Code (LSP) | ❌ | ✅ 透明 |
-| 自研 Agent | ✅ | ✅ 可选 |
-
-### 压缩感知模式
-
-对于支持压缩的客户端（如自研 Agent），lspz 提供：
-
-1. **配置选项**: 控制是否启用压缩
-2. **格式协商**: Client 可以请求标准格式
-3. **版本声明**: 压缩格式版本号
-
-```rust
-// Client 请求标准格式
-let config = Config {
-    enable_diag_compress: false,  // 禁用压缩
-    ..Default::default()
-};
-```
-
----
-
-## 未支持的消息
-
-### 暂不支持但透明转发
-
-- `window/` 前缀的窗口相关消息
-- `$/` 前缀的特定协议消息
-- 实验性消息
-
-### 未来可能支持
-
-| 消息 | 优先级 | 计划版本 |
-|------|--------|----------|
-| `textDocument/completion` | P1 | v0.2 |
-| `textDocument/hover` | P2 | v0.3 |
-| `textDocument/documentSymbol` | P2 | v0.3 |
+| LSP Server | initialize | diagnostics | hover | completion | 字段裁剪验证 | 去重合并验证 |
+|-----------|-----------|-------------|-------|-----------|-------------|-------------|
+| rust-analyzer | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ |
+| gopls | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ |
+| basedpyright | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ |
+| typescript-language-server | ✅ | ✅ | ✅ | ✅ | ⏳ | ⏳ |
 
 ---
 
@@ -348,7 +359,7 @@ let config = Config {
 
 - [ ] rust-analyzer 集成测试通过
 - [ ] gopls 集成测试通过
-- [ ] 至少 2 个其他 LSP 服务器测试通过
+- [ ] at least 2 个其他 LSP 服务器测试通过
 - [ ] 压缩格式可正确还原
 - [ ] Token 节省 ≥ 40%
 

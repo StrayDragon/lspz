@@ -2,7 +2,7 @@
 
 > **lsp** **z**ip - 对 AI Coding Agent 极其友好的 LSP 压缩代理
 
-[![Rust](https://img.shields.io/badge/rust-2021%20edition-orange.svg)](https://www.rust-lang.org)
+[![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT%2FApache-blue.svg)](LICENSE)
 [![CI](https://github.com/your-org/lspz/workflows/CI/badge.svg)](https://github.com/your-org/lspz/actions)
 
@@ -16,6 +16,14 @@ lspz 是一个**三模态 LSP 压缩代理系统**，通过 Token 敏感的智�
 - **透明集成**: Agent 无需感知，像正常使用 LSP 一样
 - **灵活部署**: 支持作为库、独立代理、MCP 服务器三种形态
 - **标准兼容**: 永不破坏 LSP 协议标准
+
+### 调研结论
+
+经过对 OpenCode 和 4 个真实 LSP 服务器的分析：
+
+- OpenCode 已经对诊断做了有损压缩（只保留 ERROR，每文件 20 条上限）—— lspz 可以**在协议层以紧凑格式保留 WARNING 信号**，同时保持结构化
+- 去重合并是 #1 收益策略：30 个 "unused variable" 错误 → 1 条 + 30 个 range 引用
+- 没有现有产品做面向 AI Agent 的 LSP 消息压缩——**lspz 是首创**
 
 ---
 
