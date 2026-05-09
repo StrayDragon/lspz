@@ -27,3 +27,4 @@ pub use config::Config;
 pub use error::LspzError;
 pub use proxy::Proxy;
 pub use transport::Transport;
+pub use transport::stdio::StdioTransport;
