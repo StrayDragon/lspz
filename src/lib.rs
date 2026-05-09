@@ -1,101 +1,46 @@
-//! # lspz
+//! # lspz – placeholder crate
 //!
-//! LSP compression proxy for AI Coding Agents.
+//! This crate is a **placeholder** for the upcoming `lspz` LSP proxy tool.
+//! It currently does nothing; the real implementation is under development.
+//!
+//! ## Planned Features
+//!
+//! - Transparent LSP proxy between any Language Server and an AI Coding Agent.
+//! - Token-aware compression of server-to-client messages (diagnostics, completions, etc.).
+//! - Embeddable library (`lspz-core`) for integration into Rust-based agents.
+//! - Standalone binary (`lspz`) for agents written in any language.
+//!
+//! ## When will it be ready?
+//!
+//! The first alpha release is expected soon. Check the repository for updates.
+//!
+//! ## Usage (placeholder)
+//!
+//! ```ignore
+//! // This is a sketch of the future API.
+//! use lspz::{Config, Proxy};
+//!
+//! #[tokio::main]
+//! async fn main() {
+//!     let config = Config {
+//!         backend_cmd: vec!["typescript-language-server".into(), "--stdio".into()],
+//!         enable_diag_compress: true,
+//!         ..Default::default()
+//!     };
+//!     let proxy = Proxy::new(config).await.unwrap();
+//!     proxy.serve().await.unwrap();
+//! }
+//! ```
 
-/// Configuration for the LSP proxy
-#[derive(Debug, Clone)]
-pub struct Config {
-    pub backend_cmd: String,
-    pub enable_diag_compress: bool,
-}
+/// Placeholder struct for configuration.
+pub struct Config;
 
-impl Config {
-    pub fn builder() -> ConfigBuilder {
-        ConfigBuilder::default()
-    }
-}
-
-/// Builder for Config
-#[derive(Debug, Clone, Default)]
-pub struct ConfigBuilder {
-    backend_cmd: Option<String>,
-    enable_diag_compress: bool,
-}
-
-impl ConfigBuilder {
-    pub fn backend_cmd(mut self, cmd: &str) -> Self {
-        self.backend_cmd = Some(cmd.to_string());
-        self
-    }
-
-    pub fn enable_diag_compress(mut self, enable: bool) -> Self {
-        self.enable_diag_compress = enable;
-        self
-    }
-
-    pub fn build(self) -> Config {
-        Config {
-            backend_cmd: self
-                .backend_cmd
-                .unwrap_or_else(|| "rust-analyzer".to_string()),
-            enable_diag_compress: self.enable_diag_compress,
-        }
-    }
-}
-
-/// LSP compression proxy
-pub struct Proxy {
-    _config: Config,
-}
+/// Placeholder struct for the proxy.
+pub struct Proxy;
 
 impl Proxy {
-    pub fn new(config: Config) -> Result<Self, std::io::Error> {
-        Ok(Proxy { _config: config })
-    }
-
-    pub fn initialize(&mut self) -> Result<(), std::io::Error> {
-        Ok(())
-    }
-
-    pub fn get_diagnostics(&self, _uri: &str) -> Result<Vec<Diagnostic>, std::io::Error> {
-        Ok(vec![])
-    }
-}
-
-/// LSP Diagnostic
-#[derive(Debug, Clone)]
-pub struct Diagnostic {
-    pub message: String,
-    pub severity: Severity,
-}
-
-#[derive(Debug, Clone)]
-pub enum Severity {
-    Error,
-    Warning,
-    Info,
-    Hint,
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_builder_works() {
-        let config = Config::builder()
-            .backend_cmd("gopls")
-            .enable_diag_compress(true)
-            .build();
-
-        assert_eq!(config.backend_cmd, "gopls");
-        assert!(config.enable_diag_compress);
-    }
-
-    #[test]
-    fn proxy_create_works() {
-        let config = Config::builder().build();
-        let mut proxy = Proxy::new(config).unwrap();
-        assert!(proxy.initialize().is_ok());
+    /// Placeholder constructor.
+    pub fn new(_config: Config) -> Result<Self, Box<dyn std::error::Error>> {
+        unimplemented!("lspz is not yet implemented. This is a placeholder crate.")
     }
 }
