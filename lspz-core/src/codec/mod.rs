@@ -1,7 +1,6 @@
-//! JSON-RPC 2.0 message codec.
+//! Message codec layer.
 //!
-//! Implements Content-Length frame parsing per LSP 3.17 spec.
-//!
-//! [MermaidChart:./docs/mmd/json-rpc-frame.mmd]
+//! Provides JSON-RPC 2.0 framing ([`json_rpc`]) and compact diagnostic format ([`compact`]).
 
+pub mod compact;
 pub mod json_rpc;
