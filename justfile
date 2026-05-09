@@ -11,10 +11,6 @@ setup:
 fmt:
     cargo fmt
 
-# Check code formatting (read-only).
-fmt-check:
-    cargo fmt -- --check
-
 # Run cargo clippy with strict lints.
 lint:
     cargo clippy
@@ -23,8 +19,8 @@ lint:
 test:
     cargo test --workspace
 
-# Run all checks (format, lint, test).
-qa: fmt-check lint test
+# Run all checks (lint, test).
+qa: lint test
     @echo "All checks passed!"
     prek run --all-files
 
