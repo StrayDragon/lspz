@@ -88,6 +88,53 @@
 }
 ```
 
+#### 去重算法 (HashMap 分组)
+
+```mermaid
+flowchart LR
+    subgraph 输入["原始 Diagnostic[]"]
+        D1["{msg:'unused x', severity:2, code:'unused_var', range:{10,0,10,5}}"]
+        D2["{msg:'unused x', severity:2, code:'unused_var', range:{15,0,15,5}}"]
+        D3["{msg:'unused x', severity:2, code:'unused_var', range:{20,0,20,5}}"]
+        D4["{msg:'undeclared y', severity:1, code:'E0425', range:{25,0,25,8}}"]
+    end
+
+    subgraph 分组["HashMap 分组"]
+        K1["key = hash(message, severity, code)"]
+        K2["k1: (unused x, 2, unused_var)"]
+        K3["k2: (undeclared y, 1, E0425)"]
+    end
+
+    subgraph 合并["同一 key 内合并"]
+        M1["Group k1:{ranges: [10:0-10:5, 15:0-15:5, 20:0-20:5], count: 3}"]
+        M2["Group k2:{ranges: [25:0-25:8], count: 1}"]
+    end
+
+    subgraph 输出["去重结果"]
+        O1["1 条 compressed entry<br/>(取代原始 3 条)"]
+        O2["1 条 compressed entry<br/>(未去重)"]
+    end
+
+    D1 & D2 & D3 & D4 --> K1 --> K2 & K3
+    K2 --> M1 --> O1
+    K3 --> M2 --> O2
+
+    classDef input fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef step fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef output fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+
+    class D1,D2,D3,D4 input
+    class K1,K2,K3,M1,M2 step
+    class O1,O2 output
+```
+
+**关键实现细节**:
+
+- HashMap key 使用 `(message, severity_number, code)` 三元组
+- code 为 `Option` 时，`None` 视为同组
+- 复杂度 O(n)，n = 诊断条数
+- 分组后每个 group 的 ranges 按位置排序（line→col），保持输出可读
+
 ### Strategy 2: 字段裁剪 (Field Pruning)
 
 **默认保留字段**:
@@ -118,23 +165,68 @@
 - `Unnecessary`: `'U'`
 - `Deprecated`: `'D'`
 
-### Strategy 4: Range 编码
+### Strategy 4: Range Delta 编码
 
 **原始格式** — 每个 range 需要 6 个字段名 + 4 个数字：
 ```json
 {"start": {"line": 10, "character": 5}, "end": {"line": 10, "character": 15}}
 ```
 
-**压缩格式** — 4 个数字 + 无字段名：
+**压缩格式** — 4 个数字数组，无字段名：
 ```
 [10, 5, 10, 15]
 ```
 
-**多个 Range**: 使用 delta 编码 — 第 N+1 个 range 只存相对于第 N 个的差值：
+**多个 Range**: 第一个 range 存绝对值，后续 range 存相对于前一个的差值（delta 编码）。这样当多个错误在同一行或连续几行时，增量值很小甚至为零。
+
+#### Delta 编码算法
+
+```mermaid
+flowchart LR
+    subgraph 输入["输入: 3 个 LSP Range"]
+        R1["Range{start:{10,5}, end:{10,15}}"]
+        R2["Range{start:{11,5}, end:{11,15}}"]
+        R3["Range{start:{12,5}, end:{12,15}}"]
+    end
+
+    subgraph 绝对值["第一步: 转 [L,C,L,C]"]
+        A1["[10, 5, 10, 15]"]
+        A2["[11, 5, 11, 15]"]
+        A3["[12, 5, 12, 15]"]
+    end
+
+    subgraph 差分["第二步: 计算 Delta"]
+        D1["第一个: 保持绝对 → [10, 5, 10, 15]"]
+        D2["第二个: [11-10, 5-5, 11-10, 15-15] = [1, 0, 1, 0]"]
+        D3["第三个: [12-11, 5-5, 12-11, 15-15] = [1, 0, 1, 0]"]
+    end
+
+    subgraph 输出["输出: delta 编码数组"]
+        O1["[10, 5, 10, 15] ← 绝对值"]
+        O2["[1, 0, 1, 0] ← delta"]
+        O3["[1, 0, 1, 0] ← delta"]
+    end
+
+    R1 --> A1
+    R2 --> A2
+    R3 --> A3
+    A1 --> D1 --> O1
+    A2 --> D2 --> O2
+    A3 --> D3 --> O3
+
+    classDef input fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef step fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
+    classDef output fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+
+    class R1,R2,R3 input
+    class A1,A2,A3,D1,D2,D3 step
+    class O1,O2,O3 output
+```
+
+**解码时还原**: 累加 delta 值恢复绝对值。
 
 ```json
-// 原始: 3 个 range，每个都是独立 JSON 对象
-// 压缩: 1 个绝对 + 2 个 delta
+// 存储:
 {
   "r": [
     [10, 5, 10, 15],  // 第一个: 绝对值
@@ -142,7 +234,13 @@
     [1, 0, 1, 0]       // 第三个: line+1, col 不变
   ]
 }
+
+// 还原: 累加 delta
+// range[1] = [10+1, 5+0, 10+1, 15+0] = [11, 5, 11, 15]
+// range[2] = [11+1, 5+0, 11+1, 15+0] = [12, 5, 12, 15]
 ```
+
+**何时不启用 delta**: 当只有 1 个 range 时，直接存绝对值 `[line, col, line, col]`，不做 delta。
 
 ---
 
