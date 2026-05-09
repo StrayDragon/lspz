@@ -1,0 +1,13 @@
+[package]
+name = "lspz"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "AI-friendly LSP compression proxy"
+
+[dependencies]
+lspz-core = { path = "../lspz-core" }
+clap = { version = "4.0", features = ["derive"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tokio = { workspace = true }
