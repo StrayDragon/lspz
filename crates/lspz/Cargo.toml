@@ -8,6 +8,8 @@ description = "AI-friendly LSP compression proxy"
 
 [dependencies]
 lspz-core = { path = "../lspz-core" }
+lspz-mcp = { path = "../lspz-mcp" }
+rmcp = { version = "0.16", features = ["transport-io"] }
 clap = { version = "4.0", features = ["derive", "env"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = { workspace = true }

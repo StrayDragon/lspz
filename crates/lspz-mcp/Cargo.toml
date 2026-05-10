@@ -1,0 +1,16 @@
+[package]
+name = "lspz-mcp"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "MCP server for lspz - LSP compression proxy"
+
+[dependencies]
+lspz-core = { path = "../lspz-core" }
+rmcp = { version = "0.16", features = ["server", "transport-io"] }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+tracing = { workspace = true }
+anyhow = "1.0"
