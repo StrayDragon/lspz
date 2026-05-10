@@ -129,13 +129,13 @@ lspz --backend rust-analyzer --stdio
 
 ## 项目状态
 
-### 当前版本: v0.1.0-MVP
+### 当前版本: v0.2.0-MCP
 
 - [x] 项目规划和文档
-- [ ] lspz-core 基础实现
-- [ ] 诊断压缩功能
-- [ ] LSP 代理模式
-- [ ] MCP 服务器模式
+- [x] lspz-core 基础实现
+- [x] 诊断压缩功能
+- [x] LSP 代理模式
+- [x] MCP 服务器模式
 - [ ] Agent SDK
 
 详细路线图: [ROADMAP.md](ROADMAP.md)

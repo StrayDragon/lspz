@@ -54,8 +54,8 @@ lspz 支持三种产品形态，满足不同使用场景：
 - [x] 项目初始化
 - [x] 文档结构建立
 - [x] SSOT 规则建立 (docs/specs/004-ssot-rules.md)
-- [ ] CI/CD 配置
-- [ ] 开发环境搭建指南
+- [ ] CI/CD 配置 (待办)
+- [ ] 开发环境搭建指南 (待办)
 
 ### Phase 1: MVP - v0.1 (Library + Proxy)
 
@@ -77,24 +77,24 @@ lspz 支持三种产品形态，满足不同使用场景：
 
 ### Phase 2: MCP 集成 - v0.2
 
-**状态**: 🔄 当前阶段 | **目标**: Q2 2026
+**状态**: ✅ 已完成 | **实际完成**: 2026-05
 
 **目标**: 添加 MCP 服务器模式，支持快速实验和生态集成
 
 **核心功能**:
-- [ ] `lspz-mcp` crate
-- [ ] MCP tools 实现
-  - [ ] `get_diagnostics`
-  - [ ] `get_completions`
-  - [ ] `get_symbols`
+- [x] `lspz-mcp` crate
+- [x] MCP tools 实现
+  - [x] `get_diagnostics`
+  - [x] `get_completions`
+  - [x] `get_symbols`
 - [ ] Claude Desktop 集成示例
 - [ ] MCP 配置指南
 
 **交付物**:
-- [ ] `lspz-mcp` crate (v0.2.0)
-- [ ] MCP 集成文档
+- [x] `lspz-mcp` crate (v0.2.0)
+- [x] MCP 集成文档 (docs/plan/02-mcp-phase.md)
 
-**详细计划**: [docs/plan/02-mcp-phase.md](docs/plan/02-mcp-phase.md) (待创建)
+**详细计划**: [docs/plan/02-mcp-phase.md](docs/plan/02-mcp-phase.md)
 
 ---
 
@@ -174,8 +174,8 @@ lspz 支持三种产品形态，满足不同使用场景：
 
 | 版本 | 日期 | 阶段 | 主要变更 |
 |------|------|------|----------|
-| v0.1.0 | TBD | MVP | Library + Proxy 模式 |
-| v0.2.0 | TBD | MCP | 添加 MCP 服务器 |
+| v0.1.0 | 2025-12 | MVP | Library + Proxy 模式 |
+| v0.2.0 | 2026-05 | MCP | 添加 MCP 服务器 (rmcp SDK, 3 tools) |
 | v0.3.0 | TBD | SDK | Agent 集成 SDK |
 
 ---

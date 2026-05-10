@@ -548,9 +548,9 @@ graph TD
 ## 未来扩展
 
 ### v0.2 (MCP 集成)
-- [ ] 实现完整的 MCP Mode
-- [ ] 添加更多 MCP tools
-- [ ] 多 LSP server 连接池
+- [x] 实现完整的 MCP Mode
+- [x] 添加 MCP tools (get_diagnostics, get_completions, get_symbols)
+- [x] 多 LSP server 连接池 (LspPool)
 
 ### v0.3 (Agent SDK)
 - [ ] Agent SDK 和宏
