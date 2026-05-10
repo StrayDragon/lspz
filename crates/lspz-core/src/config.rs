@@ -180,7 +180,7 @@ impl ConfigBuilder {
                     .ok()
                     .and_then(|v| OutputFormat::from_str(&v).ok())
             })
-            .unwrap_or(OutputFormat::Json);
+            .unwrap_or(OutputFormat::Toon);
 
         Ok(Config {
             backend_cmd,

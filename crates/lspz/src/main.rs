@@ -70,12 +70,12 @@ enum Cli {
         )]
         compress_document_symbol: bool,
 
-        /// Output format: json (compact), toon, or passthrough
+        /// Output format: toon, json (compact), or passthrough
         #[arg(
             short = 'o',
             long = "output",
             env = "LSPZ_OUTPUT_FORMAT",
-            default_value = "json"
+            default_value = "toon"
         )]
         output: String,
 
