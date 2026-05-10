@@ -1,4 +1,4 @@
-# API: `lspz-core/src/codec/json_rpc`
+# API: `crates/lspz-core/src/codec/json_rpc`
 
 > 自动从 `///` 注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 

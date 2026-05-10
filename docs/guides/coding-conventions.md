@@ -31,18 +31,20 @@
 
 ```
 lspz/
-├── lspz-core/           # 核心库 crate
-│   └── src/
-│       ├── lib.rs       # 公共 API
-│       ├── proxy.rs     # Proxy 核心
-│       ├── interceptors/
-│       ├── codec/
-│       ├── transport/
-│       ├── config.rs
-│       └── error.rs
-├── lspz/                # CLI 二进制 crate
-│   └── src/main.rs
-├── lspz-mcp/            # MCP 服务器 crate（v0.2）
+├── Cargo.toml           # workspace root → members = ["crates/*"]
+├── crates/
+│   ├── lspz-core/       # 核心库 crate
+│   │   └── src/
+│   │       ├── lib.rs       # 公共 API
+│   │       ├── proxy.rs     # Proxy 核心
+│   │       ├── interceptors/
+│   │       ├── codec/
+│   │       ├── transport/
+│   │       ├── config.rs
+│   │       └── error.rs
+│   ├── lspz/            # CLI 二进制 crate
+│   │   └── src/main.rs
+│   └── lspz-mcp/        # MCP 服务器 crate（v0.2）
 └── examples/            # 示例代码
 ```
 
