@@ -1,4 +1,4 @@
-# API: `lspz-core/src/transport/mod`
+# API: `crates/lspz-core/src/transport/mod`
 
 > 自动从 `///` 注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 
