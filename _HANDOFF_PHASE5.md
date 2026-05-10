@@ -1,7 +1,8 @@
 # Phase 5 Handoff — Remaining Deferred Items
 
 > 创建: 2026-05-11
-> 前提: v0.4.0 已完成 (`_HANDOFF.md` 含完整 Phase 0-4 总结)
+> 更新: 2026-05-11
+> 前提: v0.5.0 已完成 (`_HANDOFF.md` 含完整 Phase 0-5 总结)
 
 ## 项目状态摘要
 
@@ -14,67 +15,24 @@ Tests:     ~90+ passed (lib + integration + e2e skeleton)
 Diagrams:  7 Mermaid files in docs/mmd/
 ```
 
-## 新消息类型压缩 (优先级排序)
+## 已完成
 
-### ✅ 1. HoverCompressor — v0.5.0 已完成
-
-**实现文件**: `crates/lspz-core/src/interceptors/hover.rs` (~220 行, 6 单元测试)
-**修改文件**: `mod.rs`, `lib.rs`, `config.rs`, `main.rs`
-**QA**: fmt + clippy + 90 tests + gen-check 全部通过
-
-**预期收益**: 10-20% token 节省 (单条 hover, 非列表)
-
-**实现模式**: 与 CompletionCompressor 完全一致
-
-**需要创建的文件**:
+### ✅ HoverCompressor (v0.5.0)
 
 | 文件 | 说明 |
 |------|------|
-| `crates/lspz-core/src/interceptors/hover.rs` | 拦截器实现 + 6 个单元测试 |
+| `crates/lspz-core/src/interceptors/hover.rs` | 拦截器实现 + 6 单元测试 |
+| `crates/lspz-core/src/interceptors/mod.rs` | `pub mod hover;` |
+| `crates/lspz-core/src/lib.rs` | `pub use HoverCompressor;` |
+| `crates/lspz-core/src/config.rs` | `enable_hover_compress` + builder + env-var |
+| `crates/lspz/src/main.rs` | `--compress-hover` / `-H` flag + chain 注册 |
+| `docs/mmd/hover-compression.mmd` | pipeline flowchart |
 
-**实现参考**: `crates/lspz-core/src/interceptors/completions.rs` (260+ 行, ~8 测试)
+**QA**: fmt + clippy + 90 tests + gen-check 全部通过
 
-```rust
-// 核心结构 (参考 completions.rs 的相同模式)
-pub struct HoverCompressor {
-    pub enable_markdown_compact: bool, // default true
-}
+## 剩余待实施项
 
-impl Interceptor for HoverCompressor {
-    fn applies_to(&self, method, direction) -> bool {
-        method == "textDocument/hover" && direction == Direction::ServerToClient
-    }
-    async fn intercept(&self, method, params, direction) -> Result<Option<Value>, LspzError> {
-        // 1. Markdown compaction: collapse blank lines, shorten code fences
-        // 2. Enum reduction: MarkupKind → "p"/"m"
-        // 3. Compact field names: contents→c, kind→k, value→v, range→r
-    }
-}
-```
-
-**需要修改的文件**:
-
-| 文件 | 修改 |
-|------|------|
-| `crates/lspz-core/src/interceptors/mod.rs` | 添加 `pub mod hover;` |
-| `crates/lspz-core/src/lib.rs` | 添加 `pub use interceptors::hover::HoverCompressor;` |
-| `crates/lspz-core/src/config.rs` | 添加 `enable_hover_compress: bool` + builder + env-var |
-| `crates/lspz/src/main.rs` | 在 interceptor chain 中添加 HoverCompressor (after completion) |
-| `crates/lspz-mcp/src/server.rs` | 在 `handle_diagnostics` 同级添加 hover 压缩 (如果 MCP 添加了 hover tool) |
-
-**测试**:
-- `test_applies_to_hover` — method + direction 匹配
-- `test_markdown_compact` — 折叠空行, 缩短代码围栏 ` ```rust ` → `` `rs ``
-- `test_markup_kind_reduction` — MarkupKind → `"p"`/`"m"`
-- `test_fail_open` — 错误输入返回 Err (chain 自动转发原始)
-- `test_roundtrip_preserves_content` — label/value 保持不变
-- `test_empty_hover` — null/空响应通过
-
-**Mermaid 图**: `docs/mmd/hover-compression.mmd` (flowchart, 参考 completion-compression.mmd)
-
----
-
-### 2. DocumentSymbol 压缩 — 低优先级
+### 1. DocumentSymbol 压缩 — 低优先级
 
 **原因**: token 量比 completions 低, AI agent 使用频率低
 
