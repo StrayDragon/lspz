@@ -346,22 +346,22 @@ match compress_diagnostics(diagnostics) {
 
 ### LSP 规范合规
 
-- [ ] 正确处理 JSON-RPC 2.0 基础协议
-- [ ] 支持请求、响应、通知三种消息类型
-- [ ] 正确处理消息 id
-- [ ] 正确转发 JSON-RPC 错误
-- [ ] 实现完整的 initialize/initialized 握手
-- [ ] 透明转发所有非诊断消息
-- [ ] 正确处理 capabilities
-- [ ] 压缩失败时降级到透明转发
+- [x] 正确处理 JSON-RPC 2.0 基础协议
+- [x] 支持请求、响应、通知三种消息类型
+- [x] 正确处理消息 id
+- [x] 正确转发 JSON-RPC 错误
+- [x] 实现完整的 initialize/initialized 握手
+- [x] 透明转发所有非诊断消息
+- [x] 正确处理 capabilities
+- [x] 压缩失败时降级到透明转发
 
 ### 测试覆盖
 
-- [ ] rust-analyzer 集成测试通过
-- [ ] gopls 集成测试通过
+- [x] rust-analyzer 集成测试通过
+- [x] gopls 集成测试通过
 - [ ] at least 2 个其他 LSP 服务器测试通过
-- [ ] 压缩格式可正确还原
-- [ ] Token 节省 ≥ 40%
+- [x] 压缩格式可正确还原
+- [x] Token 节省 ≥ 40%
 
 ---
 

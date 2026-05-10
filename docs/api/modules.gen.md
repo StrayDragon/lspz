@@ -2,7 +2,7 @@
 
 > 自动从 `//!` 模块级注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 
-- **`crates/lspz/src/main`**: CLI entry point for lspz — LSP compression proxy.
+- **`crates/lspz/src/main`**: CLI entry point for lspz — LSP compression proxy and MCP server.
 - **`crates/lspz-core/src/codec/compact`**: Compact format for LSP diagnostics.
 - **`crates/lspz-core/src/codec/json_rpc`**: JSON-RPC 2.0 Content-Length frame parser.
 - **`crates/lspz-core/src/codec/mod`**: Message codec layer.
