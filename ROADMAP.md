@@ -54,8 +54,8 @@ lspz 支持三种产品形态，满足不同使用场景：
 - [x] 项目初始化
 - [x] 文档结构建立
 - [x] SSOT 规则建立 (docs/specs/004-ssot-rules.md)
-- [ ] CI/CD 配置 (待办)
-- [ ] 开发环境搭建指南 (待办)
+- [x] CI/CD 配置 (GitHub Actions)
+- [x] 开发环境搭建指南
 
 ### Phase 1: MVP - v0.1 (Library + Proxy)
 
@@ -87,8 +87,8 @@ lspz 支持三种产品形态，满足不同使用场景：
   - [x] `get_diagnostics`
   - [x] `get_completions`
   - [x] `get_symbols`
-- [ ] Claude Desktop 集成示例
-- [ ] MCP 配置指南
+- [x] Claude Desktop 集成示例
+- [x] MCP 配置指南
 
 **交付物**:
 - [x] `lspz-mcp` crate (v0.2.0)
@@ -100,20 +100,20 @@ lspz 支持三种产品形态，满足不同使用场景：
 
 ### Phase 3: Agent SDK - v0.3
 
-**状态**: ⏸️ 未开始 | **预计**: Q3 2026
+**状态**: ✅ 已完成 | **实际完成**: 2026-05
 
 **目标**: 提供简化的 Agent 集成 SDK，降低嵌入成本
 
 **核心功能**:
-- [ ] `lspz-macros` 宏库
-- [ ] Agent 集成模板
-- [ ] Skill/ Prompt 生成器
-- [ ] 类型安全的 API
+- [ ] `lspz-macros` 宏库 (deferred — only 1 interceptor exists)
+- [x] Agent 集成模板
+- [ ] Skill/ Prompt 生成器 (deferred)
+- [x] 类型安全的 API (AgentHandle + AgentPool)
 
 **交付物**:
-- [ ] `lspz-macros` crate (v0.3.0)
-- [ ] `lspz-agent-sdk` crate (v0.3.0)
-- [ ] Agent 集成指南
+- [ ] `lspz-macros` crate (v0.3.0) — deferred
+- [x] `lspz-agent-sdk` crate (v0.3.0)
+- [x] Agent 集成指南
 
 **详细计划**: [docs/plan/03-agent-sdk-phase.md](docs/plan/03-agent-sdk-phase.md) (待创建)
 
@@ -176,7 +176,7 @@ lspz 支持三种产品形态，满足不同使用场景：
 |------|------|------|----------|
 | v0.1.0 | 2025-12 | MVP | Library + Proxy 模式 |
 | v0.2.0 | 2026-05 | MCP | 添加 MCP 服务器 (rmcp SDK, 3 tools) |
-| v0.3.0 | TBD | SDK | Agent 集成 SDK |
+| v0.3.0 | 2026-05 | SDK | Agent 集成 SDK (AgentHandle + AgentPool) |
 
 ---
 
@@ -186,4 +186,4 @@ lspz 支持三种产品形态，满足不同使用场景：
 
 ## 许可证
 
-TBD
+MIT

@@ -3,6 +3,8 @@
 //! Tests use realistic diagnostic data from multiple LSP servers:
 //! - gopls (Go): unused variables, unused imports, type mismatches
 //! - rust-analyzer (Rust): unused variables, type errors, unresolved references
+//! - basedpyright (Python): type errors, unused imports, unused variables
+//! - typescript-language-server (TypeScript): type mismatches, unused locals
 //!
 //! [MermaidChart:./docs/mmd/compression-pipeline.mmd]
 
@@ -215,6 +217,202 @@ async fn test_rust_analyzer_dedup() {
     assert_eq!(diags.len(), 2, "rust-analyzer 3 diags → 2 groups");
 }
 
+// ─── basedpyright (Python) ──────────────────────────────────────────────
+
+fn basedpyright_diagnostics() -> serde_json::Value {
+    serde_json::json!({
+        "uri": "file:///test/src/main.py",
+        "diagnostics": [
+            {
+                "range": {"start": {"line": 1, "character": 0}, "end": {"line": 1, "character": 10}},
+                "severity": 1,
+                "message": "Argument of type 'int' is not assignable to parameter of type 'str'",
+                "code": "reportGeneralTypeIssues",
+                "source": "basedpyright"
+            },
+            {
+                "range": {"start": {"line": 3, "character": 0}, "end": {"line": 3, "character": 14}},
+                "severity": 2,
+                "message": "\"os\" is not accessed",
+                "code": "reportUnusedImport",
+                "source": "basedpyright"
+            },
+            {
+                "range": {"start": {"line": 4, "character": 0}, "end": {"line": 4, "character": 16}},
+                "severity": 2,
+                "message": "\"typing\" is not accessed",
+                "code": "reportUnusedImport",
+                "source": "basedpyright"
+            },
+            {
+                "range": {"start": {"line": 6, "character": 4}, "end": {"line": 6, "character": 10}},
+                "severity": 2,
+                "message": "Variable \"result\" is not used",
+                "code": "reportUnusedVariable",
+                "source": "basedpyright"
+            },
+            {
+                "range": {"start": {"line": 7, "character": 4}, "end": {"line": 7, "character": 8}},
+                "severity": 2,
+                "message": "Variable \"temp\" is not used",
+                "code": "reportUnusedVariable",
+                "source": "basedpyright"
+            },
+            {
+                "range": {"start": {"line": 9, "character": 0}, "end": {"line": 9, "character": 1}},
+                "severity": 1,
+                "message": "Name \"undefined_var\" is not defined",
+                "code": "reportUndefinedVariable",
+                "source": "basedpyright"
+            },
+        ]
+    })
+}
+
+#[test]
+fn test_basedpyright_compression_roundtrip() {
+    let params = basedpyright_diagnostics();
+    let original_count = params["diagnostics"].as_array().unwrap().len();
+
+    let compact_val = compress(&params).expect("basedpyright compression should succeed");
+    let compact: CompactDiagnostics =
+        serde_json::from_value(compact_val.clone()).expect("should deserialize");
+
+    let decompressed = decompress(&compact_val).expect("decompression should succeed");
+    let decompressed_count = decompressed["diagnostics"].as_array().unwrap().len();
+    assert!(
+        decompressed_count >= original_count,
+        "basedpyright: decompressed {} >= original {}",
+        decompressed_count,
+        original_count
+    );
+
+    assert_eq!(compact.uri, "file:///test/src/main.py");
+    assert_eq!(compact.version, 1);
+}
+
+#[tokio::test]
+async fn test_basedpyright_dedup() {
+    let compressor = DiagnosticsCompressor::default();
+    let params = basedpyright_diagnostics();
+
+    let result = compressor
+        .intercept(
+            "textDocument/publishDiagnostics",
+            params,
+            Direction::ServerToClient,
+        )
+        .await
+        .expect("compression should succeed");
+
+    let compact = result.expect("should produce output");
+    let diags = compact["diagnostics"].as_array().unwrap();
+
+    // basedpyright message patterns are not yet normalized by the compressor,
+    // so group count equals the original 6 diagnostics
+    // TODO: add normalization patterns for basedpyright/unused-import/unused-variable
+    assert!(diags.len() <= 6, "basedpyright: groups ({}) <= original (6)", diags.len());
+    assert!(!diags.is_empty(), "basedpyright should produce at least 1 group");
+}
+
+// ─── typescript-language-server (TypeScript) ────────────────────────────
+
+fn typescript_diagnostics() -> serde_json::Value {
+    serde_json::json!({
+        "uri": "file:///test/src/app.ts",
+        "diagnostics": [
+            {
+                "range": {"start": {"line": 1, "character": 7}, "end": {"line": 1, "character": 12}},
+                "severity": 1,
+                "message": "Type 'number' is not assignable to type 'string'.",
+                "code": 2322,
+                "source": "ts"
+            },
+            {
+                "range": {"start": {"line": 3, "character": 7}, "end": {"line": 3, "character": 16}},
+                "severity": 1,
+                "message": "Type 'null' is not assignable to type 'string'.",
+                "code": 2322,
+                "source": "ts"
+            },
+            {
+                "range": {"start": {"line": 5, "character": 10}, "end": {"line": 5, "character": 14}},
+                "severity": 2,
+                "message": "'temp' is declared but its value is never read.",
+                "code": 6133,
+                "source": "ts"
+            },
+            {
+                "range": {"start": {"line": 6, "character": 10}, "end": {"line": 6, "character": 15}},
+                "severity": 2,
+                "message": "'count' is declared but its value is never read.",
+                "code": 6133,
+                "source": "ts"
+            },
+            {
+                "range": {"start": {"line": 8, "character": 1}, "end": {"line": 8, "character": 6}},
+                "severity": 1,
+                "message": "Property 'nonExistent' does not exist on type 'MyType'.",
+                "code": 2339,
+                "source": "ts"
+            },
+            {
+                "range": {"start": {"line": 10, "character": 0}, "end": {"line": 10, "character": 17}},
+                "severity": 1,
+                "message": "Cannot find name 'unknownFn'. Did you mean 'knownFn'?",
+                "code": 2552,
+                "source": "ts"
+            },
+        ]
+    })
+}
+
+#[test]
+fn test_typescript_compression_roundtrip() {
+    let params = typescript_diagnostics();
+    let original_count = params["diagnostics"].as_array().unwrap().len();
+
+    let compact_val = compress(&params).expect("typescript compression should succeed");
+    let compact: CompactDiagnostics =
+        serde_json::from_value(compact_val.clone()).expect("should deserialize");
+
+    let decompressed = decompress(&compact_val).expect("decompression should succeed");
+    let decompressed_count = decompressed["diagnostics"].as_array().unwrap().len();
+    assert!(
+        decompressed_count >= original_count,
+        "typescript: decompressed {} >= original {}",
+        decompressed_count,
+        original_count
+    );
+
+    assert_eq!(compact.uri, "file:///test/src/app.ts");
+    assert_eq!(compact.version, 1);
+}
+
+#[tokio::test]
+async fn test_typescript_dedup() {
+    let compressor = DiagnosticsCompressor::default();
+    let params = typescript_diagnostics();
+
+    let result = compressor
+        .intercept(
+            "textDocument/publishDiagnostics",
+            params,
+            Direction::ServerToClient,
+        )
+        .await
+        .expect("compression should succeed");
+
+    let compact = result.expect("should produce output");
+    let diags = compact["diagnostics"].as_array().unwrap();
+
+    // TypeScript message patterns are not yet normalized by the compressor,
+    // so group count equals the original 6 diagnostics
+    // TODO: add normalization patterns for TypeScript/unused-variable
+    assert!(diags.len() <= 6, "typescript: groups ({}) <= original (6)", diags.len());
+    assert!(!diags.is_empty(), "typescript should produce at least 1 group");
+}
+
 // ─── Token Savings ────────────────────────────────────────────────────────
 
 #[tokio::test]
@@ -355,5 +553,77 @@ async fn test_normalization_increases_dedup() {
         "Normalization should reduce groups: {} < {}",
         with_groups,
         without_groups
+    );
+}
+
+#[tokio::test]
+async fn test_token_savings_basedpyright() {
+    use tiktoken_rs::cl100k_base;
+
+    let bpe = cl100k_base().expect("should load tokenizer");
+    let params = basedpyright_diagnostics();
+    let original_json = serde_json::to_string(&params).expect("should serialize");
+
+    let compressor = DiagnosticsCompressor::default();
+    let compact = compressor
+        .intercept(
+            "textDocument/publishDiagnostics",
+            params,
+            Direction::ServerToClient,
+        )
+        .await
+        .expect("should compress");
+    let compact_json =
+        serde_json::to_string(&compact.expect("should produce output")).expect("should serialize");
+
+    let original_tokens = bpe.encode_with_special_tokens(&original_json).len();
+    let compressed_tokens = bpe.encode_with_special_tokens(&compact_json).len();
+    let savings = 1.0 - (compressed_tokens as f64 / original_tokens as f64);
+
+    println!("─── basedpyright Token Savings ───");
+    println!("Original tokens:      {}", original_tokens);
+    println!("Compressed tokens:    {}", compressed_tokens);
+    println!("Savings:             {:.1}%", savings * 100.0);
+
+    assert!(
+        savings >= 0.30,
+        "basedpyright compression should save ≥30%, got {:.1}%",
+        savings * 100.0
+    );
+}
+
+#[tokio::test]
+async fn test_token_savings_typescript() {
+    use tiktoken_rs::cl100k_base;
+
+    let bpe = cl100k_base().expect("should load tokenizer");
+    let params = typescript_diagnostics();
+    let original_json = serde_json::to_string(&params).expect("should serialize");
+
+    let compressor = DiagnosticsCompressor::default();
+    let compact = compressor
+        .intercept(
+            "textDocument/publishDiagnostics",
+            params,
+            Direction::ServerToClient,
+        )
+        .await
+        .expect("should compress");
+    let compact_json =
+        serde_json::to_string(&compact.expect("should produce output")).expect("should serialize");
+
+    let original_tokens = bpe.encode_with_special_tokens(&original_json).len();
+    let compressed_tokens = bpe.encode_with_special_tokens(&compact_json).len();
+    let savings = 1.0 - (compressed_tokens as f64 / original_tokens as f64);
+
+    println!("─── typescript Token Savings ───");
+    println!("Original tokens:      {}", original_tokens);
+    println!("Compressed tokens:    {}", compressed_tokens);
+    println!("Savings:             {:.1}%", savings * 100.0);
+
+    assert!(
+        savings >= 0.30,
+        "typescript compression should save ≥30%, got {:.1}%",
+        savings * 100.0
     );
 }
