@@ -45,3 +45,41 @@ LSP diagnostic compression proxy MVP — Library and Proxy modes.
 - Full QA pipeline: `just qa` (fmt + clippy + test + gen-check + prek hooks)
 - `just gen-docs` / `just gen-check` for SSOT documentation lifecycle
 - `CHANGELOG.md` and project documentation
+
+## v0.2.0 (2026-05-10)
+
+MCP server mode — LSP diagnostics, completions, and symbols as MCP tools.
+
+### Highlights
+
+- New `lspz-mcp` crate (v0.2.0) with `McpServer`, `LspSession`, and `LspPool`
+- Three MCP tools via `rmcp` 0.16 SDK:
+  - `get_diagnostics` — returns compressed LSP diagnostics for a file
+  - `get_completions` — returns completion items at a cursor position
+  - `get_symbols` — returns document symbols
+- `LspSession` wraps `StdioTransport` with LSP initialize/initialized handshake, `send_request`, `send_notification`, and `wait_for_notification`
+- `LspPool` provides lazy multi-language session caching (`HashMap<String, LspSession>`)
+- CLI `lspz mcp` subcommand to start the MCP stdio server
+- Claude Desktop integration via `claude_desktop_config.json`
+
+## v0.3.0 (2026-05-10)
+
+Agent SDK — declarative LSP integration for AI coding agents.
+
+### Highlights
+
+- New `lspz-agent-sdk` crate (v0.3.0) with `AgentHandle` and `AgentPool`
+- `AgentHandle` builder API for single-language LSP sessions:
+  - `get_diagnostics` with optional compact compression
+  - `get_completions`, `get_symbols`
+  - `inflate`/`compress` helpers
+  - `shutdown` for clean LSP shutdown handshake
+- `AgentPool` for multi-language session management (lazy spawn, per-language dispatch)
+- `MockTransport` for testing LSP sessions without real server processes
+  - Pre-program responses via `push_message`, inspect sent data via `sent_messages`
+  - 5 unit tests for MockTransport, 11 for AgentHandle, 5 for AgentPool
+- `LspSession` refactored to `Box<dyn Transport>` for testability
+- CI/CD pipeline (GitHub Actions: fmt + clippy + test + gen-check)
+- License: MIT
+- Synthetic fixture tests for basedpyright and typescript-language-server diagnostic formats
+- Claude Desktop integration guide (`docs/guides/claude-desktop-integration.md`)

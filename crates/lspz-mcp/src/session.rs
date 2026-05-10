@@ -1,6 +1,6 @@
 //! LSP session — manages a single LSP server connection.
 //!
-//! Wraps [`StdioTransport`] with initialize handshake and
+//! Wraps a [`Transport`] with initialize handshake and
 //! request/response/notification message exchange.
 
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -19,7 +19,7 @@ use serde_json::Value;
 /// let result = session.send_request("textDocument/completion", params).await?;
 /// ```
 pub struct LspSession {
-    transport: StdioTransport,
+    transport: Box<dyn Transport>,
     next_id: AtomicI64,
 }
 
@@ -28,9 +28,19 @@ impl LspSession {
     pub fn spawn(cmd: &str) -> Result<Self, anyhow::Error> {
         let transport = StdioTransport::spawn(cmd)?;
         Ok(Self {
-            transport,
+            transport: Box::new(transport),
             next_id: AtomicI64::new(1),
         })
+    }
+
+    /// Create a session with a pre-constructed transport.
+    ///
+    /// Useful for testing with mock transports.
+    pub fn with_transport(transport: Box<dyn Transport>) -> Self {
+        Self {
+            transport,
+            next_id: AtomicI64::new(1),
+        }
     }
 
     /// Perform the LSP initialize/initialized handshake.

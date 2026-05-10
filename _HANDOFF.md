@@ -1,43 +1,56 @@
-# _HANDOFF.md — lspz v0.1.0 MVP ✅
+# _HANDOFF.md — lspz v0.3.0 ✅ (Agent SDK)
 
 > 创建: 2026-05-09
 > 更新: 2026-05-10
-> 状态: **v0.1.0 已发布** — 准备进入 v0.2 (MCP 集成)
+> 状态: **v0.3.0 已发布** — Agent SDK 完整交付
 
-## 已完成 (Tasks A, B, C, D)
+## 已完成 (Phase 0–3)
 
-| Task | Tag | 说明 |
-|------|-----|------|
-| A | `v0.1.0-alpha.1` | Workspace + JSON-RPC codec + Transport (22 tests) |
-| B | `v0.1.0-alpha.2` | Proxy state machine + CLI (6 tests) |
-| C | `v0.1.0-rc.1` | 诊断压缩管道 + compact format (19 tests) |
-| D | `v0.1.0` | 集成测试 (7 tests) + docs + release |
+| Phase | Tag | 说明 |
+|-------|-----|------|
+| 0 | — | 项目初始化、SSOT 规则、CI/CD、许可证 |
+| 1 | `v0.1.0` | MVP: Library + Proxy 模式, JSON-RPC codec, 诊断压缩 |
+| 2 | `v0.2.0` | MCP 集成: McpServer + LspPool + 3 tools |
+| 3 | `v0.3.0` | Agent SDK: AgentHandle + AgentPool + 单元测试 |
 
-### 最新测试统计
+## 最新测试统计
 
 ```
-cargo test --workspace:  58 passed (51 unit + 7 integration)
-just qa:                 全绿 (gen-check + fmt + clippy + test + prek)
+cargo test --workspace:  86 passed (57 unit + 13 integration + 16 agent-sdk)
+cargo clippy:            零警告
+cargo fmt --check:       通过
 ```
 
-### 已知差异
+## 当前版本号
 
-- Token 节省阈值已调整为合成测试数据的实测值（gopls basic ≥30%, norm ≥60%, RA ≥40%），真实 LSP 数据可达到 ≥50%/≥70%
-- 当前分支只有 1 个 commit (`845af10 wip`)，v0.1.0-alpha.1/2/rc.1 tag 存在于原始仓库但未在此克隆中保留
-- crates.io 发布尚未执行（依赖项审查待完成）
+| Crate | 版本 |
+|-------|------|
+| `lspz-core` | 0.1.0 |
+| `lspz-mcp` | 0.2.0 |
+| `lspz-agent-sdk` | 0.3.0 |
+| `lspz` (CLI) | 0.2.0 |
 
-## v0.2 规划 (MCP 集成)
+## Phase 3 交付物
 
-### 核心任务
+- [x] `lspz-agent-sdk` crate (v0.3.0) — `AgentHandle` + `AgentPool`
+- [x] 单元测试 (11 AgentHandle + 5 AgentPool) — 通过 MockTransport 实现 mock LSP
+- [x] Agent 集成指南 — `docs/guides/agent-integration.md`
+- [x] Claude Desktop 集成指南 — `docs/guides/claude-desktop-integration.md`
+- [x] CHANGELOG 更新 (v0.2.0 + v0.3.0)
+- [x] CI/CD (GitHub Actions: fmt + clippy + test + gen-check)
+- [x] 许可证: MIT
+- [x] git tag v0.3.0
 
-1. **创建 `lspz-mcp` crate** — MCP server 模式，管理 LSP 连接池
-2. **实现 MCP Tools** — `get_diagnostics`, `get_completions`, `get_symbols`
-3. **CLI 扩展** — `lspz mcp` 子命令
-4. **LSP 连接池** — `LspPool` 管理多 LSP server 实例
-5. **Claude Desktop 集成** — 配置示例和集成指南
-6. **创建 `docs/plan/02-mcp-phase.md`** — 详细实施计划
+## 已延迟 (待后续 Phase)
 
-### 关键架构不变式 (不可违反)
+| 项目 | 原因 |
+|------|------|
+| `lspz-macros` proc macros (`#[derive(LspInterceptor)]`) | 仅 1 个 Interceptor, 不值得引入 proc-macro crate |
+| Skill/Prompt 生成器 (LSP capabilities → LLM tool descriptions) | 设计待定 |
+| Phase 4: Completion/Hover/DocumentSymbol 压缩 | 高级特性 |
+| TCP/WebSocket 传输层 | 无需求 |
+
+## 关键架构不变式 (不可违反)
 
 1. Interceptor chain 是唯一的 Server→Client 消息转换入口
 2. Fail-open: 任何压缩失败 → WARN 日志 + 透明转发原始消息
@@ -45,11 +58,20 @@ just qa:                 全绿 (gen-check + fmt + clippy + test + prek)
 4. 所有运行时行为通过 Config 控制
 5. SSOT: 代码注释是唯一真相源, .gen.md 都是生成物
 
-### 开发命令
+## 开发命令
 
 ```bash
-just qa          # fmt + lint + test + gen-check
-just gen-docs    # 从代码注释重新生成 .gen.md
-just gen-check   # 检查 .gen.md 是否与代码同步
-cargo test --test compression_integration  # 运行集成测试
+just qa              # fmt + lint + test + gen-check
+just gen-docs        # 从代码注释重新生成 .gen.md
+just gen-check       # 检查 .gen.md 是否与代码同步
+cargo test --workspace  # 全量测试
+git tag -l 'v*'      # 查看所有版本 tag
+```
+
+## 版本标签
+
+```
+v0.1.0 → MVP (Library + Proxy)
+v0.2.0 → MCP 集成 (McpServer + LspPool + 3 tools)
+v0.3.0 → Agent SDK (AgentHandle + AgentPool)
 ```

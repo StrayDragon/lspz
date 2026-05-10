@@ -18,5 +18,7 @@
 //! ```
 
 mod agent;
+mod pool;
 
 pub use agent::AgentHandle;
+pub use pool::{AgentPool, AgentPoolBuilder};
