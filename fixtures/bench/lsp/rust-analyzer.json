@@ -1,0 +1,67 @@
+[
+  {
+    "name": "small (3 diagnostics, 2 unused vars + unresolved ref)",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "uri": "file:///src/main.rs",
+      "diagnostics": [
+        { "range": { "start": { "line": 2, "character": 8 }, "end": { "line": 2, "character": 13 } }, "severity": 2, "message": "unused variable: `x`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 3, "character": 8 }, "end": { "line": 3, "character": 13 } }, "severity": 2, "message": "unused variable: `y`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 5, "character": 13 }, "end": { "line": 5, "character": 22 } }, "severity": 1, "message": "cannot find value `unknown_fn` in this scope", "code": "E0425", "source": "rust-analyzer" }
+      ]
+    }
+  },
+  {
+    "name": "medium (10 diagnostics, mixed duplicates + unique)",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "uri": "file:///src/lib.rs",
+      "diagnostics": [
+        { "range": { "start": { "line": 1, "character": 4 }, "end": { "line": 1, "character": 9 } }, "severity": 2, "message": "unused variable: `x`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 2, "character": 4 }, "end": { "line": 2, "character": 9 } }, "severity": 2, "message": "unused variable: `y`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 3, "character": 4 }, "end": { "line": 3, "character": 9 } }, "severity": 2, "message": "unused variable: `z`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 5, "character": 0 }, "end": { "line": 8, "character": 1 } }, "severity": 1, "message": "mismatched types: expected `i32`, found `String`", "code": "E0308", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 10, "character": 0 }, "end": { "line": 10, "character": 12 } }, "severity": 2, "message": "unused import: `HashMap`", "code": "unused_imports", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 12, "character": 4 }, "end": { "line": 12, "character": 9 } }, "severity": 2, "message": "unused variable: `a`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 15, "character": 0 }, "end": { "line": 15, "character": 20 } }, "severity": 1, "message": "cannot return value referencing local variable `data`", "code": "E0515", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 20, "character": 0 }, "end": { "line": 20, "character": 10 } }, "severity": 3, "message": "consider using `cloned()` here", "code": "clippy::cloned_instead_of_map", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 22, "character": 4 }, "end": { "line": 22, "character": 10 } }, "severity": 2, "message": "unused variable: `b`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 25, "character": 0 }, "end": { "line": 25, "character": 5 } }, "severity": 4, "message": "type alias `Foo` is never used", "code": "dead_code", "source": "rust-analyzer" }
+      ]
+    }
+  },
+  {
+    "name": "large (25 diagnostics, many duplicates — real-world flood)",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "uri": "file:///src/app.rs",
+      "diagnostics": [
+        { "range": { "start": { "line": 1, "character": 4 }, "end": { "line": 1, "character": 9 } }, "severity": 2, "message": "unused variable: `x`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 2, "character": 4 }, "end": { "line": 2, "character": 9 } }, "severity": 2, "message": "unused variable: `y`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 3, "character": 4 }, "end": { "line": 3, "character": 9 } }, "severity": 2, "message": "unused variable: `z`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 4, "character": 4 }, "end": { "line": 4, "character": 10 } }, "severity": 2, "message": "unused variable: `foo`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 5, "character": 4 }, "end": { "line": 5, "character": 10 } }, "severity": 2, "message": "unused variable: `bar`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 6, "character": 4 }, "end": { "line": 6, "character": 10 } }, "severity": 2, "message": "unused variable: `baz`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 7, "character": 4 }, "end": { "line": 7, "character": 10 } }, "severity": 2, "message": "unused variable: `qux`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 8, "character": 4 }, "end": { "line": 8, "character": 10 } }, "severity": 2, "message": "unused variable: `quux`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 9, "character": 4 }, "end": { "line": 9, "character": 10 } }, "severity": 2, "message": "unused variable: `corge`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 10, "character": 4 }, "end": { "line": 10, "character": 10 } }, "severity": 2, "message": "unused variable: `grault`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 12, "character": 0 }, "end": { "line": 12, "character": 15 } }, "severity": 1, "message": "mismatched types: expected `i32`, found `String`", "code": "E0308", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 14, "character": 0 }, "end": { "line": 14, "character": 15 } }, "severity": 1, "message": "mismatched types: expected `bool`, found `i32`", "code": "E0308", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 16, "character": 0 }, "end": { "line": 16, "character": 12 } },"severity": 1, "message": "cannot add `i32` to `String`", "code": "E0369", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 18, "character": 0 }, "end": { "line": 18, "character": 10 } }, "severity": 2, "message": "unused import: `HashMap`", "code": "unused_imports", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 19, "character": 0 }, "end": { "line": 19, "character": 10 } }, "severity": 2, "message": "unused import: `HashSet`", "code": "unused_imports", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 21, "character": 0 }, "end": { "line": 21, "character": 25 } }, "severity": 1, "message": "cannot return value referencing local variable `data`", "code": "E0515", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 23, "character": 0 }, "end": { "line": 23, "character": 15 } }, "severity": 1, "message": "use of moved value: `data`", "code": "E0382", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 25, "character": 4 }, "end": { "line": 25, "character": 15 } }, "severity": 3, "message": "consider using `cloned()` here", "code": "clippy::cloned_instead_of_map", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 27, "character": 4 }, "end": { "line": 27, "character": 10 } }, "severity": 3, "message": "this loop could be written as `for x in y`", "code": "clippy::manual_while_let", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 29, "character": 4 }, "end": { "line": 29, "character": 15 } }, "severity": 2, "message": "unused variable: `extra`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 31, "character": 0 }, "end": { "line": 31, "character": 8 } }, "severity": 1, "message": "cannot find value `undefined` in this scope", "code": "E0425", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 33, "character": 0 }, "end": { "line": 33, "character": 10 } }, "severity": 1, "message": "this function takes 2 arguments but 3 were supplied", "code": "E0063", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 35, "character": 4 }, "end": { "line": 35, "character": 5 } }, "severity": 2, "message": "unused variable: `_`", "code": "unused_variables", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 36, "character": 0 }, "end": { "line": 36, "character": 12 } }, "severity": 2, "message": "fields `x` are never read", "code": "dead_code", "source": "rust-analyzer" },
+        { "range": { "start": { "line": 38, "character": 0 }, "end": { "line": 38, "character": 12 } }, "severity": 2, "message": "method `do_something` is never used", "code": "dead_code", "source": "rust-analyzer" }
+      ]
+    }
+  }
+]

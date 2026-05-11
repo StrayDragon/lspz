@@ -1,0 +1,70 @@
+[
+  {
+    "name": "small (4 diagnostics, mixed TS errors)",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "uri": "file:///src/app.ts",
+      "diagnostics": [
+        { "range": { "start": { "line": 1, "character": 7 }, "end": { "line": 1, "character": 12 } }, "severity": 1, "message": "Type 'number' is not assignable to type 'string'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 5, "character": 10 }, "end": { "line": 5, "character": 14 } }, "severity": 2, "message": "'temp' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 8, "character": 1 }, "end": { "line": 8, "character": 6 } }, "severity": 1, "message": "Property 'nonExistent' does not exist on type 'MyType'.", "code": 2339, "source": "ts" },
+        { "range": { "start": { "line": 10, "character": 0 }, "end": { "line": 10, "character": 17 } }, "severity": 1, "message": "Cannot find name 'unknownFn'. Did you mean 'knownFn'?", "code": 2552, "source": "ts" }
+      ]
+    }
+  },
+  {
+    "name": "medium (12 diagnostics, mixed duplicates and unique)",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "uri": "file:///src/utils.ts",
+      "diagnostics": [
+        { "range": { "start": { "line": 1, "character": 7 }, "end": { "line": 1, "character": 12 } }, "severity": 1, "message": "Type 'number' is not assignable to type 'string'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 3, "character": 7 }, "end": { "line": 3, "character": 12 } }, "severity": 1, "message": "Type 'null' is not assignable to type 'string'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 5, "character": 10 }, "end": { "line": 5, "character": 14 } }, "severity": 2, "message": "'temp' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 6, "character": 10 }, "end": { "line": 6, "character": 15 } }, "severity": 2, "message": "'count' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 7, "character": 10 }, "end": { "line": 7, "character": 15 } }, "severity": 2, "message": "'result' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 8, "character": 10 }, "end": { "line": 8, "character": 14 } }, "severity": 2, "message": "'data' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 10, "character": 1 }, "end": { "line": 10, "character": 6 } }, "severity": 1, "message": "Property 'nonExistent' does not exist on type 'MyType'.", "code": 2339, "source": "ts" },
+        { "range": { "start": { "line": 12, "character": 1 }, "end": { "line": 12, "character": 8 } }, "severity": 1, "message": "Property 'missingField' does not exist on type 'YourType'.", "code": 2339, "source": "ts" },
+        { "range": { "start": { "line": 14, "character": 0 }, "end": { "line": 14, "character": 17 } }, "severity": 1, "message": "Cannot find name 'unknownFn'. Did you mean 'knownFn'?", "code": 2552, "source": "ts" },
+        { "range": { "start": { "line": 16, "character": 0 }, "end": { "line": 16, "character": 15 } }, "severity": 1, "message": "Cannot find name 'missingVar'.", "code": 2304, "source": "ts" },
+        { "range": { "start": { "line": 18, "character": 0 }, "end": { "line": 18, "character": 15 } }, "severity": 2, "message": "'unusedImport' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 20, "character": 0 }, "end": { "line": 20, "character": 10 } }, "severity": 3, "message": "Variable 'x' is used before being assigned.", "code": 2454, "source": "ts" }
+      ]
+    }
+  },
+  {
+    "name": "large (25 diagnostics, realistic TS project errors)",
+    "method": "textDocument/publishDiagnostics",
+    "params": {
+      "uri": "file:///src/components/App.tsx",
+      "diagnostics": [
+        { "range": { "start": { "line": 1, "character": 7 }, "end": { "line": 1, "character": 12 } }, "severity": 1, "message": "Type 'number' is not assignable to type 'string'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 2, "character": 7 }, "end": { "line": 2, "character": 12 } }, "severity": 1, "message": "Type 'null' is not assignable to type 'string'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 3, "character": 7 }, "end": { "line": 3, "character": 14 } }, "severity": 1, "message": "Type 'undefined' is not assignable to type 'string'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 4, "character": 7 }, "end": { "line": 4, "character": 12 } }, "severity": 1, "message": "Type 'boolean' is not assignable to type 'number'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 6, "character": 10 }, "end": { "line": 6, "character": 14 } }, "severity": 2, "message": "'temp' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 7, "character": 10 }, "end": { "line": 7, "character": 15 } }, "severity": 2, "message": "'count' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 8, "character": 10 }, "end": { "line": 8, "character": 15 } }, "severity": 2, "message": "'result' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 9, "character": 10 }, "end": { "line": 9, "character": 14 } }, "severity": 2, "message": "'data' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 10, "character": 10 }, "end": { "line": 10, "character": 15 } }, "severity": 2, "message": "'index' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 11, "character": 10 }, "end": { "line": 11, "character": 16 } }, "severity": 2, "message": "'handle' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 13, "character": 1 }, "end": { "line": 13, "character": 6 } }, "severity": 1, "message": "Property 'nonExistent' does not exist on type 'MyType'.", "code": 2339, "source": "ts" },
+        { "range": { "start": { "line": 14, "character": 1 }, "end": { "line": 14, "character": 8 } }, "severity": 1, "message": "Property 'missingField' does not exist on type 'YourType'.", "code": 2339, "source": "ts" },
+        { "range": { "start": { "line": 16, "character": 0 }, "end": { "line": 16, "character": 17 } }, "severity": 1, "message": "Cannot find name 'unknownFn'. Did you mean 'knownFn'?", "code": 2552, "source": "ts" },
+        { "range": { "start": { "line": 17, "character": 0 }, "end": { "line": 17, "character": 15 } }, "severity": 1, "message": "Cannot find name 'missingVar'.", "code": 2304, "source": "ts" },
+        { "range": { "start": { "line": 18, "character": 0 }, "end": { "line": 18, "character": 20 } }, "severity": 1, "message": "Cannot find name 'undeclaredFunc'.", "code": 2304, "source": "ts" },
+        { "range": { "start": { "line": 19, "character": 0 }, "end": { "line": 19, "character": 18 } }, "severity": 1, "message": "Cannot find name 'brokenImport'.", "code": 2304, "source": "ts" },
+        { "range": { "start": { "line": 21, "character": 0 }, "end": { "line": 21, "character": 15 } }, "severity": 2, "message": "'unusedImport' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 22, "character": 0 }, "end": { "line": 22, "character": 15 } }, "severity": 2, "message": "'unusedVar' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 24, "character": 0 }, "end": { "line": 24, "character": 10 } }, "severity": 3, "message": "Variable 'x' is used before being assigned.", "code": 2454, "source": "ts" },
+        { "range": { "start": { "line": 25, "character": 0 }, "end": { "line": 25, "character": 10 } }, "severity": 3, "message": "Variable 'y' is used before being assigned.", "code": 2454, "source": "ts" },
+        { "range": { "start": { "line": 27, "character": 5 }, "end": { "line": 27, "character": 10 } }, "severity": 1, "message": "Argument of type 'string' is not assignable to parameter of type 'number'.", "code": 2345, "source": "ts" },
+        { "range": { "start": { "line": 29, "character": 0 }, "end": { "line": 29, "character": 20 } }, "severity": 2, "message": "'disabled' is declared but its value is never read.", "code": 6133, "source": "ts" },
+        { "range": { "start": { "line": 31, "character": 5 }, "end": { "line": 31, "character": 20 } }, "severity": 1, "message": "Type 'string[]' is not assignable to type 'number[]'.", "code": 2322, "source": "ts" },
+        { "range": { "start": { "line": 33, "character": 0 }, "end": { "line": 33, "character": 12 } }, "severity": 1, "message": "JSX element type 'MissingComponent' does not have any construct or call signatures.", "code": 2604, "source": "ts" },
+        { "range": { "start": { "line": 35, "character": 0 }, "end": { "line": 35, "character": 15 } }, "severity": 2, "message": "'DeprecatedFunc' is deprecated.", "code": 6385, "source": "ts" }
+      ]
+    }
+  }
+]
