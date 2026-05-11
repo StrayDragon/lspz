@@ -124,8 +124,8 @@
   - get_diagnostics_toon() 等方法
   - to_toon() / from_toon() 格式转换
 
-[P7-D] Token 节省验证
-  - cargo bench 更新
+[P7-D] Token 节省验证 ✅ 已完成
+  - cargo bench 更新（新增 TOON vs Compact JSON vs 标准 LSP 对比列）
   - 发布 TOON vs Compact JSON vs 标准 LSP 对比数据
 ```
 
