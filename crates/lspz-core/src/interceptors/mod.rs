@@ -11,6 +11,11 @@ pub mod symbols;
 pub mod workspace_diagnostics;
 pub mod workspace_symbols;
 
+use std::sync::Arc;
+
+use tokio::sync::RwLock;
+
+use crate::config::Config;
 use crate::error::LspzError;
 
 /// Direction of an LSP message.
@@ -48,29 +53,39 @@ pub trait Interceptor: Send + Sync {
 }
 
 /// A chain of interceptors executed in order.
+///
+/// Holds a shared config reference for runtime enable/disable checks.
 pub struct InterceptorChain {
     interceptors: Vec<Box<dyn Interceptor>>,
+    config: Arc<RwLock<Config>>,
 }
 
 impl InterceptorChain {
-    /// Create a new chain with the given interceptors.
-    pub fn new(interceptors: Vec<Box<dyn Interceptor>>) -> Self {
-        Self { interceptors }
+    /// Create a new chain with the given interceptors and shared config.
+    pub fn new(interceptors: Vec<Box<dyn Interceptor>>, config: Arc<RwLock<Config>>) -> Self {
+        Self {
+            interceptors,
+            config,
+        }
     }
 
     /// Process a message through all matching interceptors.
+    ///
+    /// Skips interceptors that are disabled in the current config.
+    /// On interceptor failure, logs a WARN and returns the original params (fail-open).
     pub async fn process(
         &self,
         method: &str,
         params: serde_json::Value,
         direction: Direction,
     ) -> Result<Option<serde_json::Value>, LspzError> {
+        let config = self.config.read().await;
         let mut params = Some(params);
         for interceptor in &self.interceptors {
             if interceptor.applies_to(method, direction)
+                && config.is_interceptor_enabled(interceptor.name())
                 && let Some(p) = params.take()
             {
-                // Capture original before interceptor call for fail-open fallback
                 let original = Some(p.clone());
                 match interceptor.intercept(method, p, direction).await {
                     Ok(Some(new_params)) => params = Some(new_params),
@@ -89,7 +104,10 @@ impl InterceptorChain {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::config::Config;
     use serde_json::json;
+    use std::sync::Arc;
+    use tokio::sync::RwLock;
 
     /// An interceptor that always fails.
     struct AlwaysFailInterceptor;
@@ -114,9 +132,13 @@ mod tests {
         }
     }
 
+    fn make_chain(interceptors: Vec<Box<dyn Interceptor>>) -> InterceptorChain {
+        InterceptorChain::new(interceptors, Arc::new(RwLock::new(Config::default())))
+    }
+
     #[tokio::test]
     async fn test_fail_open_returns_original() {
-        let chain = InterceptorChain::new(vec![Box::new(AlwaysFailInterceptor)]);
+        let chain = make_chain(vec![Box::new(AlwaysFailInterceptor)]);
         let params = json!({"key": "value"});
 
         let result = chain
@@ -133,7 +155,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_empty_chain_passthrough() {
-        let chain = InterceptorChain::new(vec![]);
+        let chain = make_chain(vec![]);
         let params = json!({"key": "value"});
 
         let result = chain

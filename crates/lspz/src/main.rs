@@ -9,19 +9,28 @@
 
 use std::process::ExitCode;
 use std::str::FromStr;
+use std::sync::Arc;
 
 use clap::Parser;
 use lspz_core::Transport;
+use lspz_core::config_watcher::ConfigWatcher;
 use lspz_core::interceptors::Interceptor;
 use lspz_core::interceptors::InterceptorChain;
 use lspz_core::interceptors::capping::CappingInterceptor;
+use lspz_core::interceptors::completions::CompletionCompressor;
 use lspz_core::interceptors::diagnostics::DiagnosticsCompressor;
+use lspz_core::interceptors::hover::HoverCompressor;
+use lspz_core::interceptors::locations::LocationCompressor;
+use lspz_core::interceptors::symbols::DocumentSymbolCompressor;
+use lspz_core::interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
+use lspz_core::interceptors::workspace_symbols::WorkspaceSymbolCompressor;
 use lspz_core::metrics::MetredInterceptor;
 use lspz_core::{
     CappingConfig, Config, MetricsConfig, OutputFormat, Proxy, StdioTransport, TcpTransport,
 };
 use rmcp::ServiceExt;
 use rmcp::transport::stdio;
+use tokio::sync::RwLock;
 use tracing_subscriber::EnvFilter;
 
 #[cfg(feature = "transport-websocket")]
@@ -39,6 +48,7 @@ struct ProxyArgs {
     max_symbols: usize,
     metrics_enabled: bool,
     metrics_interval: u64,
+    config_file: Option<String>,
     compress_diag: bool,
     compress_completion: bool,
     compress_hover: bool,
@@ -166,6 +176,10 @@ enum Cli {
         /// Metrics report interval in seconds (0 = only on shutdown)
         #[arg(long, env = "LSPZ_METRICS_INTERVAL", default_value_t = 0)]
         metrics_interval: u64,
+
+        /// Path to TOML config file for hot-reload support
+        #[arg(long, env = "LSPZ_CONFIG_FILE")]
+        config: Option<String>,
     },
 
     /// Run as MCP server — exposes LSP tools via Model Context Protocol
@@ -191,6 +205,7 @@ async fn main() -> ExitCode {
             max_symbols,
             metrics,
             metrics_interval,
+            config,
             compress_diag,
             compress_completion,
             compress_hover,
@@ -210,6 +225,7 @@ async fn main() -> ExitCode {
                 max_symbols,
                 metrics_enabled: metrics,
                 metrics_interval,
+                config_file: config,
                 compress_diag,
                 compress_completion,
                 compress_hover,
@@ -242,29 +258,57 @@ async fn run_proxy(args: ProxyArgs) -> ExitCode {
         .ok()
         .unwrap_or(OutputFormat::Json);
 
-    // Build config
-    let config = match build_config(&args, output_format) {
+    // Build base config
+    let base_config = match build_config(&args, output_format) {
         Ok(c) => c,
         Err(code) => return code,
     };
 
-    // Create transport based on scheme
-    let transport: Box<dyn Transport> = match create_transport(
-        &args.transport_scheme,
-        &config.backend_cmd,
-        &args.backend_args,
-    )
-    .await
-    {
-        Ok(t) => t,
-        Err(code) => return code,
+    // Load config from file if specified (overrides base)
+    let config = match &args.config_file {
+        Some(path) => match Config::from_file(path) {
+            Ok(file_config) => {
+                tracing::info!(path = %path, "Loaded config file");
+                // Merge: file values take precedence over CLI defaults, but CLI
+                // backend_cmd is always used
+                Config {
+                    backend_cmd: base_config.backend_cmd.clone(),
+                    ..file_config
+                }
+            }
+            Err(e) => {
+                eprintln!("Failed to load config file '{path}': {e}");
+                return ExitCode::FAILURE;
+            }
+        },
+        None => base_config,
     };
 
-    // Build interceptor chain
-    let interceptor_chain = build_interceptor_chain(&config);
+    let shared_config = Arc::new(RwLock::new(config));
+
+    // Create transport based on scheme (clone backend_cmd to avoid holding lock across .await)
+    let backend_cmd = shared_config.read().await.backend_cmd.clone();
+    let transport: Box<dyn Transport> =
+        match create_transport(&args.transport_scheme, &backend_cmd, &args.backend_args).await {
+            Ok(t) => t,
+            Err(code) => return code,
+        };
+
+    // Build interceptor chain (always add all interceptors; config gates at runtime)
+    let interceptor_chain = build_interceptor_chain(&shared_config);
+
+    // Start config file watcher if provided
+    if let Some(ref path) = args.config_file {
+        match ConfigWatcher::spawn(path, shared_config.clone()) {
+            Ok(_) => tracing::info!(path = %path, "Config hot-reload enabled"),
+            Err(e) => {
+                tracing::warn!(error = %e, "Config watcher failed, running without hot-reload");
+            }
+        }
+    }
 
     // Create and start proxy
-    let mut proxy = Proxy::new(config, transport, interceptor_chain);
+    let mut proxy = Proxy::new(shared_config, transport, interceptor_chain);
 
     if let Err(e) = proxy.start().await {
         tracing::error!(error = %e, "Proxy exited with error");
@@ -387,60 +431,50 @@ fn build_config(args: &ProxyArgs, output_format: OutputFormat) -> Result<Config,
 }
 
 /// Build the interceptor chain from config, optionally wrapped in metrics.
-fn build_interceptor_chain(config: &Config) -> InterceptorChain {
-    let mut interceptors: Vec<Box<dyn Interceptor>> = Vec::new();
+///
+/// All interceptors are always added to the chain; the chain checks the live
+/// config at runtime to decide which interceptors to apply.
+fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorChain {
+    let config = shared_config.blocking_read();
 
-    if config.capping.any_enabled() {
-        interceptors.push(Box::new(CappingInterceptor::new(
+    let interceptors: Vec<Box<dyn Interceptor>> = vec![
+        Box::new(CappingInterceptor::new(
             config.capping.max_diags,
             config.capping.max_completions,
             config.capping.max_symbols,
-        )));
-        tracing::info!(
-            max_diags = config.capping.max_diags,
-            max_completions = config.capping.max_completions,
-            max_symbols = config.capping.max_symbols,
-            "Response capping enabled"
-        );
-    }
-    if config.enable_diag_compress {
-        interceptors.push(Box::new(DiagnosticsCompressor::default()));
-        tracing::info!("Diagnostic compression enabled");
-    }
-    if config.enable_completion_compress {
-        interceptors.push(Box::new(lspz_core::CompletionCompressor::default()));
-        tracing::info!("Completion compression enabled");
-    }
-    if config.enable_hover_compress {
-        interceptors.push(Box::new(lspz_core::HoverCompressor::default()));
-        tracing::info!("Hover compression enabled");
-    }
-    if config.enable_document_symbol_compress {
-        interceptors.push(Box::new(lspz_core::DocumentSymbolCompressor));
-        tracing::info!("Document symbol compression enabled");
-    }
-    if config.enable_location_compress {
-        interceptors.push(Box::new(lspz_core::LocationCompressor));
-        tracing::info!("Location compression enabled");
-    }
-    if config.enable_workspace_symbol_compress {
-        interceptors.push(Box::new(lspz_core::WorkspaceSymbolCompressor));
-        tracing::info!("Workspace symbol compression enabled");
-    }
-    if config.enable_workspace_diag_compress {
-        interceptors.push(Box::new(lspz_core::WorkspaceDiagnosticCompressor));
-        tracing::info!("Workspace diagnostic compression enabled");
-    }
+        )),
+        Box::new(DiagnosticsCompressor::default()),
+        Box::new(CompletionCompressor::default()),
+        Box::new(HoverCompressor::default()),
+        Box::new(DocumentSymbolCompressor),
+        Box::new(LocationCompressor),
+        Box::new(WorkspaceSymbolCompressor),
+        Box::new(WorkspaceDiagnosticCompressor),
+    ];
 
-    if config.metrics.enabled {
+    tracing::info!(
+        capping = %config.capping.any_enabled(),
+        diagnostics = %config.enable_diag_compress,
+        completions = %config.enable_completion_compress,
+        hover = %config.enable_hover_compress,
+        document_symbols = %config.enable_document_symbol_compress,
+        locations = %config.enable_location_compress,
+        workspace_symbols = %config.enable_workspace_symbol_compress,
+        workspace_diags = %config.enable_workspace_diag_compress,
+        "Interceptor chain built (all interceptors, gated by runtime config)"
+    );
+
+    drop(config);
+
+    if shared_config.blocking_read().metrics.enabled {
         tracing::info!("Metrics collection enabled");
         let wrapped: Vec<Box<dyn Interceptor>> = interceptors
             .into_iter()
             .map(|i| Box::new(MetredInterceptor::new(i).enable()) as Box<dyn Interceptor>)
             .collect();
-        InterceptorChain::new(wrapped)
+        InterceptorChain::new(wrapped, shared_config.clone())
     } else {
-        InterceptorChain::new(interceptors)
+        InterceptorChain::new(interceptors, shared_config.clone())
     }
 }
 

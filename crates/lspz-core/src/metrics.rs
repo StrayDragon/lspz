@@ -21,7 +21,7 @@ use crate::interceptors::{Direction, Interceptor};
 /// Configuration for runtime metrics collection.
 ///
 /// When `enabled` is false (default), the `MetredInterceptor` wrapper adds zero overhead.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, serde::Deserialize)]
 pub struct MetricsConfig {
     /// Whether metrics collection is enabled.
     pub enabled: bool,

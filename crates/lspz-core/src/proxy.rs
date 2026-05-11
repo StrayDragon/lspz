@@ -3,9 +3,11 @@
 //! [MermaidChart:./docs/mmd/proxy-state-machine.mmd]
 
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::select;
+use tokio::sync::RwLock;
 
 use crate::codec::compact::CompactDiagnostics;
 use crate::codec::json_rpc;
@@ -37,7 +39,7 @@ pub enum State {
 /// Combines a client-side I/O (stdin/stdout) with a server-side [`Transport`]
 /// and an [`InterceptorChain`] for Server→Client message transformation.
 pub struct Proxy {
-    config: Config,
+    config: Arc<RwLock<Config>>,
     state: State,
     transport: Box<dyn Transport>,
     interceptor_chain: InterceptorChain,
@@ -48,7 +50,7 @@ pub struct Proxy {
 impl Proxy {
     /// Create a new [`Proxy`].
     pub fn new(
-        config: Config,
+        config: Arc<RwLock<Config>>,
         transport: Box<dyn Transport>,
         interceptor_chain: InterceptorChain,
     ) -> Self {
@@ -228,7 +230,7 @@ impl Proxy {
         };
 
         // TOON mode: convert compact params to TOON text
-        if self.config.output_format == OutputFormat::Toon {
+        if self.config.read().await.output_format == OutputFormat::Toon {
             return self.toon_output(method, &transformed, raw);
         }
 

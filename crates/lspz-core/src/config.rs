@@ -1,14 +1,18 @@
 //! Runtime configuration.
 //!
-//! Builder-pattern configuration with env-var overrides.
+//! Builder-pattern configuration with env-var overrides and TOML file support.
 
+use std::path::Path;
 use std::str::FromStr;
+
+use serde::Deserialize;
 
 use crate::error::LspzError;
 use crate::metrics::MetricsConfig;
 
 /// Output format for the proxy.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
     /// Compact JSON (current default).
     Json,
@@ -34,7 +38,7 @@ impl FromStr for OutputFormat {
 /// Per-type capping limits for LSP server responses.
 ///
 /// A value of 0 means no limit (capping disabled for that type).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct CappingConfig {
     /// Maximum number of diagnostics to keep (0 = unlimited).
     pub max_diags: usize,
@@ -52,32 +56,55 @@ impl CappingConfig {
 }
 
 /// Configuration for the lspz proxy.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct Config {
     /// Command used to launch the backend LSP server.
     pub backend_cmd: String,
     /// Per-type response capping limits.
+    #[serde(default)]
     pub capping: CappingConfig,
     /// Whether to enable diagnostic compression.
+    #[serde(default = "default_true")]
     pub enable_diag_compress: bool,
     /// Whether to enable completion compression (default: true).
+    #[serde(default = "default_true")]
     pub enable_completion_compress: bool,
     /// Whether to enable hover compression (default: true).
+    #[serde(default = "default_true")]
     pub enable_hover_compress: bool,
     /// Whether to enable document symbol compression (default: true).
+    #[serde(default = "default_true")]
     pub enable_document_symbol_compress: bool,
     /// Whether to enable location compression (default: true).
+    #[serde(default = "default_true")]
     pub enable_location_compress: bool,
     /// Whether to enable workspace symbol compression (default: true).
+    #[serde(default = "default_true")]
     pub enable_workspace_symbol_compress: bool,
     /// Whether to enable workspace diagnostic compression (default: true).
+    #[serde(default = "default_true")]
     pub enable_workspace_diag_compress: bool,
     /// Output format for intercepted messages (json, toon, passthrough).
+    #[serde(default = "default_output_format")]
     pub output_format: OutputFormat,
     /// Log level (trace, debug, info, warn, error).
+    #[serde(default = "default_log_level")]
     pub log_level: String,
     /// Runtime metrics configuration.
+    #[serde(default)]
     pub metrics: MetricsConfig,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_output_format() -> OutputFormat {
+    OutputFormat::Toon
+}
+
+fn default_log_level() -> String {
+    "info".into()
 }
 
 impl Default for Config {
@@ -103,6 +130,33 @@ impl Config {
     /// Create a new [`ConfigBuilder`].
     pub fn builder() -> ConfigBuilder {
         ConfigBuilder::default()
+    }
+
+    /// Load config from a TOML file.
+    ///
+    /// Missing fields use their default values (same as `Config::default()`).
+    pub fn from_file(path: impl AsRef<Path>) -> Result<Self, LspzError> {
+        let content = std::fs::read_to_string(path.as_ref())
+            .map_err(|e| LspzError::Config(format!("cannot read config file: {e}")))?;
+        toml::from_str(&content).map_err(|e| LspzError::Config(format!("invalid config file: {e}")))
+    }
+
+    /// Returns `true` if the named interceptor is enabled in this config.
+    ///
+    /// Used by [`InterceptorChain`](crate::interceptors::InterceptorChain) at runtime
+    /// to skip disabled interceptors without removing them from the chain.
+    pub fn is_interceptor_enabled(&self, name: &str) -> bool {
+        match name {
+            "capping" => self.capping.any_enabled(),
+            "diagnostics_compressor" => self.enable_diag_compress,
+            "completion_compressor" => self.enable_completion_compress,
+            "hover_compressor" => self.enable_hover_compress,
+            "document_symbol_compressor" => self.enable_document_symbol_compress,
+            "location_compressor" => self.enable_location_compress,
+            "workspace_symbol_compressor" => self.enable_workspace_symbol_compress,
+            "workspace_diagnostic_compressor" => self.enable_workspace_diag_compress,
+            _ => true,
+        }
     }
 }
 
