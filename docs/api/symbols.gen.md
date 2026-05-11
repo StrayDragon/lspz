@@ -49,19 +49,19 @@ fn compress_symbol_information(value: &Value) -> Value {
 Compress a Location: `{ uri, range }` → `{ u, r }`.
 
 ```rust
-fn compress_location(location: &Value) -> Value {
+pub(crate) fn compress_location(location: &Value) -> Value {
 ```
 
 Compress a Range: `{ start, end }` → `{ s, e }`, each Position compacted to `{ l, c }`.
 
 ```rust
-fn compress_range(range: &Value) -> Value {
+pub(crate) fn compress_range(range: &Value) -> Value {
 ```
 
 Compress a Position: `{ line, character }` → `{ l, c }`.
 
 ```rust
-fn compress_position(pos: &Value) -> Value {
+pub(crate) fn compress_position(pos: &Value) -> Value {
 ```
 
 Map LSP SymbolKind numeric value to a single character.
@@ -69,5 +69,5 @@ Map LSP SymbolKind numeric value to a single character.
 See <https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind>
 
 ```rust
-fn encode_symbol_kind(kind: u64) -> Option<char> {
+pub(crate) fn encode_symbol_kind(kind: u64) -> Option<char> {
 ```

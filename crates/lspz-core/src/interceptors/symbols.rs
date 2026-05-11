@@ -161,7 +161,7 @@ fn compress_symbol_information(value: &Value) -> Value {
 }
 
 /// Compress a Location: `{ uri, range }` → `{ u, r }`.
-fn compress_location(location: &Value) -> Value {
+pub(crate) fn compress_location(location: &Value) -> Value {
     match location {
         Value::Object(obj) => {
             let mut out = serde_json::Map::new();
@@ -178,7 +178,7 @@ fn compress_location(location: &Value) -> Value {
 }
 
 /// Compress a Range: `{ start, end }` → `{ s, e }`, each Position compacted to `{ l, c }`.
-fn compress_range(range: &Value) -> Value {
+pub(crate) fn compress_range(range: &Value) -> Value {
     match range {
         Value::Object(obj) => {
             let mut out = serde_json::Map::new();
@@ -195,7 +195,7 @@ fn compress_range(range: &Value) -> Value {
 }
 
 /// Compress a Position: `{ line, character }` → `{ l, c }`.
-fn compress_position(pos: &Value) -> Value {
+pub(crate) fn compress_position(pos: &Value) -> Value {
     match pos {
         Value::Object(obj) => {
             let mut out = serde_json::Map::new();
@@ -214,7 +214,7 @@ fn compress_position(pos: &Value) -> Value {
 /// Map LSP SymbolKind numeric value to a single character.
 ///
 /// See <https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind>
-fn encode_symbol_kind(kind: u64) -> Option<char> {
+pub(crate) fn encode_symbol_kind(kind: u64) -> Option<char> {
     Some(match kind {
         1 => 'F',  // File
         2 => 'M',  // Module

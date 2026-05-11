@@ -51,6 +51,18 @@ Enable location compression (default: true)
 #[arg(
 ```
 
+Enable workspace symbol compression (default: true)
+
+```rust
+#[arg(
+```
+
+Enable workspace diagnostic compression (default: true)
+
+```rust
+#[arg(
+```
+
 Output format: toon, json (compact), or passthrough
 
 ```rust

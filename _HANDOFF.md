@@ -1,8 +1,8 @@
-# _HANDOFF.md — lspz v0.8.0 (Phase 8 completed)
+# _HANDOFF.md — lspz v0.11.0 (Phase 9-11 completed)
 
 > 创建: 2026-05-09
 > 更新: 2026-05-12
-> 状态: **v0.8.0** — Response Capping + Proxy 响应拦截 + 4 个压缩器 + TOON
+> 状态: **v0.11.0** — 全部 8 个压缩器完成 (Diag/Completion/Hover/Symbol/Location/WSymbol/WDiagnostic)
 
 ## 已完成
 
@@ -16,7 +16,10 @@
 | 5 | `v0.5.0` | HoverCompressor + DocumentSymbolCompressor |
 | 6 | — | 文档清理 + 一键验证脚本 + README/ROADMAP 重写 |
 | 7 | — | Benchmark & Report 系统 (Criterion + 压缩比报告) |
-| 8 | — | Response Capping: 截断 + 压缩正交叠加，Proxy 响应拦截 | |
+| 8 | — | Response Capping: 截断 + 压缩正交叠加，Proxy 响应拦截 |
+| 9 | — | Location 压缩 (references/definition/impl/typeDefinition) |
+| 10 | — | Workspace Symbol 压缩 (workspace/symbol) |
+| 11 | — | Workspace Diagnostic 压缩 (workspace/diagnostic) |
 
 ## 交付物
 
@@ -44,10 +47,45 @@
 | `scripts/run-bench.sh` | 一键运行脚本 |
 | `docs/reports/latest.md` | 最新报告 |
 
+### Phase 9 — Location Compression
+
+| 文件 | 说明 |
+|------|------|
+| `crates/lspz-core/src/interceptors/locations.rs` | LocationCompressor 实现 + 11 单元测试 |
+| `crates/lspz-core/src/interceptors/mod.rs` | `pub mod locations;` |
+| `crates/lspz-core/src/lib.rs` | `pub use LocationCompressor;` |
+| `crates/lspz-core/src/config.rs` | `enable_location_compress` + builder + env-var |
+| `crates/lspz-core/src/codec/toon.rs` | `locations_to_toon()` 输出 + 4 测试 |
+| `crates/lspz-core/src/proxy.rs` | TOON match arms for 4 location methods |
+| `crates/lspz/src/main.rs` | `--compress-location` / `-L` flag + chain 注册 |
+
+### Phase 10 — Workspace Symbol Compression
+
+| 文件 | 说明 |
+|------|------|
+| `crates/lspz-core/src/interceptors/workspace_symbols.rs` | WorkspaceSymbolCompressor + 8 单元测试 + TOON |
+| `crates/lspz-core/src/interceptors/mod.rs` | `pub mod workspace_symbols;` |
+| `crates/lspz-core/src/lib.rs` | `pub use WorkspaceSymbolCompressor;` |
+| `crates/lspz-core/src/config.rs` | `enable_workspace_symbol_compress` + builder + env-var |
+| `crates/lspz-core/src/interceptors/symbols.rs` | 4 个函数改为 `pub(crate)` 供复用 |
+| `crates/lspz-core/src/proxy.rs` | TOON match arm for workspace/symbol |
+| `crates/lspz/src/main.rs` | `--compress-workspace-symbol` / `-W` flag + chain 注册 |
+
+### Phase 11 — Workspace Diagnostic Compression
+
+| 文件 | 说明 |
+|------|------|
+| `crates/lspz-core/src/interceptors/workspace_diagnostics.rs` | WorkspaceDiagnosticCompressor + 7 单元测试 + TOON |
+| `crates/lspz-core/src/interceptors/mod.rs` | `pub mod workspace_diagnostics;` |
+| `crates/lspz-core/src/lib.rs` | `pub use WorkspaceDiagnosticCompressor;` |
+| `crates/lspz-core/src/config.rs` | `enable_workspace_diag_compress` + builder + env-var |
+| `crates/lspz-core/src/proxy.rs` | TOON match arm for workspace/diagnostic |
+| `crates/lspz/src/main.rs` | `--compress-workspace-diag` flag + chain 注册 |
+
 ## 最新测试统计
 
 ```
-cargo test --workspace:   141 passed (lib + integration)
+cargo test --workspace:   176 passed (lib + integration)
 cargo clippy:             零警告
 cargo fmt --check:        通过
 ```
@@ -91,6 +129,9 @@ v0.3.0 → Agent SDK (AgentHandle + AgentPool)
 v0.4.0 → 生产加固 & 补全压缩
 v0.5.0 → Hover + DocumentSymbol 压缩
 v0.8.0 → Response Capping + Proxy 响应拦截
+v0.9.0 → Location 压缩 (references/definition/impl/typeDef)
+v0.10.0 → Workspace Symbol 压缩
+v0.11.0 → Workspace Diagnostic 压缩
 ```
 
 ## 剩余项 (低优先级)

@@ -8,6 +8,8 @@ pub mod diagnostics;
 pub mod hover;
 pub mod locations;
 pub mod symbols;
+pub mod workspace_diagnostics;
+pub mod workspace_symbols;
 
 use crate::error::LspzError;
 
