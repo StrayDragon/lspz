@@ -14,3 +14,4 @@ clap = { version = "4.0", features = ["derive", "env"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = { workspace = true }
 tokio = { workspace = true }
+shell-words = "1.1"
