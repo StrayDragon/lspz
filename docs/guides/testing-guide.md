@@ -186,7 +186,7 @@ cargo test --doc
 set -e
 
 # 启动 lspz 代理
-lspz --backend rust-analyzer --stdio &
+cargo run -- --backend rust-analyzer &
 LSPZ_PID=$!
 
 # 等待启动

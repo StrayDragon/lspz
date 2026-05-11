@@ -37,6 +37,6 @@ cargo run --example compress-demo -p lspz-core 2>&1
 echo ""
 echo "  ────────────────────────────────────────────────────────"
 echo "  To run against a real LSP server:"
-echo "    lspz --backend rust-analyzer"
+echo "    cargo run -- --backend rust-analyzer"
 echo "  ────────────────────────────────────────────────────────"
 echo ""

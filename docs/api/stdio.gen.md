@@ -13,9 +13,11 @@ pub struct StdioTransport {
 Spawn a new process and connect to its stdio.
 
 The `cmd` is split on whitespace into program + arguments.
+`extra_args` are appended after the parsed command-line arguments
+(e.g. arguments captured from the `--` separator on the CLI).
 
 ```rust
-pub fn spawn(cmd: &str) -> Result<Self, LspzError> {
+pub fn spawn(cmd: &str, extra_args: &[String]) -> Result<Self, LspzError> {
 ```
 
 Check if the child process has exited.
