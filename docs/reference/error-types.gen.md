@@ -4,7 +4,8 @@
 
 ## `LspzError`
 
-- **`error`**
-- **`IO`**
-- **`error`**
-- **`0`**
+- **`Io(#[from] io::Error)`**
+- **`JsonParse(#[from] serde_json::Error)`**
+- **`Protocol(String)`**
+- **`ServerExited`**
+- **`Config(String)`**

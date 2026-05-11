@@ -29,8 +29,31 @@ enum Cli {
         backend: String,
 
         /// Enable diagnostic compression (default: true)
-        #[arg(short, long, env = "LSPZ_ENABLE_DIAG_COMPRESS", default_value_t = true)]
-        compress: bool,
+        #[arg(
+            short = 'd',
+            long = "compress-diag",
+            env = "LSPZ_ENABLE_DIAG_COMPRESS",
+            default_value_t = true
+        )]
+        compress_diag: bool,
+
+        /// Enable completion compression (default: true)
+        #[arg(
+            short = 'c',
+            long = "compress-completion",
+            env = "LSPZ_ENABLE_COMPLETION_COMPRESS",
+            default_value_t = true
+        )]
+        compress_completion: bool,
+
+        /// Enable hover compression (default: true)
+        #[arg(
+            short = 'H',
+            long = "compress-hover",
+            env = "LSPZ_ENABLE_HOVER_COMPRESS",
+            default_value_t = true
+        )]
+        compress_hover: bool,
 
         /// Log level (trace, debug, info, warn, error)
         #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
@@ -51,15 +74,33 @@ async fn main() -> ExitCode {
     match Cli::parse() {
         Cli::Proxy {
             backend,
-            compress,
+            compress_diag,
+            compress_completion,
+            compress_hover,
             log_level,
-        } => run_proxy(backend, compress, log_level).await,
+        } => {
+            run_proxy(
+                backend,
+                compress_diag,
+                compress_completion,
+                compress_hover,
+                log_level,
+            )
+            .await
+        }
         Cli::Mcp { log_level } => run_mcp(log_level).await,
     }
 }
 
 /// Run in proxy mode — transparent LSP proxy with diagnostic compression.
-async fn run_proxy(backend: String, compress: bool, log_level: String) -> ExitCode {
+#[allow(clippy::too_many_arguments)]
+async fn run_proxy(
+    backend: String,
+    compress_diag: bool,
+    compress_completion: bool,
+    compress_hover: bool,
+    log_level: String,
+) -> ExitCode {
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::builder().parse_lossy(&log_level))
@@ -69,7 +110,9 @@ async fn run_proxy(backend: String, compress: bool, log_level: String) -> ExitCo
     // Build config
     let config = match Config::builder()
         .backend_cmd(&backend)
-        .enable_diag_compress(compress)
+        .enable_diag_compress(compress_diag)
+        .enable_completion_compress(compress_completion)
+        .enable_hover_compress(compress_hover)
         .log_level(&log_level)
         .build()
     {
@@ -94,6 +137,14 @@ async fn run_proxy(backend: String, compress: bool, log_level: String) -> ExitCo
     if config.enable_diag_compress {
         interceptors.push(Box::new(DiagnosticsCompressor::default()));
         tracing::info!("Diagnostic compression enabled");
+    }
+    if config.enable_completion_compress {
+        interceptors.push(Box::new(lspz_core::CompletionCompressor::default()));
+        tracing::info!("Completion compression enabled");
+    }
+    if config.enable_hover_compress {
+        interceptors.push(Box::new(lspz_core::HoverCompressor::default()));
+        tracing::info!("Hover compression enabled");
     }
     let interceptor_chain = InterceptorChain::new(interceptors);
 

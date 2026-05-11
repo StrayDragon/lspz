@@ -2,7 +2,9 @@
 //!
 //! All Server→Client message transformations go through the interceptor chain.
 
+pub mod completions;
 pub mod diagnostics;
+pub mod hover;
 
 use crate::error::LspzError;
 
@@ -63,16 +65,77 @@ impl InterceptorChain {
             if interceptor.applies_to(method, direction)
                 && let Some(p) = params.take()
             {
+                // Capture original before interceptor call for fail-open fallback
+                let original = Some(p.clone());
                 match interceptor.intercept(method, p, direction).await {
                     Ok(Some(new_params)) => params = Some(new_params),
                     Ok(None) => return Ok(None),
                     Err(e) => {
                         tracing::warn!(interceptor = %interceptor.name(), error = %e, "Interceptor failed, forwarding original");
-                        return Ok(params);
+                        return Ok(original);
                     }
                 }
             }
         }
         Ok(params)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    /// An interceptor that always fails.
+    struct AlwaysFailInterceptor;
+
+    #[async_trait::async_trait]
+    impl Interceptor for AlwaysFailInterceptor {
+        fn name(&self) -> &str {
+            "always_fail"
+        }
+
+        fn applies_to(&self, method: &str, _direction: Direction) -> bool {
+            !method.is_empty()
+        }
+
+        async fn intercept(
+            &self,
+            _method: &str,
+            _params: serde_json::Value,
+            _direction: Direction,
+        ) -> Result<Option<serde_json::Value>, LspzError> {
+            Err(LspzError::Protocol("simulated failure".into()))
+        }
+    }
+
+    #[tokio::test]
+    async fn test_fail_open_returns_original() {
+        let chain = InterceptorChain::new(vec![Box::new(AlwaysFailInterceptor)]);
+        let params = json!({"key": "value"});
+
+        let result = chain
+            .process("someMethod", params.clone(), Direction::ServerToClient)
+            .await
+            .expect("fail-open should not propagate error");
+
+        assert_eq!(
+            result,
+            Some(params),
+            "fail-open should return original params"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_empty_chain_passthrough() {
+        let chain = InterceptorChain::new(vec![]);
+        let params = json!({"key": "value"});
+
+        let result = chain
+            .process("someMethod", params.clone(), Direction::ServerToClient)
+            .await
+            .expect("empty chain should succeed");
+
+        assert_eq!(result, Some(params));
     }
 }

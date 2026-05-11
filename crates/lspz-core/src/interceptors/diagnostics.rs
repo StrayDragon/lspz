@@ -74,13 +74,14 @@ impl Interceptor for DiagnosticsCompressor {
                 .unwrap_or("")
                 .to_string();
 
-            // Step 2: Normalise message
+            // Step 2: Normalise message — extract string or numeric code for normalization
+            let norm_code = diag.get("code").and_then(|v| {
+                v.as_str()
+                    .map(|s| s.to_string())
+                    .or_else(|| v.as_i64().map(|n| n.to_string()))
+            });
             let normalized = if self.enable_normalisation {
-                let code = diag
-                    .get("code")
-                    .and_then(|v| v.as_str())
-                    .or_else(|| diag.get("code").and_then(|v| v.as_i64()).map(|_| ""));
-                normalize_message(&message, code)
+                normalize_message(&message, norm_code.as_deref())
             } else {
                 message.clone()
             };
@@ -172,18 +173,21 @@ impl Interceptor for DiagnosticsCompressor {
 /// |------|-------------|------------|
 /// | `unused_var` / `UnusedVar` | `"declared and not used: x"` | `"unused variable"` |
 /// | `unused_import` / `UnusedImport` | `"\"os\" imported and not used"` | `"unused import"` |
+/// | `reportUnusedVariable` | `"Variable \"x\" is not used"` | `"unused variable"` |
+/// | `reportUnusedImport` | `"Import \"os\" is unused"` | `"unused import"` |
+/// | `6133` (TypeScript) | `"'temp' is declared but never read"` | `"unused variable"` |
 /// | _any_ with backtick identifiers | `` "use `foo`" `` | `` "use `<ident>`" `` |
 pub fn normalize_message(message: &str, code: Option<&str>) -> String {
     // Try code-based normalisation first
     if let Some(code) = code {
         let code_lower = code.to_lowercase();
 
-        // gopls / rust-analyzer: unused variable
+        // gopls / rust-analyzer / basedpyright: unused variable
         if is_unused_var_code(&code_lower) {
             return "unused variable".to_string();
         }
 
-        // gopls / rust-analyzer: unused import
+        // gopls / rust-analyzer / basedpyright: unused import
         if is_unused_import_code(&code_lower) {
             return "unused import".to_string();
         }
@@ -199,6 +203,13 @@ pub fn normalize_message(message: &str, code: Option<&str>) -> String {
         }
     }
 
+    // Try numeric-code-based normalisation (TypeScript uses integer codes)
+    if let Some(num) = code.and_then(|c| c.parse::<i64>().ok())
+        && let Some(normalized) = normalize_by_numeric_code(num)
+    {
+        return normalized.to_string();
+    }
+
     // Fallback: replace backtick identifiers with `<ident>`
     let normalized = replace_backtick_idents(message);
 
@@ -207,6 +218,17 @@ pub fn normalize_message(message: &str, code: Option<&str>) -> String {
         normalized[..197].to_string() + "..."
     } else {
         normalized
+    }
+}
+
+/// Normalize by TypeScript-style numeric diagnostic codes.
+fn normalize_by_numeric_code(code: i64) -> Option<&'static str> {
+    match code {
+        6133 => Some("unused variable"),
+        2322 => Some("type mismatch"),
+        2339 => Some("missing property"),
+        2552 => Some("unresolved reference"),
+        _ => None,
     }
 }
 
@@ -221,6 +243,7 @@ fn is_unused_var_code(code: &str) -> bool {
             | "unused_variable_warning"
             | "unused_variable_error"
             | "var_not_used"
+            | "reportunusedvariable" // basedpyright
     )
 }
 
@@ -228,7 +251,11 @@ fn is_unused_var_code(code: &str) -> bool {
 fn is_unused_import_code(code: &str) -> bool {
     matches!(
         code,
-        "unused_import" | "unusedimport" | "unused_imports" | "import_not_used"
+        "unused_import"
+            | "unusedimport"
+            | "unused_imports"
+            | "import_not_used"
+            | "reportunusedimport" // basedpyright
     )
 }
 

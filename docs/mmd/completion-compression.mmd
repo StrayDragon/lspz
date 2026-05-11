@@ -1,0 +1,30 @@
+flowchart LR
+  subgraph Input
+    A[Raw CompletionList JSON]
+  end
+
+  subgraph Pipeline
+    direction LR
+    B[1. Truncate to max_items]
+    C[2. Field Pruning]
+    D[3. Kind Enum Reduction]
+    E[4. Doc String Interning]
+    F[5. Compact Field Names]
+  end
+
+  subgraph Output
+    G[Compact Completion JSON]
+  end
+
+  A --> B
+  B --> C
+  C --> D
+  D --> E
+  E --> F
+  F --> G
+
+  B -.- B1["Default: 50 items max"]
+  C -.- C1["Drop: command, data,<br/>additionalTextEdits, commitCharacters"]
+  D -.- D1["CompletionItemKind 1-25<br/>→ single-char codes"]
+  E -.- E1["Identical documentation strings<br/>moved to pool, referenced by index"]
+  F -.- F1["label → l, kind → k, detail → d<br/>documentation → doc, insertText → i"]

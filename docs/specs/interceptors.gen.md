@@ -2,6 +2,41 @@
 
 > 自动从 `Interceptor` trait 定义及实现生成。编辑源码后运行 `just gen-api-docs` 刷新。
 
+Compression interceptor for `textDocument/completion`.
+
+Transforms LSP completion responses into a compact format.
+On any error, logs a WARN and returns `Err` (fail-open in the chain).
+
+```rust
+pub struct CompletionCompressor {
+```
+
+Maximum number of completion items to keep (default: 50).
+
+```rust
+pub max_items: usize,
+```
+
+Whether to deduplicate identical documentation strings (default: true).
+
+```rust
+pub enable_doc_dedup: bool,
+```
+
+Compress a completion response value.
+
+```rust
+fn compress_completions(
+```
+
+Map LSP CompletionItemKind numeric value to a single character.
+
+See https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#completionItemKind
+
+```rust
+fn encode_completion_kind(kind: u64) -> Option<char> {
+```
+
 Compression interceptor for `textDocument/publishDiagnostics`.
 
 Transforms LSP diagnostics into the compact format.
@@ -28,10 +63,19 @@ This is the critical enabler for dedup: without normalization, messages like
 |------|-------------|------------|
 | `unused_var` / `UnusedVar` | `"declared and not used: x"` | `"unused variable"` |
 | `unused_import` / `UnusedImport` | `"\"os\" imported and not used"` | `"unused import"` |
+| `reportUnusedVariable` | `"Variable \"x\" is not used"` | `"unused variable"` |
+| `reportUnusedImport` | `"Import \"os\" is unused"` | `"unused import"` |
+| `6133` (TypeScript) | `"'temp' is declared but never read"` | `"unused variable"` |
 | _any_ with backtick identifiers | `` "use `foo`" `` | `` "use `<ident>`" `` |
 
 ```rust
 pub fn normalize_message(message: &str, code: Option<&str>) -> String {
+```
+
+Normalize by TypeScript-style numeric diagnostic codes.
+
+```rust
+fn normalize_by_numeric_code(code: i64) -> Option<&'static str> {
 ```
 
 Check if the code represents an "unused variable" diagnostic.
@@ -52,6 +96,65 @@ Replace backtick-wrapped identifiers with a placeholder.
 
 ```rust
 fn replace_backtick_idents(s: &str) -> String {
+```
+
+Compression interceptor for `textDocument/hover`.
+
+Transforms LSP hover responses into a compact format.
+On any error, logs a WARN and returns `Err` (fail-open in the chain).
+
+```rust
+pub struct HoverCompressor {
+```
+
+Whether to compact markdown content (collapse blank lines, shorten fences).
+
+```rust
+pub enable_markdown_compact: bool,
+```
+
+Compress a hover response value.
+
+```rust
+fn compress_hover(params: &Value, markdown_compact: bool) -> Result<Value, LspzError> {
+```
+
+Compress the `contents` field of a Hover response.
+
+Handles three formats:
+- `MarkupContent`: `{ kind, value }` → `{ k, v }` (with markdown compaction)
+- `MarkedString` (string form): `"string"` → `"string"`
+- `MarkedString` (object form): `{ language, value }` → `{ l, v }`
+
+```rust
+fn compress_contents(contents: &Value, markdown_compact: bool) -> Result<Value, LspzError> {
+```
+
+Compress a range value.
+
+```rust
+fn compress_range(range: &Value) -> Value {
+```
+
+Compress a Position { line, character } → { l, c }.
+
+```rust
+fn compress_position(pos: &Value) -> Value {
+```
+
+Compress markdown text:
+- Collapse 2+ consecutive blank lines → single blank line
+- Shorten code fence markers: ` ```language ` → `` `lc `` (first 2 chars), ` ``` ` → `` ` ``
+- Trim trailing whitespace on each line
+
+```rust
+fn compact_markdown(text: &str) -> String {
+```
+
+Map MarkupKind to single char.
+
+```rust
+fn encode_markup_kind(kind: &str) -> &str {
 ```
 
 Direction of an LSP message.
@@ -119,4 +222,10 @@ Process a message through all matching interceptors.
 
 ```rust
 pub async fn process(
+```
+
+An interceptor that always fails.
+
+```rust
+struct AlwaysFailInterceptor;
 ```

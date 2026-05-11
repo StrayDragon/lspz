@@ -20,6 +20,18 @@ Whether to enable diagnostic compression.
 pub enable_diag_compress: bool,
 ```
 
+Whether to enable completion compression (default: true).
+
+```rust
+pub enable_completion_compress: bool,
+```
+
+Whether to enable hover compression (default: true).
+
+```rust
+pub enable_hover_compress: bool,
+```
+
 Log level (trace, debug, info, warn, error).
 
 ```rust
@@ -48,6 +60,18 @@ Enable or disable diagnostic compression.
 
 ```rust
 pub fn enable_diag_compress(mut self, enable: bool) -> Self {
+```
+
+Enable or disable completion compression.
+
+```rust
+pub fn enable_completion_compress(mut self, enable: bool) -> Self {
+```
+
+Enable or disable hover compression.
+
+```rust
+pub fn enable_hover_compress(mut self, enable: bool) -> Self {
 ```
 
 Set the log level.

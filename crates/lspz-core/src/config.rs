@@ -11,6 +11,10 @@ pub struct Config {
     pub backend_cmd: String,
     /// Whether to enable diagnostic compression.
     pub enable_diag_compress: bool,
+    /// Whether to enable completion compression (default: true).
+    pub enable_completion_compress: bool,
+    /// Whether to enable hover compression (default: true).
+    pub enable_hover_compress: bool,
     /// Log level (trace, debug, info, warn, error).
     pub log_level: String,
 }
@@ -20,6 +24,8 @@ impl Default for Config {
         Self {
             backend_cmd: String::new(),
             enable_diag_compress: true,
+            enable_completion_compress: true,
+            enable_hover_compress: true,
             log_level: "info".into(),
         }
     }
@@ -37,6 +43,8 @@ impl Config {
 pub struct ConfigBuilder {
     backend_cmd: Option<String>,
     enable_diag_compress: Option<bool>,
+    enable_completion_compress: Option<bool>,
+    enable_hover_compress: Option<bool>,
     log_level: Option<String>,
 }
 
@@ -50,6 +58,18 @@ impl ConfigBuilder {
     /// Enable or disable diagnostic compression.
     pub fn enable_diag_compress(mut self, enable: bool) -> Self {
         self.enable_diag_compress = Some(enable);
+        self
+    }
+
+    /// Enable or disable completion compression.
+    pub fn enable_completion_compress(mut self, enable: bool) -> Self {
+        self.enable_completion_compress = Some(enable);
+        self
+    }
+
+    /// Enable or disable hover compression.
+    pub fn enable_hover_compress(mut self, enable: bool) -> Self {
+        self.enable_hover_compress = Some(enable);
         self
     }
 
@@ -75,6 +95,24 @@ impl ConfigBuilder {
             })
             .unwrap_or(true);
 
+        let enable_completion_compress = self
+            .enable_completion_compress
+            .or_else(|| {
+                std::env::var("LSPZ_ENABLE_COMPLETION_COMPRESS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+            })
+            .unwrap_or(true);
+
+        let enable_hover_compress = self
+            .enable_hover_compress
+            .or_else(|| {
+                std::env::var("LSPZ_ENABLE_HOVER_COMPRESS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+            })
+            .unwrap_or(true);
+
         let log_level = self
             .log_level
             .or_else(|| std::env::var("LSPZ_LOG_LEVEL").ok())
@@ -83,6 +121,8 @@ impl ConfigBuilder {
         Ok(Config {
             backend_cmd,
             enable_diag_compress,
+            enable_completion_compress,
+            enable_hover_compress,
             log_level,
         })
     }

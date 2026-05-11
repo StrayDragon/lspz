@@ -193,40 +193,56 @@ def generate_error_docs() -> dict[str, str]:
         return outputs
 
     content = error_file.read_text(encoding="utf-8")
-    enum_pattern = re.compile(
-        r'(///[^\n]*\n)*pub enum (\w+)\s*\{([^}]+)\}',
-        re.MULTILINE | re.DOTALL,
-    )
-    variant_pattern = re.compile(
-        r'(///[^\n]*\n)*\s*(\w+)(\([^)]*\))?',
-        re.MULTILINE,
-    )
 
-    lines = [
+    # Find enum blocks by scanning for "pub enum Name {" then tracking braces
+    lines_out = [
         "# 错误类型参考",
         "",
         "> 自动从 `src/error.rs` 生成。编辑源码后运行 `just gen-error-docs` 刷新。",
         "",
     ]
-    for m in enum_pattern.finditer(content):
-        doc = (m.group(1) or "").replace("///", "").strip()
-        enum_name = m.group(2)
-        variants = m.group(3)
-        lines.append(f"## `{enum_name}`")
-        lines.append("")
-        if doc:
-            lines.extend(doc.split("\n"))
-            lines.append("")
-        for v in variant_pattern.finditer(variants):
-            v_doc = (v.group(1) or "").replace("///", "").strip()
-            v_name = v.group(2)
-            v_params = v.group(3) or ""
-            doc_text = f" — {v_doc}" if v_doc else ""
-            lines.append(f"- **`{v_name}{v_params}`**{doc_text}")
-        lines.append("")
 
-    if lines[3:]:
-        outputs[str(DOCS_REF / "error-types.gen.md")] = "\n".join(lines)
+    enum_start = re.compile(r'^pub enum (\w+)\s*\{')
+    variant_pat = re.compile(
+        r'^\s*(\w+)(\([^)]*(?:\([^)]*\))?[^)]*\))?\s*,?\s*$',
+    )
+
+    src_lines = content.split("\n")
+    i = 0
+    while i < len(src_lines):
+        m = enum_start.search(src_lines[i])
+        if m:
+            enum_name = m.group(1)
+            lines_out.append(f"## `{enum_name}`")
+            lines_out.append("")
+            depth = 1
+            enum_body = []
+            i += 1
+            while i < len(src_lines) and depth > 0:
+                for ch in src_lines[i]:
+                    if ch == '{':
+                        depth += 1
+                    elif ch == '}':
+                        depth -= 1
+                if depth > 0:
+                    enum_body.append(src_lines[i])
+                i += 1
+
+            for line in enum_body:
+                stripped = line.strip()
+                if not stripped or stripped.startswith("#[") or stripped.startswith("//"):
+                    continue
+                v = variant_pat.search(stripped)
+                if v:
+                    v_name = v.group(1)
+                    v_params = v.group(2) or ""
+                    lines_out.append(f"- **`{v_name}{v_params}`**")
+            lines_out.append("")
+        else:
+            i += 1
+
+    if lines_out[3:]:
+        outputs[str(DOCS_REF / "error-types.gen.md")] = "\n".join(lines_out)
     return outputs
 
 

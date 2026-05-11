@@ -1,0 +1,24 @@
+sequenceDiagram
+  participant S as LSP Server
+  participant P as Proxy
+  participant C as InterceptorChain
+  participant D as DiagnosticsCompressor
+  participant C2 as Client
+
+  S->>P: textDocument/publishDiagnostics (raw JSON)
+  P->>P: parse Content-Length frame, extract method + params
+  P->>C: process("publishDiagnostics", params, ServerToClient)
+
+  C->>D: applies_to("publishDiagnostics", ServerToClient)?
+  D-->>C: true
+
+  C->>D: intercept(params)
+  alt Success
+    D-->>C: Ok(Some(compacted_params))
+    C-->>P: Ok(Some(compacted_params))
+    P->>C2: compacted JSON-RPC response
+  else Error
+    D-->>C: Err(warn log "failed, forwarding original")
+    C-->>P: Ok(original_params)
+    P->>C2: original JSON-RPC response (fail-open)
+  end
