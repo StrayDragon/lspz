@@ -99,3 +99,11 @@ v0.5.0 → Hover + DocumentSymbol 压缩
 - Config 热重载 (低优先级)
 - Python/TypeScript 解压缩客户端库 (等待格式稳定)
 - proc-macro 拦截器派生 (不值得, 除非 10+ 拦截器)
+
+## 待规划: Phase 8 — Response Capping
+
+参见 `ROADMAP.md` Phase 8 详细定义。核心思路:
+- 在压缩前可配置截断 LSP 返回条目数（如 `--max-diags 20`）
+- 针对 LLM 不需要全部条目的场景，优先丢弃尾部噪音
+- 新增 `CappingInterceptor` 位于 Interceptor 链最前端
+- 截断 + 压缩正交叠加，总计可节省 80-95% token

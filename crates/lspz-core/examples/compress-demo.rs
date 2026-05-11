@@ -2,32 +2,44 @@
 //!
 //! Run: cargo run --example compress-demo -p lspz-core
 //!
-//! Demonstrates all 4 LSP compressors with sample data
-//! and shows byte / token savings for both Compact JSON and TOON.
+//! Demonstrates all 4 LSP compressors with sample data,
+//! comparing Raw JSON vs Compact JSON vs TOON format.
+//! Token counts (cl100k_base) are the primary metric.
+//! Bytes shown for reference.
 
 use std::time::Instant;
 
 use lspz_core::codec::compact::CompactDiagnostics;
 use lspz_core::codec::toon;
-use lspz_core::interceptors::Direction;
-use lspz_core::interceptors::Interceptor;
+use lspz_core::interceptors::{Direction, Interceptor};
 use lspz_core::{
     CompletionCompressor, DiagnosticsCompressor, DocumentSymbolCompressor, HoverCompressor,
 };
 use serde_json::{Value, json};
+use tiktoken_rs::CoreBPE;
+use tiktoken_rs::cl100k_base;
+
+struct DemoResult {
+    name: String,
+    orig_bytes: usize,
+    orig_tokens: usize,
+    comp_bytes: usize,
+    comp_tokens: usize,
+    toon_bytes: usize,
+    toon_tokens: usize,
+    elapsed_us: u128,
+}
 
 #[tokio::main]
 async fn main() {
+    let bpe = cl100k_base().expect("Failed to initialize tiktoken");
+
     println!();
     println!("  ╔══════════════════════════════════════════════════╗");
     println!("  ║        lspz Compression Demo  (v0.7.0)          ║");
-    println!("  ║  LSP compression proxy for AI coding agents     ║");
+    println!("  ║  Token-optimized LSP for AI coding agents       ║");
     println!("  ╚══════════════════════════════════════════════════╝");
     println!();
-
-    let mut total_orig = 0usize;
-    let mut total_comp = 0usize;
-    let mut total_toon_total = 0usize;
 
     let toon_methods = [
         "textDocument/publishDiagnostics",
@@ -35,6 +47,8 @@ async fn main() {
         "textDocument/hover",
         "textDocument/documentSymbol",
     ];
+
+    let mut results: Vec<DemoResult> = Vec::new();
 
     for (name, method, params, compressor) in [
         (
@@ -121,35 +135,125 @@ async fn main() {
             Box::new(DocumentSymbolCompressor),
         ),
     ] {
-        let (orig, comp, toon_bytes) =
-            run_demo(name, method, params, &*compressor, &toon_methods).await;
-        total_orig += orig;
-        total_comp += comp;
-        total_toon_total += toon_bytes;
+        let result = run_demo(name, method, params, &*compressor, &toon_methods, &bpe).await;
+        results.push(result);
     }
 
-    let comp_pct = if total_orig > 0 {
-        (total_orig.saturating_sub(total_comp)) as f64 / total_orig as f64 * 100.0
+    // ─── Summary table ─────────────────────────────────────
+    println!("  ┌──────────────────────────────┬──────────┬──────────┬──────────┬──────────┐");
+    println!("  │ Compressor                   │ Raw      │ Compact  │ TOON     │ Best     │");
+    println!("  ├──────────────────────────────┼──────────┼──────────┼──────────┼──────────┤");
+
+    for r in &results {
+        let best = if r.toon_tokens <= r.comp_tokens {
+            "TOON"
+        } else {
+            "Compact"
+        };
+        println!(
+            "  │ {:<28} │ {:>6}t   │ {:>6}t   │ {:>6}t   │ {:<8} │",
+            r.name, r.orig_tokens, r.comp_tokens, r.toon_tokens, best
+        );
+    }
+    println!("  ├──────────────────────────────┼──────────┼──────────┼──────────┼──────────┤");
+
+    let t_orig: usize = results.iter().map(|r| r.orig_tokens).sum();
+    let t_comp: usize = results.iter().map(|r| r.comp_tokens).sum();
+    let t_toon: usize = results.iter().map(|r| r.toon_tokens).sum();
+    println!(
+        "  │ {:<28} │ {:>6}t   │ {:>6}t   │ {:>6}t   │ TOON     │",
+        "TOTAL", t_orig, t_comp, t_toon
+    );
+    println!("  └──────────────────────────────┴──────────┴──────────┴──────────┴──────────┘");
+    println!();
+
+    // ─── Savings summary ───────────────────────────────────
+    let t_comp_pct = if t_orig > 0 {
+        (t_orig.saturating_sub(t_comp)) as f64 / t_orig as f64 * 100.0
     } else {
         0.0
     };
-    let toon_pct = if total_orig > 0 {
-        (total_orig.saturating_sub(total_toon_total)) as f64 / total_orig as f64 * 100.0
+    let t_toon_pct = if t_orig > 0 {
+        (t_orig.saturating_sub(t_toon)) as f64 / t_orig as f64 * 100.0
     } else {
         0.0
     };
 
-    println!("  ────────────────────────────────────────────────────");
+    let b_orig: usize = results.iter().map(|r| r.orig_bytes).sum();
+    let b_comp: usize = results.iter().map(|r| r.comp_bytes).sum();
+    let b_toon: usize = results.iter().map(|r| r.toon_bytes).sum();
+    let b_comp_pct = if b_orig > 0 {
+        (b_orig.saturating_sub(b_comp)) as f64 / b_orig as f64 * 100.0
+    } else {
+        0.0
+    };
+    let b_toon_pct = if b_orig > 0 {
+        (b_orig.saturating_sub(b_toon)) as f64 / b_orig as f64 * 100.0
+    } else {
+        0.0
+    };
+
     println!(
-        "  TOTAL:      {:>6} bytes → Compact {:<6} bytes ({:>5.1}% saved)",
-        total_orig, total_comp, comp_pct
+        "  Tokens: {} → Compact: {} (↓{:.1}%)  TOON: {} (↓{:.1}%)",
+        t_orig, t_comp, t_comp_pct, t_toon, t_toon_pct
     );
     println!(
-        "  {:>28} → TOON    {:<6} bytes ({:>5.1}% saved)",
-        "", total_toon_total, toon_pct
+        "  Bytes:  {} → Compact: {} (↓{:.1}%)  TOON: {} (↓{:.1}%)",
+        b_orig, b_comp, b_comp_pct, b_toon, b_toon_pct
     );
-    println!("  ────────────────────────────────────────────────────");
     println!();
+
+    // ─── Per-compressor detail ─────────────────────────────
+    println!("  ── Per-compressor breakdown ──");
+    println!();
+    for r in &results {
+        let comp_savings = if r.orig_tokens > 0 {
+            (r.orig_tokens as f64 - r.comp_tokens as f64) / r.orig_tokens as f64 * 100.0
+        } else {
+            0.0
+        };
+        let toon_savings = if r.orig_tokens > 0 {
+            (r.orig_tokens as f64 - r.toon_tokens as f64) / r.orig_tokens as f64 * 100.0
+        } else {
+            0.0
+        };
+        let best = if r.toon_tokens <= r.comp_tokens {
+            "TOON"
+        } else {
+            "Compact"
+        };
+
+        println!(
+            "  {:<28}  Raw {:>4}t  Compact {:>4}t (↓{:>5.1}%)  TOON {:>4}t (↓{:>5.1}%)  ✓{}  {:>6.1}μs",
+            r.name,
+            r.orig_tokens,
+            r.comp_tokens,
+            comp_savings,
+            r.toon_tokens,
+            toon_savings,
+            best,
+            r.elapsed_us as f64,
+        );
+        println!(
+            "  {:>28}  {:>7}B  {:>10}B (↓{:>5.1}%)  {:>9}B (↓{:>5.1}%)",
+            "",
+            r.orig_bytes,
+            r.comp_bytes,
+            if r.orig_bytes > 0 {
+                (r.orig_bytes.saturating_sub(r.comp_bytes)) as f64 / r.orig_bytes as f64 * 100.0
+            } else {
+                0.0
+            },
+            r.toon_bytes,
+            if r.orig_bytes > 0 {
+                (r.orig_bytes.saturating_sub(r.toon_bytes)) as f64 / r.orig_bytes as f64 * 100.0
+            } else {
+                0.0
+            },
+        );
+        println!();
+    }
+
     println!("  Note: Real-world savings are higher with repeated data.");
     println!("  E.g., 30 \"unused variable\" diagnostics → 1 entry + ranges.");
     println!();
@@ -161,8 +265,11 @@ async fn run_demo(
     params: Value,
     compressor: &dyn Interceptor,
     toon_methods: &[&str],
-) -> (usize, usize, usize) {
-    let original_bytes = serde_json::to_string(&params).unwrap().len();
+    bpe: &CoreBPE,
+) -> DemoResult {
+    let orig_json = serde_json::to_string(&params).unwrap();
+    let orig_bytes = orig_json.len();
+    let orig_tokens = bpe.encode_with_special_tokens(&orig_json).len();
 
     let start = Instant::now();
     let result = match compressor
@@ -172,70 +279,61 @@ async fn run_demo(
         Ok(Some(v)) => v,
         Ok(None) => {
             println!("  ⚠️  {:<30}   (dropped)", name);
-            return (original_bytes, 0, 0);
+            return DemoResult {
+                name: name.into(),
+                orig_bytes,
+                orig_tokens,
+                comp_bytes: 0,
+                comp_tokens: 0,
+                toon_bytes: 0,
+                toon_tokens: 0,
+                elapsed_us: 0,
+            };
         }
         Err(e) => {
             println!("  ⚠️  {:<30}   failed: {}", name, e);
-            return (original_bytes, original_bytes, original_bytes);
+            return DemoResult {
+                name: name.into(),
+                orig_bytes,
+                orig_tokens,
+                comp_bytes: orig_bytes,
+                comp_tokens: orig_tokens,
+                toon_bytes: orig_bytes,
+                toon_tokens: orig_tokens,
+                elapsed_us: 0,
+            };
         }
     };
     let elapsed = start.elapsed();
 
-    let compressed_bytes = serde_json::to_string(&result).unwrap().len();
-    let savings = if original_bytes > 0 {
-        (original_bytes.saturating_sub(compressed_bytes)) as f64 / original_bytes as f64 * 100.0
-    } else {
-        0.0
-    };
+    let comp_json = serde_json::to_string(&result).unwrap();
+    let comp_bytes = comp_json.len();
+    let comp_tokens = bpe.encode_with_special_tokens(&comp_json).len();
 
     // Convert to TOON if supported
-    let (toon_text, toon_bytes) = if toon_methods.contains(&method) {
+    let (toon_bytes, toon_tokens) = if toon_methods.contains(&method) {
         match convert_compact_to_toon(method, &result) {
             Some(text) => {
                 let bytes = text.len();
-                (Some(text), bytes)
+                let tokens = bpe.encode_with_special_tokens(&text).len();
+                (bytes, tokens)
             }
-            None => (None, compressed_bytes),
+            None => (comp_bytes, comp_tokens),
         }
     } else {
-        (None, compressed_bytes)
-    };
-    let toon_savings = if original_bytes > 0 {
-        (original_bytes.saturating_sub(toon_bytes)) as f64 / original_bytes as f64 * 100.0
-    } else {
-        0.0
+        (comp_bytes, comp_tokens)
     };
 
-    let pad = format!("{:<30}", name);
-    println!(
-        "  📦 {} {:>6}B → Compact: {:<6}B ({:>5.1}%, {:.1}μs)  TOON: {:<6}B ({:>5.1}%)",
-        pad,
-        original_bytes,
-        compressed_bytes,
-        savings,
-        elapsed.as_micros(),
+    DemoResult {
+        name: name.into(),
+        orig_bytes,
+        orig_tokens,
+        comp_bytes,
+        comp_tokens,
         toon_bytes,
-        toon_savings,
-    );
-
-    // Print compact JSON
-    let pretty = serde_json::to_string_pretty(&result).unwrap();
-    println!("  │ compact:");
-    for line in pretty.lines() {
-        println!("  │   {}", line);
+        toon_tokens,
+        elapsed_us: elapsed.as_micros(),
     }
-    println!();
-
-    // Print TOON if available
-    if let Some(text) = toon_text {
-        println!("  │ toon:");
-        for line in text.lines() {
-            println!("  │   {}", line);
-        }
-        println!();
-    }
-
-    (original_bytes, compressed_bytes, toon_bytes)
 }
 
 /// Convert compact JSON output to TOON format text.

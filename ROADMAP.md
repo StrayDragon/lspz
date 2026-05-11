@@ -95,7 +95,7 @@
 
 ---
 
-## Phase 7: TOON 输出格式 — v0.7 (计划中)
+## Phase 7: TOON 输出格式 — v0.7 ✅ 已完成
 
 > **核心洞察**: lspz 的消费端 100% 是 LLM，不是标准 LSP Client。
 > Compact JSON 使用缩写字段名（`m`, `s`, `r`）节省 token，但可能让 LLM 困惑。
@@ -121,9 +121,10 @@
   - --output toon (新 TOON 格式)
   - --output passthrough (标准 LSP JSON, 透明转发)
 
-[P7-C] Agent SDK TOON API
+[P7-C] Agent SDK TOON API ⏸️ 搁置
   - get_diagnostics_toon() 等方法
   - to_toon() / from_toon() 格式转换
+  - 决策: Proxy 层输出 TOON 已满足需求，Agent SDK 直出 TOON 无实际用例
 
 [P7-D] Token 节省验证 ✅ 已完成
   - cargo bench 更新（新增 TOON vs Compact JSON vs 标准 LSP 对比列）
@@ -136,6 +137,55 @@
 |------|---------|-------------|----------|
 | Compact JSON | 51t (基准) | 51t (基准) | ~250t (基准) |
 | TOON | **38t (−25%)** | **38t (−25%)** | **~120t (−52%)** |
+
+---
+
+## Phase 8: Response Capping — v0.8 (计划中)
+
+> **核心洞察**: LLM 不需要 LSP 返回的**全部**条目。比如 200 个 diagnostics 中，前 20 个就足以反映问题全貌。
+> 在压缩**之前**截断，比压缩本身更省 token。
+
+### 目标
+
+在 Interceptor 链中增加可选的 response 条目上限功能，对大返回（diagnostics、completions、symbols）
+在压缩前进行截断。
+
+### 任务
+
+```
+[P8-A] Config 扩展
+  - --max-diags <N>         （默认 0 = 不限制）
+  - --max-completions <N>   （默认 0 = 不限制）
+  - --max-symbols <N>       （默认 0 = 不限制）
+  - 对应的环境变量 LSPZ_MAX_DIAGS / LSPZ_MAX_COMPLETIONS / LSPZ_MAX_SYMBOLS
+  - 新增 CappingConfig 结构体，可选独立控制每种类型
+
+[P8-B] 新增 CappingInterceptor
+  - 位于 Interceptor 链**最前端**（优先于压缩器执行）
+  - Direction::ServerToClient 仅对通知/响应中的 items 列表做截断
+  - 截断策略: 保留前 N 条（按 LSP 返回顺序）
+  - 通过 tracing::info! 记录截断信息
+
+[P8-C] 集成与测试
+  - CLI 参数装配到 InterceptorChain
+  - 单元测试验证截断 + 压缩串联
+  - 集成测试覆盖 diagnostics / completions / symbols 三种类型
+
+[P8-D] 文档
+  - ROADMAP.md Phase 8 标记完成
+  - _HANDOFF.md 更新
+  - CLI --help 更新
+```
+
+### Token 节省估算
+
+| 场景 | 原始 | 截断后 | 压缩后 | 总节省 |
+|------|------|--------|--------|--------|
+| 200 diags → 20 | ~4000t | ~400t | ~200t | **−95%** |
+| 100 completions → 20 | ~3000t | ~600t | ~300t | **−90%** |
+| 50 symbols → 20 | ~600t | ~240t | ~120t | **−80%** |
+
+> 截断和压缩是正交的：截断消除尾部噪音，压缩精简保留的信号。
 
 ---
 
