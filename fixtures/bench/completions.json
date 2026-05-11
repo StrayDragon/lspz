@@ -1,0 +1,79 @@
+[
+  {
+    "name": "small (5 items)",
+    "method": "textDocument/completion",
+    "params": {
+      "isIncomplete": false,
+      "items": [
+        { "label": "push", "kind": 3, "detail": "fn push(&mut self, value: T)", "documentation": "Appends an element to the back of a collection." },
+        { "label": "pop", "kind": 3, "detail": "fn pop(&mut self) -> Option<T>", "documentation": "Removes the last element from a collection, returning it." },
+        { "label": "len", "kind": 16, "detail": "fn len(&self) -> usize", "documentation": "Returns the number of elements in the collection." },
+        { "label": "is_empty", "kind": 16, "detail": "fn is_empty(&self) -> bool", "documentation": "Returns true if the collection contains no elements." },
+        { "label": "insert", "kind": 3, "detail": "fn insert(&mut self, index: usize, element: T)", "documentation": "Inserts an element at position index within the collection." }
+      ]
+    }
+  },
+  {
+    "name": "medium (15 items, some shared docs)",
+    "method": "textDocument/completion",
+    "params": {
+      "isIncomplete": true,
+      "items": [
+        { "label": "map", "kind": 3, "detail": "fn map<B>(&self, f: impl Fn(T) -> B) -> Vec<B>", "documentation": "Transforms each element using the given closure." },
+        { "label": "filter", "kind": 3, "detail": "fn filter(&self, f: impl Fn(&T) -> bool) -> Vec<&T>", "documentation": "Keeps only elements that match the predicate." },
+        { "label": "fold", "kind": 3, "detail": "fn fold<B>(&self, init: B, f: impl Fn(B, &T) -> B) -> B", "documentation": "Folds each element into an accumulator." },
+        { "label": "reduce", "kind": 3, "detail": "fn reduce(&self, f: impl Fn(&T, &T) -> T) -> Option<T>", "documentation": "Reduces the collection to a single value." },
+        { "label": "collect", "kind": 3, "detail": "fn collect<B>(&self) -> B where B: FromIterator<T>", "documentation": "Collects the iterator into a collection." },
+        { "label": "find", "kind": 3, "detail": "fn find(&self, f: impl Fn(&T) -> bool) -> Option<&T>", "documentation": "Searches for an element that satisfies the predicate." },
+        { "label": "position", "kind": 3, "detail": "fn position(&self, f: impl Fn(&T) -> bool) -> Option<usize>", "documentation": "Searches for an element by predicate, returning its index." },
+        { "label": "any", "kind": 3, "detail": "fn any(&self, f: impl Fn(&T) -> bool) -> bool", "documentation": "Returns true if any element matches the predicate." },
+        { "label": "all", "kind": 3, "detail": "fn all(&self, f: impl Fn(&T) -> bool) -> bool", "documentation": "Returns true if all elements match the predicate." },
+        { "label": "count", "kind": 16, "detail": "fn count(&self) -> usize", "documentation": "Returns the number of elements in the iterator." },
+        { "label": "nth", "kind": 16, "detail": "fn nth(&self, n: usize) -> Option<&T>", "documentation": "Returns the nth element of the iterator." },
+        { "label": "last", "kind": 16, "detail": "fn last(&self) -> Option<&T>", "documentation": "Returns the last element of the iterator." },
+        { "label": "min", "kind": 3, "detail": "fn min(&self) -> Option<&T>", "documentation": "Returns the minimum element." },
+        { "label": "max", "kind": 3, "detail": "fn max(&self) -> Option<&T>", "documentation": "Returns the maximum element." },
+        { "label": "sum", "kind": 3, "detail": "fn sum<S>(&self) -> S", "documentation": "Sums the elements of the iterator." }
+      ]
+    }
+  },
+  {
+    "name": "large (30 items, varied kinds)",
+    "method": "textDocument/completion",
+    "params": {
+      "isIncomplete": false,
+      "items": [
+        { "label": "abs", "kind": 3, "detail": "fn abs(&self) -> Self", "documentation": "Computes the absolute value." },
+        { "label": "acos", "kind": 3, "detail": "fn acos(&self) -> Self", "documentation": "Computes the arccosine." },
+        { "label": "asin", "kind": 3, "detail": "fn asin(&self) -> Self", "documentation": "Computes the arcsine." },
+        { "label": "atan", "kind": 3, "detail": "fn atan(&self) -> Self", "documentation": "Computes the arctangent." },
+        { "label": "atan2", "kind": 3, "detail": "fn atan2(&self, other: Self) -> Self", "documentation": "Computes the four-quadrant arctangent." },
+        { "label": "ceil", "kind": 3, "detail": "fn ceil(&self) -> Self", "documentation": "Returns the smallest integer >= self." },
+        { "label": "clamp", "kind": 3, "detail": "fn clamp(&self, min: Self, max: Self) -> Self", "documentation": "Clamps value into the given range." },
+        { "label": "copysign", "kind": 3, "detail": "fn copysign(&self, sign: Self) -> Self", "documentation": "Copies the sign from sign to self." },
+        { "label": "cos", "kind": 3, "detail": "fn cos(&self) -> Self", "documentation": "Computes the cosine." },
+        { "label": "cosh", "kind": 3, "detail": "fn cosh(&self) -> Self", "documentation": "Computes the hyperbolic cosine." },
+        { "label": "exp", "kind": 3, "detail": "fn exp(&self) -> Self", "documentation": "Returns e^(self)." },
+        { "label": "exp2", "kind": 3, "detail": "fn exp2(&self) -> Self", "documentation": "Returns 2^(self)." },
+        { "label": "floor", "kind": 3, "detail": "fn floor(&self) -> Self", "documentation": "Returns the largest integer <= self." },
+        { "label": "fract", "kind": 3, "detail": "fn fract(&self) -> Self", "documentation": "Returns the fractional part." },
+        { "label": "ln", "kind": 3, "detail": "fn ln(&self) -> Self", "documentation": "Returns the natural logarithm." },
+        { "label": "log", "kind": 3, "detail": "fn log(&self, base: Self) -> Self", "documentation": "Returns the logarithm with given base." },
+        { "label": "log10", "kind": 3, "detail": "fn log10(&self) -> Self", "documentation": "Returns the base-10 logarithm." },
+        { "label": "log2", "kind": 3, "detail": "fn log2(&self) -> Self", "documentation": "Returns the base-2 logarithm." },
+        { "label": "max", "kind": 3, "detail": "fn max(&self, other: Self) -> Self", "documentation": "Returns the maximum of two values." },
+        { "label": "min", "kind": 3, "detail": "fn min(&self, other: Self) -> Self", "documentation": "Returns the minimum of two values." },
+        { "label": "mul_add", "kind": 3, "detail": "fn mul_add(&self, a: Self, b: Self) -> Self", "documentation": "Fused multiply-add: self*a + b." },
+        { "label": "neg", "kind": 3, "detail": "fn neg(&self) -> Self", "documentation": "Negates the value." },
+        { "label": "powf", "kind": 3, "detail": "fn powf(&self, n: Self) -> Self", "documentation": "Raises to a floating-point power." },
+        { "label": "powi", "kind": 3, "detail": "fn powi(&self, n: i32) -> Self", "documentation": "Raises to an integer power." },
+        { "label": "recip", "kind": 3, "detail": "fn recip(&self) -> Self", "documentation": "Returns 1/self." },
+        { "label": "round", "kind": 3, "detail": "fn round(&self) -> Self", "documentation": "Rounds to the nearest integer." },
+        { "label": "signum", "kind": 3, "detail": "fn signum(&self) -> Self", "documentation": "Returns a number representing the sign." },
+        { "label": "sin", "kind": 3, "detail": "fn sin(&self) -> Self", "documentation": "Computes the sine." },
+        { "label": "sinh", "kind": 3, "detail": "fn sinh(&self) -> Self", "documentation": "Computes the hyperbolic sine." },
+        { "label": "sqrt", "kind": 3, "detail": "fn sqrt(&self) -> Self", "documentation": "Returns the square root." }
+      ]
+    }
+  }
+]

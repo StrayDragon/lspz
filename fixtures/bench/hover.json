@@ -1,0 +1,43 @@
+[
+  {
+    "name": "plaintext (simple)",
+    "method": "textDocument/hover",
+    "params": {
+      "contents": {
+        "kind": "plaintext",
+        "value": "```typescript\nfunction foo(bar: string): number\n```\n\nThe `foo` function takes a string and returns a number."
+      },
+      "range": {
+        "start": { "line": 42, "character": 4 },
+        "end": { "line": 42, "character": 7 }
+      }
+    }
+  },
+  {
+    "name": "markdown (rich)",
+    "method": "textDocument/hover",
+    "params": {
+      "contents": {
+        "kind": "markdown",
+        "value": "---\n**push**\n\n```rust\nfn push(&mut self, value: T)\n```\n\nAppends an element to the back of a collection.\n\n### Panics\n\nPanics if the number of elements exceeds `usize::MAX`.\n\n### Examples\n\n```rust\nlet mut vec = vec![1, 2];\nvec.push(3);\nassert_eq!(vec, [1, 2, 3]);\n```\n\n### See Also\n\n- `pop`\n- `insert`\n- `append`\n"
+      },
+      "range": {
+        "start": { "line": 10, "character": 0 },
+        "end": { "line": 10, "character": 4 }
+      }
+    }
+  },
+  {
+    "name": "object MarkedString (language + value form)",
+    "method": "textDocument/hover",
+    "params": {
+      "contents": [
+        {
+          "language": "rust",
+          "value": "pub fn push(&mut self, value: T)"
+        },
+        "Appends an element to the back of a collection."
+      ]
+    }
+  }
+]
