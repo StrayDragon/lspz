@@ -8,6 +8,7 @@
 - **`enable_diag_compress`**: `bool` — Whether to enable diagnostic compression.
 - **`enable_completion_compress`**: `bool` — Whether to enable completion compression (default: true).
 - **`enable_hover_compress`**: `bool` — Whether to enable hover compression (default: true).
+- **`enable_document_symbol_compress`**: `bool` — Whether to enable document symbol compression (default: true).
 - **`log_level`**: `String` — Log level (trace, debug, info, warn, error).
 
 ## `ConfigBuilder`

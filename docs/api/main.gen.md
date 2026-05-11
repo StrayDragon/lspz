@@ -32,6 +32,12 @@ Enable hover compression (default: true)
 #[arg(
 ```
 
+Enable document symbol compression (default: true)
+
+```rust
+#[arg(
+```
+
 Log level (trace, debug, info, warn, error)
 
 ```rust

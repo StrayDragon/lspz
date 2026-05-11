@@ -5,6 +5,7 @@
 pub mod completions;
 pub mod diagnostics;
 pub mod hover;
+pub mod symbols;
 
 use crate::error::LspzError;
 
