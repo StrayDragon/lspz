@@ -366,7 +366,7 @@ flowchart LR
 
 ```bash
 # 配置 Agent 的 LSP server 为 lspz
-lspz --backend rust-analyzer --stdio
+cargo run -- --backend rust-analyzer
 
 # lspz 自动启动真实 LSP server 并代理通信
 # 所有 Server→Client 的诊断消息被自动压缩

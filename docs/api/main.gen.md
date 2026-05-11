@@ -14,6 +14,13 @@ Backend LSP server command (e.g. "rust-analyzer", "gopls")
 #[arg(short, long, env = "LSPZ_BACKEND_CMD")]
 ```
 
+Arguments to pass through to the backend LSP server
+(placed after `--` on the command line)
+
+```rust
+#[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+```
+
 Enable diagnostic compression (default: true)
 
 ```rust
@@ -59,7 +66,7 @@ Log level (trace, debug, info, warn, error)
 Run in proxy mode — transparent LSP proxy with diagnostic compression.
 
 ```rust
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 ```
 
 Run as MCP server — exposes LSP tools via Model Context Protocol.
