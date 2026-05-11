@@ -93,6 +93,51 @@
 
 ---
 
+---
+
+## Phase 7: TOON 输出格式 — v0.7 (计划中)
+
+> **核心洞察**: lspz 的消费端 100% 是 LLM，不是标准 LSP Client。
+> Compact JSON 使用缩写字段名（`m`, `s`, `r`）节省 token，但可能让 LLM 困惑。
+> TOON 格式在保持 token 效率的同时使用完整自解释字段名，是 LLM 消费的最佳选择。
+
+### 目标
+
+引入 [TOON (Token-Oriented Object Notation)](docs/specs/005-toon-format.md) 作为第二输出格式，
+在 token 效率和 LLM 可读性之间取得平衡。
+
+### 任务
+
+```
+[P7-A] lspz-core: codec/toon.rs 新模块 ✅ 已完成
+  - diagnostics_to_toon: 诊断 TOON 格式化
+  - completions_to_toon: 补全 TOON 格式化
+  - hover_to_toon: Hover TOON 格式化
+  - symbols_to_toon: 符号 TOON 格式化
+
+[P7-B] Proxy 支持 --output 参数 ✅ 已完成
+  - --output json (默认, 当前 compact JSON)
+  - --output toon (新 TOON 格式)
+  - --output passthrough (标准 LSP JSON, 透明转发)
+
+[P7-C] Agent SDK TOON API
+  - get_diagnostics_toon() 等方法
+  - to_toon() / from_toon() 格式转换
+
+[P7-D] Token 节省验证
+  - cargo bench 更新
+  - 发布 TOON vs Compact JSON vs 标准 LSP 对比数据
+```
+
+### Token 节省目标
+
+| 格式 | 单条诊断 | 30条去重诊断 | 4个补全项 |
+|------|---------|-------------|----------|
+| Compact JSON | 51t (基准) | 51t (基准) | ~250t (基准) |
+| TOON | **38t (−25%)** | **38t (−25%)** | **~120t (−52%)** |
+
+---
+
 ## 剩余事项 (低优先级)
 
 ### Metrics & Tracing 增强
@@ -129,6 +174,7 @@
 - [docs/specs/002-compression-format.md](docs/specs/002-compression-format.md) — 压缩格式规范
 - [docs/specs/003-lsp-compatibility.md](docs/specs/003-lsp-compatibility.md) — LSP 兼容性
 - [docs/specs/004-ssot-rules.md](docs/specs/004-ssot-rules.md) — SSOT 规则
+- [docs/specs/005-toon-format.md](docs/specs/005-toon-format.md) — TOON 输出格式
 
 ### API 文档（自动生成）
 - [docs/api/modules.gen.md](docs/api/modules.gen.md) — 模块索引

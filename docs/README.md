@@ -28,6 +28,11 @@
 6. **[specs/003-lsp-compatibility.md](specs/003-lsp-compatibility.md)** - LSP 兼容性规范
    - 理解 OpenCode 等 Agent 如何消费诊断
    - 理解 lspz 的 Fail-open 错误处理
+   - **了解输出格式进化**: JSON → TOON 表格格式
+
+7. **[specs/005-toon-format.md](specs/005-toon-format.md)** - TOON 输出格式（草案）
+   - 理解 TOON 表格格式和自解释字段名设计
+   - 专为 LLM 直接消费设计的输出格式
 
 7. **[specs/004-ssot-rules.md](specs/004-ssot-rules.md)** - 文档生成和 SSOT 规则
    - 理解代码→文档的生成流程
@@ -45,7 +50,8 @@ docs/
 │   ├── 001-tri-modal-architecture.md  # 三模态架构（含 Mermaid 图）
 │   ├── 002-compression-format.md      # 压缩格式规范（含调研数据）
 │   ├── 003-lsp-compatibility.md       # LSP 兼容性规范（含 Agent 分析）
-│   └── 004-ssot-rules.md              # 文档生成和 SSOT 规则
+│   ├── 004-ssot-rules.md              # 文档生成和 SSOT 规则
+│   └── 005-toon-format.md             # TOON 输出格式（草案）
 ├── guides/                      # 开发指南
 │   ├── coding-conventions.md    # 编码约定
 │   ├── testing-guide.md         # 测试指南
@@ -66,7 +72,8 @@ docs/
 | 理解架构设计 | [specs/001-tri-modal-architecture.md](specs/001-tri-modal-architecture.md) |
 | 开始 MVP 开发 | [plan/01-mvp-phase.md](plan/01-mvp-phase.md) |
 | 查看编码规范 | [guides/coding-conventions.md](guides/coding-conventions.md) |
-| 了解压缩格式 | [specs/002-compression-format.md](specs/002-compression-format.md) |
+| 了解紧凑 JSON 格式 | [specs/002-compression-format.md](specs/002-compression-format.md) |
+| 了解 TOON 输出格式 | [specs/005-toon-format.md](specs/005-toon-format.md) — **新! 专为 LLM 设计** |
 | 理解文档生成规则 | [specs/004-ssot-rules.md](specs/004-ssot-rules.md) |
 
 ## 关键设计原则
@@ -92,4 +99,4 @@ docs/
 
 ## 版本说明
 
-本文档随项目演进更新，当前版本对应项目 v0.5.0（4 个压缩器全部完成）。
+本文档随项目演进更新，当前版本对应项目 v0.7.0（4 个压缩器全部完成 + TOON 输出格式）。

@@ -2,7 +2,33 @@
 //!
 //! Builder-pattern configuration with env-var overrides.
 
+use std::str::FromStr;
+
 use crate::error::LspzError;
+
+/// Output format for the proxy.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OutputFormat {
+    /// Compact JSON (current default).
+    Json,
+    /// TOON (Token-Oriented Object Notation).
+    Toon,
+    /// Standard LSP JSON passthrough (no compression in output).
+    Passthrough,
+}
+
+impl FromStr for OutputFormat {
+    type Err = LspzError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.trim().to_lowercase().as_str() {
+            "json" => Ok(Self::Json),
+            "toon" => Ok(Self::Toon),
+            "passthrough" => Ok(Self::Passthrough),
+            _ => Err(LspzError::Config(format!("unknown output format: {s}"))),
+        }
+    }
+}
 
 /// Configuration for the lspz proxy.
 #[derive(Debug, Clone)]
@@ -17,6 +43,8 @@ pub struct Config {
     pub enable_hover_compress: bool,
     /// Whether to enable document symbol compression (default: true).
     pub enable_document_symbol_compress: bool,
+    /// Output format for intercepted messages (json, toon, passthrough).
+    pub output_format: OutputFormat,
     /// Log level (trace, debug, info, warn, error).
     pub log_level: String,
 }
@@ -29,6 +57,7 @@ impl Default for Config {
             enable_completion_compress: true,
             enable_hover_compress: true,
             enable_document_symbol_compress: true,
+            output_format: OutputFormat::Json,
             log_level: "info".into(),
         }
     }
@@ -49,6 +78,7 @@ pub struct ConfigBuilder {
     enable_completion_compress: Option<bool>,
     enable_hover_compress: Option<bool>,
     enable_document_symbol_compress: Option<bool>,
+    output_format: Option<OutputFormat>,
     log_level: Option<String>,
 }
 
@@ -80,6 +110,12 @@ impl ConfigBuilder {
     /// Enable or disable document symbol compression.
     pub fn enable_document_symbol_compress(mut self, enable: bool) -> Self {
         self.enable_document_symbol_compress = Some(enable);
+        self
+    }
+
+    /// Set the output format (json, toon, passthrough).
+    pub fn output_format(mut self, fmt: OutputFormat) -> Self {
+        self.output_format = Some(fmt);
         self
     }
 
@@ -137,12 +173,22 @@ impl ConfigBuilder {
             .or_else(|| std::env::var("LSPZ_LOG_LEVEL").ok())
             .unwrap_or_else(|| "info".into());
 
+        let output_format = self
+            .output_format
+            .or_else(|| {
+                std::env::var("LSPZ_OUTPUT_FORMAT")
+                    .ok()
+                    .and_then(|v| OutputFormat::from_str(&v).ok())
+            })
+            .unwrap_or(OutputFormat::Json);
+
         Ok(Config {
             backend_cmd,
             enable_diag_compress,
             enable_completion_compress,
             enable_hover_compress,
             enable_document_symbol_compress,
+            output_format,
             log_level,
         })
     }

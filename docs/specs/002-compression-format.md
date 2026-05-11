@@ -447,6 +447,21 @@ flowchart LR
 
 ---
 
+## 输出格式进化
+
+当前 Compact JSON 作为第一个输出格式，后续引入 [**TOON（Token-Oriented Object Notation）**](005-toon-format.md) 作为 LLM 优化的第二输出格式。
+
+| 格式 | 阶段 | 说明 |
+|------|------|------|
+| Compact JSON | 当前 (v0.1–v0.5) | JSON 格式，字段缩短 + 去重，最小 token |
+| TOON | v0.7+ | 表格格式+自解释字段名，LLM 直接消费 |
+
+**选择指南**: 如果需要最小 token → 用 Compact JSON（缩写字段名）。
+如果希望 LLM 直接理解 → 用 TOON（完整字段名，无需预解压）。
+详见 [005-toon-format.md](005-toon-format.md)。
+
+---
+
 ## 配置选项
 
 ```rust
@@ -485,3 +500,4 @@ impl Default for CompressionConfig {
 - [plan/01-mvp-phase.md](../plan/01-mvp-phase.md) - MVP 实施计划
 - [specs/001-tri-modal-architecture.md](001-tri-modal-architecture.md) - 三模态架构
 - [specs/003-lsp-compatibility.md](003-lsp-compatibility.md) - LSP 兼容性
+- [specs/005-toon-format.md](005-toon-format.md) - TOON 行协议格式（草案）

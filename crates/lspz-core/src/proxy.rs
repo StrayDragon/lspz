@@ -5,8 +5,10 @@
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::select;
 
+use crate::codec::compact::CompactDiagnostics;
 use crate::codec::json_rpc;
-use crate::config::Config;
+use crate::codec::toon;
+use crate::config::{Config, OutputFormat};
 use crate::error::LspzError;
 use crate::interceptors::{Direction, InterceptorChain};
 use crate::transport::Transport;
@@ -31,7 +33,7 @@ pub enum State {
 /// Combines a client-side I/O (stdin/stdout) with a server-side [`Transport`]
 /// and an [`InterceptorChain`] for Server→Client message transformation.
 pub struct Proxy {
-    _config: Config,
+    config: Config,
     state: State,
     transport: Box<dyn Transport>,
     interceptor_chain: InterceptorChain,
@@ -45,7 +47,7 @@ impl Proxy {
         interceptor_chain: InterceptorChain,
     ) -> Self {
         Self {
-            _config: config,
+            config,
             state: State::Created,
             transport,
             interceptor_chain,
@@ -199,7 +201,12 @@ impl Proxy {
             Err(_) => return raw.to_vec(), // Fail-open
         };
 
-        // Reconstruct the message with transformed params
+        // TOON mode: convert compact params to TOON text
+        if self.config.output_format == OutputFormat::Toon {
+            return self.toon_output(method, &transformed, raw);
+        }
+
+        // JSON mode: reconstruct message with transformed params (default)
         let mut obj = match json_val.as_object() {
             Some(o) => o.clone(),
             None => return raw.to_vec(),
@@ -208,6 +215,48 @@ impl Proxy {
 
         let new_val = serde_json::Value::Object(obj);
         match json_rpc::serialize_frame(&new_val) {
+            Ok(bytes) => bytes,
+            Err(_) => raw.to_vec(),
+        }
+    }
+
+    /// Convert transformed params to TOON format and wrap in JSON-RPC.
+    fn toon_output(&self, method: &str, params: &serde_json::Value, raw: &[u8]) -> Vec<u8> {
+        let toon_text = match method {
+            "textDocument/publishDiagnostics" => {
+                // Deserialize compact Value back to typed struct
+                match serde_json::from_value::<CompactDiagnostics>(params.clone()) {
+                    Ok(compact) => toon::diagnostics_to_toon(&compact),
+                    Err(_) => return raw.to_vec(),
+                }
+            }
+            "textDocument/completion" => match toon::completions_to_toon(params) {
+                Ok(t) => t,
+                Err(_) => return raw.to_vec(),
+            },
+            "textDocument/hover" => match toon::hover_to_toon(params) {
+                Ok(t) => t,
+                Err(_) => return raw.to_vec(),
+            },
+            "textDocument/documentSymbol" => match toon::symbols_to_toon(params) {
+                Ok(t) => t,
+                Err(_) => return raw.to_vec(),
+            },
+            // Unknown method → passthrough
+            _ => return raw.to_vec(),
+        };
+
+        // Wrap TOON text in a JSON-RPC notification
+        let msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": {
+                "format": "toon",
+                "text": toon_text,
+            }
+        });
+
+        match json_rpc::serialize_frame(&msg) {
             Ok(bytes) => bytes,
             Err(_) => raw.to_vec(),
         }

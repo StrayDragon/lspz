@@ -8,12 +8,13 @@
 //! ```
 
 use std::process::ExitCode;
+use std::str::FromStr;
 
 use clap::Parser;
 use lspz_core::interceptors::Interceptor;
 use lspz_core::interceptors::InterceptorChain;
 use lspz_core::interceptors::diagnostics::DiagnosticsCompressor;
-use lspz_core::{Config, Proxy, StdioTransport};
+use lspz_core::{Config, OutputFormat, Proxy, StdioTransport};
 use rmcp::ServiceExt;
 use rmcp::transport::stdio;
 use tracing_subscriber::EnvFilter;
@@ -69,6 +70,15 @@ enum Cli {
         )]
         compress_document_symbol: bool,
 
+        /// Output format: json (compact), toon, or passthrough
+        #[arg(
+            short = 'o',
+            long = "output",
+            env = "LSPZ_OUTPUT_FORMAT",
+            default_value = "json"
+        )]
+        output: String,
+
         /// Log level (trace, debug, info, warn, error)
         #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
         log_level: String,
@@ -93,6 +103,7 @@ async fn main() -> ExitCode {
             compress_completion,
             compress_hover,
             compress_document_symbol,
+            output,
             log_level,
         } => {
             run_proxy(
@@ -102,6 +113,7 @@ async fn main() -> ExitCode {
                 compress_completion,
                 compress_hover,
                 compress_document_symbol,
+                output,
                 log_level,
             )
             .await
@@ -119,6 +131,7 @@ async fn run_proxy(
     compress_completion: bool,
     compress_hover: bool,
     compress_document_symbol: bool,
+    output: String,
     log_level: String,
 ) -> ExitCode {
     // If backend args contain --help or -h, spawn backend directly and show its help output
@@ -169,6 +182,11 @@ async fn run_proxy(
         .with_target(false)
         .init();
 
+    // Parse output format
+    let output_format = OutputFormat::from_str(&output)
+        .ok()
+        .unwrap_or(OutputFormat::Json);
+
     // Build config
     let config = match Config::builder()
         .backend_cmd(&backend)
@@ -176,6 +194,7 @@ async fn run_proxy(
         .enable_completion_compress(compress_completion)
         .enable_hover_compress(compress_hover)
         .enable_document_symbol_compress(compress_document_symbol)
+        .output_format(output_format)
         .log_level(&log_level)
         .build()
     {

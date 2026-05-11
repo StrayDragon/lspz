@@ -9,6 +9,7 @@
 //! [MermaidChart:./docs/mmd/compression-pipeline.mmd]
 
 use lspz_core::codec::compact::{CompactDiagnostics, compress, decompress};
+use lspz_core::codec::toon;
 use lspz_core::interceptors::diagnostics::DiagnosticsCompressor;
 use lspz_core::interceptors::{Direction, Interceptor};
 
@@ -630,6 +631,234 @@ async fn test_token_savings_typescript() {
     assert!(
         savings >= 0.30,
         "typescript compression should save ≥30%, got {:.1}%",
+        savings * 100.0
+    );
+}
+
+// ─── TOON Integration Tests ──────────────────────────────────────────────
+
+/// Helper: compress diagnostics via the real pipeline, then convert to TOON.
+async fn compress_and_toon(params: serde_json::Value) -> String {
+    let compressor = DiagnosticsCompressor::default();
+    let compact = compressor
+        .intercept(
+            "textDocument/publishDiagnostics",
+            params,
+            Direction::ServerToClient,
+        )
+        .await
+        .expect("compression should succeed")
+        .expect("should produce output");
+
+    let typed: CompactDiagnostics =
+        serde_json::from_value(compact).expect("should deserialize to CompactDiagnostics");
+    toon::diagnostics_to_toon(&typed)
+}
+
+/// Verify TOON output uses self-explanatory full field names (no abbreviations).
+#[tokio::test]
+async fn test_toon_uses_self_explanatory_field_names() {
+    let toon = compress_and_toon(gopls_diagnostics()).await;
+
+    // Must use full severity words, not single chars
+    assert!(
+        toon.contains("warning") || toon.contains("error"),
+        "TOON should contain 'warning' or 'error', got: {}",
+        toon
+    );
+    // Must NOT use compact severity chars as field values
+    // (they can appear in range numbers, so be specific)
+    let lines: Vec<&str> = toon.lines().collect();
+    for line in &lines {
+        if line.starts_with("  ") {
+            // Table row: first field is severity
+            let severity = line.split(',').next().unwrap_or("").trim();
+            assert!(
+                severity == "warning"
+                    || severity == "error"
+                    || severity == "info"
+                    || severity == "hint",
+                "TOON severity should be full word, got: '{:?}'",
+                severity
+            );
+        }
+    }
+
+    // Must have table header with full field names
+    assert!(
+        toon.contains("severity,message,code,range,count"),
+        "TOON table header should use full field names"
+    );
+}
+
+/// Verify TOON output does NOT contain compact abbreviations (m:, s:, r:, c:).
+#[tokio::test]
+async fn test_toon_no_compact_abbreviations() {
+    let toon = compress_and_toon(gopls_diagnostics()).await;
+
+    // All JSON compact keys start new objects; TOON is line-based.
+    // These patterns should NOT appear in TOON output.
+    assert!(
+        !toon.contains("\"m\":"),
+        "TOON should not contain compact 'm:' field"
+    );
+    assert!(
+        !toon.contains("\"s\":"),
+        "TOON should not contain compact 's:' field"
+    );
+    assert!(
+        !toon.contains("\"r\":"),
+        "TOON should not contain compact 'r:' field"
+    );
+    assert!(
+        !toon.contains("\"c\":"),
+        "TOON should not contain compact 'c:' field"
+    );
+}
+
+/// TOON conversion with gopls data.
+#[tokio::test]
+async fn test_toon_gopls() {
+    let toon = compress_and_toon(gopls_diagnostics()).await;
+
+    // URI present
+    assert!(toon.contains("uri: file:///test/main.go"));
+
+    // Count in header indicates dedup worked
+    assert!(
+        toon.contains("diagnostics[4]{"),
+        "gopls 13 diags → 4 groups, header: {:?}",
+        toon.lines().find(|l| l.starts_with("diagnostics"))
+    );
+
+    // Full severity words
+    assert!(toon.contains("warning"), "should have warning entries");
+
+    eprintln!("\n=== gopls TOON ===\n{}", toon);
+}
+
+/// TOON conversion with rust-analyzer data.
+#[tokio::test]
+async fn test_toon_rust_analyzer() {
+    let toon = compress_and_toon(rust_analyzer_diagnostics()).await;
+
+    assert!(toon.contains("uri: file:///test/src/main.rs"));
+    assert!(
+        toon.contains("diagnostics[2]{"),
+        "rust-analyzer 3 diags → 2 groups, header: {:?}",
+        toon.lines().find(|l| l.starts_with("diagnostics"))
+    );
+    assert!(toon.contains("unused variable"));
+    assert!(toon.contains("cannot find value"));
+
+    eprintln!("\n=== rust-analyzer TOON ===\n{}", toon);
+}
+
+/// TOON conversion with basedpyright data.
+#[tokio::test]
+async fn test_toon_basedpyright() {
+    let toon = compress_and_toon(basedpyright_diagnostics()).await;
+
+    assert!(toon.contains("uri: file:///test/src/main.py"));
+    assert!(toon.contains("diagnostics[4]{"));
+    // Normalized messages (code-based normalization matches)
+    assert!(toon.contains("warning,unused import") || toon.contains("warning,unused variable"));
+    // Non-normalized messages (codes not matched by normalizer)
+    assert!(toon.contains("not assignable"));
+
+    eprintln!("\n=== basedpyright TOON ===\n{}", toon);
+}
+
+/// TOON conversion with TypeScript data.
+#[tokio::test]
+async fn test_toon_typescript() {
+    let toon = compress_and_toon(typescript_diagnostics()).await;
+
+    assert!(toon.contains("uri: file:///test/src/app.ts"));
+    assert!(toon.contains("diagnostics[4]{"));
+    // All TypeScript messages are code-normalized (2322→"type mismatch", 6133→"unused variable",
+    // 2339→"missing property", 2552→"unresolved reference")
+    assert!(toon.contains("type mismatch"));
+    assert!(toon.contains("unused variable"));
+    assert!(toon.contains("missing property"));
+    assert!(toon.contains("unresolved reference"));
+
+    eprintln!("\n=== TypeScript TOON ===\n{}", toon);
+}
+
+/// TOON format uses L:C-L:C range syntax.
+#[tokio::test]
+async fn test_toon_range_format() {
+    let toon = compress_and_toon(rust_analyzer_diagnostics()).await;
+
+    // Ranges should use L:C-L:C format (not JSON arrays or [l,c,l,c])
+    for line in toon.lines() {
+        if line.contains("warning") || line.contains("error") {
+            // Each row: severity,message,code,range,count
+            let parts: Vec<&str> = line.split(',').collect();
+            if parts.len() >= 4 {
+                let range = parts[3].trim();
+                // Range should match pattern like "2:8-2:13" or "5:13-5:22"
+                assert!(
+                    range.contains(':') && range.contains('-'),
+                    "Range should be L:C-L:C, got: '{}'",
+                    range
+                );
+            }
+        }
+    }
+}
+
+/// Empty diagnostics produce valid TOON with zero entries.
+#[tokio::test]
+async fn test_toon_empty_diagnostics() {
+    let params = serde_json::json!({
+        "uri": "file:///empty.rs",
+        "diagnostics": []
+    });
+    let toon = compress_and_toon(params).await;
+    assert!(toon.contains("diagnostics[0]{"));
+    assert!(toon.contains("uri: file:///empty.rs"));
+}
+
+/// TOON token savings compared to Compact JSON.
+#[tokio::test]
+async fn test_toon_token_savings() {
+    use tiktoken_rs::cl100k_base;
+
+    let bpe = cl100k_base().expect("should load tokenizer");
+    let params = gopls_diagnostics();
+
+    // Compact JSON (baseline)
+    let compressor = DiagnosticsCompressor::default();
+    let compact = compressor
+        .intercept(
+            "textDocument/publishDiagnostics",
+            params.clone(),
+            Direction::ServerToClient,
+        )
+        .await
+        .expect("should compress")
+        .expect("should produce output");
+    let compact_json = serde_json::to_string(&compact).expect("should serialize");
+
+    // TOON output
+    let toon = compress_and_toon(params).await;
+
+    let compact_tokens = bpe.encode_with_special_tokens(&compact_json).len();
+    let toon_tokens = bpe.encode_with_special_tokens(&toon).len();
+    let savings = 1.0 - (toon_tokens as f64 / compact_tokens as f64);
+
+    println!("─── gopls TOON vs Compact JSON Token Savings ───");
+    println!("Compact JSON tokens: {}", compact_tokens);
+    println!("TOON tokens:          {}", toon_tokens);
+    println!("Savings:             {:.1}%", savings * 100.0);
+
+    // TOON should save tokens vs Compact JSON (self-explanatory field names
+    // but zero structural overhead from JSON quoting/braces)
+    assert!(
+        savings >= 0.0,
+        "TOON should not be worse than Compact JSON, got {:.1}%",
         savings * 100.0
     );
 }
