@@ -17,7 +17,19 @@ Backend LSP server command (e.g. "rust-analyzer", "gopls")
 Enable diagnostic compression (default: true)
 
 ```rust
-#[arg(short, long, env = "LSPZ_ENABLE_DIAG_COMPRESS", default_value_t = true)]
+#[arg(
+```
+
+Enable completion compression (default: true)
+
+```rust
+#[arg(
+```
+
+Enable hover compression (default: true)
+
+```rust
+#[arg(
 ```
 
 Log level (trace, debug, info, warn, error)
@@ -41,7 +53,7 @@ Log level (trace, debug, info, warn, error)
 Run in proxy mode — transparent LSP proxy with diagnostic compression.
 
 ```rust
-async fn run_proxy(backend: String, compress: bool, log_level: String) -> ExitCode {
+#[allow(clippy::too_many_arguments)]
 ```
 
 Run as MCP server — exposes LSP tools via Model Context Protocol.

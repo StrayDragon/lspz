@@ -52,10 +52,9 @@ impl AgentPool {
     /// Get or lazily spawn a session for the given language.
     async fn session_for(&mut self, language: &str) -> Result<&mut LspSession, anyhow::Error> {
         if !self.sessions.contains_key(language) {
-            let cmd = self
-                .backends
-                .get(language)
-                .ok_or_else(|| anyhow::anyhow!("no backend registered for language '{language}'"))?;
+            let cmd = self.backends.get(language).ok_or_else(|| {
+                anyhow::anyhow!("no backend registered for language '{language}'")
+            })?;
             let mut session = LspSession::spawn(cmd)?;
             session.initialize().await?;
             tracing::info!(language, "LSP session initialized");
@@ -287,10 +286,7 @@ mod tests {
             .unwrap();
 
         let (uri, _path) = temp_file("fn main() {}");
-        let err = pool
-            .get_diagnostics(&uri, "python")
-            .await
-            .unwrap_err();
+        let err = pool.get_diagnostics(&uri, "python").await.unwrap_err();
         assert!(err.to_string().contains("no backend registered"), "{err}");
     }
 

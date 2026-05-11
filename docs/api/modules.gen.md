@@ -8,9 +8,12 @@
 - **`crates/lspz-core/src/codec/mod`**: Message codec layer.
 - **`crates/lspz-core/src/config`**: Runtime configuration.
 - **`crates/lspz-core/src/error`**: Unified error type for lspz.
+- **`crates/lspz-core/src/interceptors/completions`**: Completion compression interceptor.
 - **`crates/lspz-core/src/interceptors/diagnostics`**: Diagnostic compression interceptor.
+- **`crates/lspz-core/src/interceptors/hover`**: Hover compression interceptor.
 - **`crates/lspz-core/src/interceptors/mod`**: Interceptor trait and chain.
 - **`crates/lspz-core/src/lib`**: # lspz-core
 - **`crates/lspz-core/src/proxy`**: LSP proxy state machine and message loop.
+- **`crates/lspz-core/src/transport/mock`**: Mock transport for testing LspSession without real LSP servers.
 - **`crates/lspz-core/src/transport/mod`**: Transport abstraction.
 - **`crates/lspz-core/src/transport/stdio`**: Stdio transport for LSP communication.

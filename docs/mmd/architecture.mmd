@@ -1,0 +1,27 @@
+C4Context
+  title lspz System Context
+
+  Person(agent, "AI Coding Agent", "Claude Code, Continue, custom agent CLI")
+  Person(dev, "Developer", "Uses lspz via library or CLI")
+
+  System_Boundary(lspz_sys, "lspz") {
+    System(lspz_core, "lspz-core", "Core library: JSON-RPC codec, Transport trait, InterceptorChain, Proxy state machine, Config")
+
+    System(lib_mode, "Library Mode", "Embed lspz_core::Proxy directly")
+    System(proxy_mode, "Proxy Mode", "lspz --backend <cmd> — transparent LSP proxy")
+    System(mcp_mode, "MCP Mode", "lspz mcp — exposes 3 MCP tools via rmcp")
+  }
+
+  System(lsp_server, "LSP Server", "rust-analyzer, gopls, basedpyright, typescript-language-server")
+  System(agent_cli, "Agent Runtime", "stdin/stdout for proxy mode")
+
+  Rel(agent, lib_mode, "use lspz_core::Proxy", "Rust crate")
+  Rel(agent_cli, proxy_mode, "spawns as child process", "stdio transport")
+  Rel(agent, mcp_mode, "connects as MCP client", "rmcp protocol")
+  Rel(dev, lspz_core, "embeds via Cargo dep", "Library mode")
+
+  Rel(lib_mode, lspz_core, "calls public API")
+  Rel(proxy_mode, lspz_core, "wraps in CLI")
+  Rel(mcp_mode, lspz_core, "uses LspSession")
+
+  Rel(lspz_core, lsp_server, "spawn & communicate via Transport trait", "Content-Length framed JSON-RPC 2.0")

@@ -25,7 +25,9 @@ pub mod transport;
 // Re-exports for convenience.
 pub use config::Config;
 pub use error::LspzError;
+pub use interceptors::completions::CompletionCompressor;
 pub use interceptors::diagnostics::DiagnosticsCompressor;
+pub use interceptors::hover::HoverCompressor;
 pub use proxy::Proxy;
 pub use transport::Transport;
 pub use transport::stdio::StdioTransport;

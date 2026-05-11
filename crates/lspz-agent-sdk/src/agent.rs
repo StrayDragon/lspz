@@ -354,8 +354,14 @@ mod tests {
     #[tokio::test]
     async fn test_uri_must_be_file() {
         let mut agent = mock_handle(vec![]);
-        let err = agent.get_diagnostics("http://example.com/test.rs").await.unwrap_err();
-        assert!(err.to_string().contains("URI must start with file://"), "{err}");
+        let err = agent
+            .get_diagnostics("http://example.com/test.rs")
+            .await
+            .unwrap_err();
+        assert!(
+            err.to_string().contains("URI must start with file://"),
+            "{err}"
+        );
     }
 
     // ── get_completions ─────────────────────────────────────────────

@@ -1,0 +1,21 @@
+stateDiagram-v2
+  [*] --> Created : new Proxy(config)
+  Created --> Initializing : proxy.start()
+
+  state Initializing {
+    [*] --> SendInitialize
+    SendInitialize --> WaitInitialized
+    WaitInitialized --> [*]
+  }
+
+  Initializing --> Ready : handshake complete
+
+  state Ready {
+    [*] --> Waiting
+    Waiting --> Processing : message received
+    Processing --> Waiting : continue loop
+  }
+
+  Ready --> ShuttingDown : shutdown request received
+  ShuttingDown --> Exited : server acked shutdown
+  Exited --> [*] : process exits

@@ -308,11 +308,14 @@ async fn test_basedpyright_dedup() {
     let compact = result.expect("should produce output");
     let diags = compact["diagnostics"].as_array().unwrap();
 
-    // basedpyright message patterns are not yet normalized by the compressor,
-    // so group count equals the original 6 diagnostics
-    // TODO: add normalization patterns for basedpyright/unused-import/unused-variable
-    assert!(diags.len() <= 6, "basedpyright: groups ({}) <= original (6)", diags.len());
-    assert!(!diags.is_empty(), "basedpyright should produce at least 1 group");
+    // basedpyright: 6 diags → 4 groups
+    //   (type issue + 2× unused import + 2× unused variable + undefined variable)
+    assert_eq!(
+        diags.len(),
+        4,
+        "basedpyright: expected 4 groups, got {}",
+        diags.len()
+    );
 }
 
 // ─── typescript-language-server (TypeScript) ────────────────────────────
@@ -406,11 +409,14 @@ async fn test_typescript_dedup() {
     let compact = result.expect("should produce output");
     let diags = compact["diagnostics"].as_array().unwrap();
 
-    // TypeScript message patterns are not yet normalized by the compressor,
-    // so group count equals the original 6 diagnostics
-    // TODO: add normalization patterns for TypeScript/unused-variable
-    assert!(diags.len() <= 6, "typescript: groups ({}) <= original (6)", diags.len());
-    assert!(!diags.is_empty(), "typescript should produce at least 1 group");
+    // TypeScript: 6 diags → 4 groups
+    //   (2× type mismatch + 2× unused variable + missing property + unresolved reference)
+    assert_eq!(
+        diags.len(),
+        4,
+        "typescript: expected 4 groups, got {}",
+        diags.len()
+    );
 }
 
 // ─── Token Savings ────────────────────────────────────────────────────────

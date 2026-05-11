@@ -1,0 +1,30 @@
+flowchart LR
+  subgraph Input
+    A[Raw Diagnostic JSON]
+  end
+
+  subgraph Pipeline
+    direction LR
+    B[1. Field Pruning]
+    C[2. Message Normalization]
+    D[3. Enum Reduction]
+    E[4. Dedup by Key]
+    F[5. Delta Range Encoding]
+  end
+
+  subgraph Output
+    G[CompactDiagnostic JSON]
+  end
+
+  A --> B
+  B --> C
+  C --> D
+  D --> E
+  E --> F
+  F --> G
+
+  B -.- B1["Drop: source, data, codeDescription, relatedInformation"]
+  C -.- C1["Strip variable names via code-specific patterns<br/>Backtick-ident → <ident>"]
+  D -.- D1["Severity 1-4 → E/W/I/H<br/>Tags → single char"]
+  E -.- E1["Group by (normalized_message, severity, code)<br/>Merge ranges + count"]
+  F -.- F1["First range: absolute [l,c,l,c]<br/>Rest: delta encoding"]

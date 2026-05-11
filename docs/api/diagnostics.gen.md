@@ -28,10 +28,19 @@ This is the critical enabler for dedup: without normalization, messages like
 |------|-------------|------------|
 | `unused_var` / `UnusedVar` | `"declared and not used: x"` | `"unused variable"` |
 | `unused_import` / `UnusedImport` | `"\"os\" imported and not used"` | `"unused import"` |
+| `reportUnusedVariable` | `"Variable \"x\" is not used"` | `"unused variable"` |
+| `reportUnusedImport` | `"Import \"os\" is unused"` | `"unused import"` |
+| `6133` (TypeScript) | `"'temp' is declared but never read"` | `"unused variable"` |
 | _any_ with backtick identifiers | `` "use `foo`" `` | `` "use `<ident>`" `` |
 
 ```rust
 pub fn normalize_message(message: &str, code: Option<&str>) -> String {
+```
+
+Normalize by TypeScript-style numeric diagnostic codes.
+
+```rust
+fn normalize_by_numeric_code(code: i64) -> Option<&'static str> {
 ```
 
 Check if the code represents an "unused variable" diagnostic.

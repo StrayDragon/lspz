@@ -19,3 +19,11 @@ Send raw bytes to the LSP server/client.
 ```rust
 async fn send(&mut self, data: &[u8]) -> Result<(), LspzError>;
 ```
+
+Check whether the underlying process has exited.
+
+Returns `Ok(None)` by default for non-process transports (mock, TCP, WebSocket).
+
+```rust
+fn try_wait(&mut self) -> Result<Option<ExitStatus>, LspzError> {
+```
