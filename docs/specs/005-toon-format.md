@@ -199,7 +199,7 @@ main               ← 顶层符号
 | 场景 | 推荐格式 | 原因 |
 |------|---------|------|
 | Agent SDK 内部传输 | Compact JSON | 最小 token，Agent 端可解压 |
-| LLM 直接消费 | **TOON** | 自解释字段名，LLM 无需预解压 |
+| LLM 直接消费 | **TOON** ✅ 默认 | 自解释字段名，LLM 无需预解压 |
 | 兼容标准 LSP Client | Passthrough | 标准 JSON-RPC |
 | 调试/开发 | TOON | 可读性最好 |
 

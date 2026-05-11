@@ -116,7 +116,8 @@
   - symbols_to_toon: 符号 TOON 格式化
 
 [P7-B] Proxy 支持 --output 参数 ✅ 已完成
-  - --output json (默认, 当前 compact JSON)
+  - --output toon（默认，当前 TOON 格式）
+  - --output json（紧凑 JSON，兼容模式）
   - --output toon (新 TOON 格式)
   - --output passthrough (标准 LSP JSON, 透明转发)
 

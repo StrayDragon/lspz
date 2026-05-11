@@ -50,10 +50,6 @@
 | DocumentSymbolCompressor | 33.0% | 72.1% |
 | **Overall** | **26.8%** | **47.3%** |
 
----
-
-## Per-LSP Diagnostics Benchmarks
-
 Each LSP server produces diagnostics with unique patterns. The table below shows how
 the DiagnosticsCompressor handles real-world output for each supported LSP server.
 
