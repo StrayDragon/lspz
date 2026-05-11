@@ -19,7 +19,7 @@ echo "  ███████║█████╗   █████╔╝  █�
 echo "  ██╔══██║██╔══╝  ██╔═══╝  ███╔╝  "
 echo "  ██║  ██║███████╗███████╗███████╗"
 echo "  ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝"
-echo "  LSP Compression Proxy — v0.5.0"
+echo "  LSP Compression Proxy — v0.7.0"
 echo ""
 
 # ─── Build ──────────────────────────────────────────────────────
@@ -37,6 +37,6 @@ cargo run --example compress-demo -p lspz-core 2>&1
 echo ""
 echo "  ────────────────────────────────────────────────────────"
 echo "  To run against a real LSP server:"
-echo "    cargo run -- --backend rust-analyzer"
+echo "    cargo run -- proxy --backend rust-analyzer"
 echo "  ────────────────────────────────────────────────────────"
 echo ""

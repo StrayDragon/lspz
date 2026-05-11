@@ -1,12 +1,14 @@
-//! lspz Compression Demo (v0.5.0)
+//! lspz Compression Demo (v0.7.0)
 //!
 //! Run: cargo run --example compress-demo -p lspz-core
 //!
 //! Demonstrates all 4 LSP compressors with sample data
-//! and shows byte / token savings.
+//! and shows byte / token savings for both Compact JSON and TOON.
 
 use std::time::Instant;
 
+use lspz_core::codec::compact::CompactDiagnostics;
+use lspz_core::codec::toon;
 use lspz_core::interceptors::Direction;
 use lspz_core::interceptors::Interceptor;
 use lspz_core::{
@@ -18,13 +20,21 @@ use serde_json::{Value, json};
 async fn main() {
     println!();
     println!("  ╔══════════════════════════════════════════════════╗");
-    println!("  ║        lspz Compression Demo  (v0.5.0)          ║");
+    println!("  ║        lspz Compression Demo  (v0.7.0)          ║");
     println!("  ║  LSP compression proxy for AI coding agents     ║");
     println!("  ╚══════════════════════════════════════════════════╝");
     println!();
 
     let mut total_orig = 0usize;
     let mut total_comp = 0usize;
+    let mut total_toon_total = 0usize;
+
+    let toon_methods = [
+        "textDocument/publishDiagnostics",
+        "textDocument/completion",
+        "textDocument/hover",
+        "textDocument/documentSymbol",
+    ];
 
     for (name, method, params, compressor) in [
         (
@@ -111,21 +121,32 @@ async fn main() {
             Box::new(DocumentSymbolCompressor),
         ),
     ] {
-        let (orig, comp) = run_demo(name, method, params, &*compressor).await;
+        let (orig, comp, toon_bytes) =
+            run_demo(name, method, params, &*compressor, &toon_methods).await;
         total_orig += orig;
         total_comp += comp;
+        total_toon_total += toon_bytes;
     }
 
-    let pct = if total_orig > 0 {
+    let comp_pct = if total_orig > 0 {
         (total_orig.saturating_sub(total_comp)) as f64 / total_orig as f64 * 100.0
+    } else {
+        0.0
+    };
+    let toon_pct = if total_orig > 0 {
+        (total_orig.saturating_sub(total_toon_total)) as f64 / total_orig as f64 * 100.0
     } else {
         0.0
     };
 
     println!("  ────────────────────────────────────────────────────");
     println!(
-        "  TOTAL:      {:>6} bytes → {:<6} bytes  ({:>5.1}% saved)",
-        total_orig, total_comp, pct
+        "  TOTAL:      {:>6} bytes → Compact {:<6} bytes ({:>5.1}% saved)",
+        total_orig, total_comp, comp_pct
+    );
+    println!(
+        "  {:>28} → TOON    {:<6} bytes ({:>5.1}% saved)",
+        "", total_toon_total, toon_pct
     );
     println!("  ────────────────────────────────────────────────────");
     println!();
@@ -139,7 +160,8 @@ async fn run_demo(
     method: &str,
     params: Value,
     compressor: &dyn Interceptor,
-) -> (usize, usize) {
+    toon_methods: &[&str],
+) -> (usize, usize, usize) {
     let original_bytes = serde_json::to_string(&params).unwrap().len();
 
     let start = Instant::now();
@@ -150,11 +172,11 @@ async fn run_demo(
         Ok(Some(v)) => v,
         Ok(None) => {
             println!("  ⚠️  {:<30}   (dropped)", name);
-            return (original_bytes, 0);
+            return (original_bytes, 0, 0);
         }
         Err(e) => {
             println!("  ⚠️  {:<30}   failed: {}", name, e);
-            return (original_bytes, original_bytes);
+            return (original_bytes, original_bytes, original_bytes);
         }
     };
     let elapsed = start.elapsed();
@@ -166,16 +188,37 @@ async fn run_demo(
         0.0
     };
 
+    // Convert to TOON if supported
+    let (toon_text, toon_bytes) = if toon_methods.contains(&method) {
+        match convert_compact_to_toon(method, &result) {
+            Some(text) => {
+                let bytes = text.len();
+                (Some(text), bytes)
+            }
+            None => (None, compressed_bytes),
+        }
+    } else {
+        (None, compressed_bytes)
+    };
+    let toon_savings = if original_bytes > 0 {
+        (original_bytes.saturating_sub(toon_bytes)) as f64 / original_bytes as f64 * 100.0
+    } else {
+        0.0
+    };
+
     let pad = format!("{:<30}", name);
     println!(
-        "  📦 {} {:>6}B → {:<6}B  ({:>5.1}%  {:.1}μs)",
+        "  📦 {} {:>6}B → Compact: {:<6}B ({:>5.1}%, {:.1}μs)  TOON: {:<6}B ({:>5.1}%)",
         pad,
         original_bytes,
         compressed_bytes,
         savings,
-        elapsed.as_micros()
+        elapsed.as_micros(),
+        toon_bytes,
+        toon_savings,
     );
 
+    // Print compact JSON
     let pretty = serde_json::to_string_pretty(&result).unwrap();
     println!("  │ compact:");
     for line in pretty.lines() {
@@ -183,5 +226,28 @@ async fn run_demo(
     }
     println!();
 
-    (original_bytes, compressed_bytes)
+    // Print TOON if available
+    if let Some(text) = toon_text {
+        println!("  │ toon:");
+        for line in text.lines() {
+            println!("  │   {}", line);
+        }
+        println!();
+    }
+
+    (original_bytes, compressed_bytes, toon_bytes)
+}
+
+/// Convert compact JSON output to TOON format text.
+fn convert_compact_to_toon(method: &str, compact: &Value) -> Option<String> {
+    match method {
+        "textDocument/publishDiagnostics" => {
+            let typed: CompactDiagnostics = serde_json::from_value(compact.clone()).ok()?;
+            Some(toon::diagnostics_to_toon(&typed))
+        }
+        "textDocument/completion" => toon::completions_to_toon(compact).ok(),
+        "textDocument/hover" => toon::hover_to_toon(compact).ok(),
+        "textDocument/documentSymbol" => toon::symbols_to_toon(compact).ok(),
+        _ => None,
+    }
 }
