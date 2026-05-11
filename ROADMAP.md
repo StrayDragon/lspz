@@ -1,37 +1,34 @@
-# lspz 项目路线图
+# lspz Project Roadmap
 
-> **lsp** zip - LSP 压缩代理：对 AI Coding Agent 极其友好的 LSP 代理层
+> **lsp** **z**ip — 对 AI Coding Agent 极其友好的 LSP 压缩代理
 
 ## 项目愿景
 
-构建一个**三模态 LSP 压缩代理系统**，通过 Token 敏感的智能压缩，让 AI Coding Agent 用更少上下文理解更多代码问题。
+构建一个**三模态 LSP 压缩代理系统**，通过 Token 敏感的智能压缩，让 AI Coding Agent
+用更少上下文理解更多代码问题。
 
 ### 核心价值
 
-- **Token 节省**: 诊断消息压缩 ≥40%，降低 API 成本
+- **Token 节省**: 4 种 LSP 消息类型压缩，平均 40–80%
 - **透明集成**: Agent 无需感知，像正常使用 LSP 一样
 - **灵活部署**: 支持作为库、独立代理、MCP 服务器三种形态
-- **标准兼容**: 永不破坏 LSP 协议标准
+- **标准兼容**: 永不破坏 LSP 协议标准（fail-open 保证）
 
 ---
 
-## 三模态架构
-
-lspz 支持三种产品形态，满足不同使用场景：
+## 三种产品形态
 
 ```
                     ┌─────────────────┐
                     │    lspz-core    │
-                    │   (纯逻辑库)     │
                     └────────┬────────┘
                              │
         ┌────────────────────┼────────────────────┐
         │                    │                    │
         ▼                    ▼                    ▼
 ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│Library Mode │    │ Proxy Mode   │    │  MCP Mode    │
-│(作为库)     │    │(LSP 代理)     │    │(MCP 服务器)  │
-│优先级: #1     │    │优先级: #2     │    │优先级: #3     │
+│Library Mode  │    │ Proxy Mode   │    │  MCP Mode    │
+│  #1 优先     │    │  #2 优先     │    │  #3 优先     │
 └──────────────┘    └──────────────┘    └──────────────┘
 ```
 
@@ -41,148 +38,105 @@ lspz 支持三种产品形态，满足不同使用场景：
 | **Proxy** | Claude Code/Continue/Cody | 即插即用，透明代理 | `lspz --backend gopls` |
 | **MCP** | 快速实验/多工具协同 | 融入生态，按需查询 | MCP server 配置 |
 
-**详细架构说明**: [docs/specs/001-tri-modal-architecture.md](docs/specs/001-tri-modal-architecture.md)
+---
+
+## 版本历史
+
+| 版本 | 阶段 | 主要变更 |
+|------|------|----------|
+| **v0.6.0** *(当前)* | 4 个压缩器全部完成 | DocumentSymbol 压缩 |
+| v0.5.0 | Hover 压缩 | Markdown 紧凑 + Hover 字段压缩 |
+| v0.4.0 | 补全压缩 | CompletionItemKind 编码 + doc 去重 |
+| v0.3.0 | Agent SDK | AgentHandle + AgentPool |
+| v0.2.0 | MCP 集成 | 3 tools (get_diagnostics/completions/symbols) |
+| v0.1.0 | MVP | Proxy + Diagnostics 压缩 |
 
 ---
 
-## 开发路线
+## 已完成 (Phase 0–6)
 
-### Phase 0: 基础设施
-
-**状态**: ✅ 已完成
-
+### Phase 0: 基础设施 ✅
 - [x] 项目初始化
-- [x] 文档结构建立
-- [x] SSOT 规则建立 (docs/specs/004-ssot-rules.md)
 - [x] CI/CD 配置 (GitHub Actions)
-- [x] 开发环境搭建指南
+- [x] SSOT 规则建立
+- [x] 开发环境搭建
 
-### Phase 1: MVP - v0.1 (Library + Proxy)
+### Phase 1: MVP — v0.1 ✅
+- [x] JSON-RPC codec + Transport
+- [x] Proxy 核心 + CLI
+- [x] Interceptor 链 + Diagnostics 压缩
+- [x] 测试 + 文档 + 发布
 
-**状态**: ✅ 已完成
-
-**目标**: 实现核心压缩功能，支持作为库和代理两种模式
-
-**实施计划**: 参见 [docs/plan/01-mvp-phase.md](docs/plan/01-mvp-phase.md) 中的 Task A→D 拆分
-
-**检查点序列**:
-- ✅ Task A (Codec + Transport) → `v0.1.0-alpha.1`
-- ✅ Task B (Proxy Core + CLI) → `v0.1.0-alpha.2`
-- ✅ Task C (Interceptor + 诊断压缩) → `v0.1.0-rc.1`
-- ✅ Task D (测试 + 文档 + 发布) → `v0.1.0`
-
-**详细计划**: [docs/plan/01-mvp-phase.md](docs/plan/01-mvp-phase.md)
-
----
-
-### Phase 2: MCP 集成 - v0.2
-
-**状态**: ✅ 已完成 | **实际完成**: 2026-05
-
-**目标**: 添加 MCP 服务器模式，支持快速实验和生态集成
-
-**核心功能**:
-- [x] `lspz-mcp` crate
-- [x] MCP tools 实现
-  - [x] `get_diagnostics`
-  - [x] `get_completions`
-  - [x] `get_symbols`
-- [x] Claude Desktop 集成示例
+### Phase 2: MCP 集成 — v0.2 ✅
+- [x] lspz-mcp crate
+- [x] get_diagnostics / get_completions / get_symbols tools
 - [x] MCP 配置指南
 
-**交付物**:
-- [x] `lspz-mcp` crate (v0.2.0)
-- [x] MCP 集成文档 (docs/plan/02-mcp-phase.md)
-
-**详细计划**: [docs/plan/02-mcp-phase.md](docs/plan/02-mcp-phase.md)
-
----
-
-### Phase 3: Agent SDK - v0.3
-
-**状态**: ✅ 已完成 | **实际完成**: 2026-05
-
-**目标**: 提供简化的 Agent 集成 SDK，降低嵌入成本
-
-**核心功能**:
-- [ ] `lspz-macros` 宏库 (deferred — only 1 interceptor exists)
+### Phase 3: Agent SDK — v0.3 ✅
+- [x] lspz-agent-sdk crate (AgentHandle + AgentPool)
 - [x] Agent 集成模板
-- [ ] Skill/ Prompt 生成器 (deferred)
-- [x] 类型安全的 API (AgentHandle + AgentPool)
 
-**交付物**:
-- [ ] `lspz-macros` crate (v0.3.0) — deferred
-- [x] `lspz-agent-sdk` crate (v0.3.0)
-- [x] Agent 集成指南
+### Phase 4: Completion 压缩 — v0.4 ✅
+- [x] CompletionItemKind 枚举缩减 (1-25 → 单 char)
+- [x] 字段裁剪 + doc 去重
+- [x] E2E 测试框架 (LspTestHarness)
 
-**详细计划**: [docs/plan/03-agent-sdk-phase.md](docs/plan/03-agent-sdk-phase.md) (待创建)
+### Phase 5: Hover 压缩 — v0.5 ✅
+- [x] Markdown 空白行折叠 + code fence 缩短
+- [x] MarkupKind 缩减 (markdown → "m", plaintext → "p")
+- [x] Hover 字段压缩
+
+### Phase 6: DocumentSymbol 压缩 — v0.5 ✅
+- [x] DocumentSymbol (分层) + SymbolInformation (扁平) 双格式支持
+- [x] SymbolKind 1-26 单字符编码
+- [x] 递归 children 压缩
 
 ---
 
-### Phase 4: 高级特性 - v0.4
+## 剩余事项 (低优先级)
 
-**状态**: ⏸️ 未开始 | **预计**: Q4 2026
+### Metrics & Tracing 增强
+埋点记录压缩率 / 延迟 / 节省 token 数。不违反 fail-open 原则。
 
-**目标**: 扩展压缩范围，优化性能
+### TCP/WebSocket Transport
+当前仅支持 stdio。无实际需求，除非需要远程 LSP server。
 
-**核心功能**:
-- [ ] 更多消息类型压缩
-  - [ ] Completion 压缩
-  - [ ] Hover 压缩
-  - [ ] DocumentSymbol 压缩
-- [ ] TCP/WebSocket 传输层
-- [ ] Metrics & Tracing
-- [ ] 动态配置热加载
+### Config 热重载
+`notify` crate + `Arc<RwLock<Config>>`。但有状态一致性问题，重启即可。
+
+### Python/TypeScript 客户端库
+等待压缩格式稳定（连续 3 个 phase 无变更）。
 
 ---
 
 ## 技术栈
 
-### 核心依赖
-- **Rust**: 2021 edition
+- **Rust**: 2024 edition
 - **Tokio**: 异步运行时
 - **Serde**: 序列化框架
-- **tower-lsp**: LSP 协议库（评估中）
-
-### 测试目标 LSP 服务器
-- rust-analyzer
-- gopls
-- basedpyright
-- typescript-language-server
+- **Clap**: CLI 参数解析
 
 ---
 
 ## 文档导航
 
 ### 新手入门
-1. [docs/README.md](docs/README.md) - 开发者前导（必读！）
-2. [docs/specs/001-tri-modal-architecture.md](docs/specs/001-tri-modal-architecture.md) - 架构规格
-3. [docs/plan/01-mvp-phase.md](docs/plan/01-mvp-phase.md) - MVP 计划
+1. [README.md](README.md) — 项目概览和快速开始
+2. [docs/README.md](docs/README.md) — 开发者前导
+3. [docs/specs/001-tri-modal-architecture.md](docs/specs/001-tri-modal-architecture.md) — 架构规格
 
 ### 技术规格
-- [docs/specs/002-compression-format.md](docs/specs/002-compression-format.md) - 压缩格式规范
-- [docs/specs/003-lsp-compatibility.md](docs/specs/003-lsp-compatibility.md) - LSP 兼容性
-- [docs/specs/004-ssot-rules.md](docs/specs/004-ssot-rules.md) - 文档生成和 SSOT 规则
+- [docs/specs/002-compression-format.md](docs/specs/002-compression-format.md) — 压缩格式规范
+- [docs/specs/003-lsp-compatibility.md](docs/specs/003-lsp-compatibility.md) — LSP 兼容性
+- [docs/specs/004-ssot-rules.md](docs/specs/004-ssot-rules.md) — SSOT 规则
 
-### 开发指南
-- [docs/guides/coding-conventions.md](docs/guides/coding-conventions.md) - 编码约定
-- [docs/guides/testing-guide.md](docs/guides/testing-guide.md) - 测试指南
-
----
-
-## 版本历史
-
-| 版本 | 日期 | 阶段 | 主要变更 |
-|------|------|------|----------|
-| v0.1.0 | 2025-12 | MVP | Library + Proxy 模式 |
-| v0.2.0 | 2026-05 | MCP | 添加 MCP 服务器 (rmcp SDK, 3 tools) |
-| v0.3.0 | 2026-05 | SDK | Agent 集成 SDK (AgentHandle + AgentPool) |
+### API 文档（自动生成）
+- [docs/api/modules.gen.md](docs/api/modules.gen.md) — 模块索引
+- [docs/api/config.gen.md](docs/api/config.gen.md) — 配置参考
+- [docs/reference/config.gen.md](docs/reference/config.gen.md) — 配置字段说明
+- [docs/specs/interceptors.gen.md](docs/specs/interceptors.gen.md) — 拦截器列表
 
 ---
-
-## 贡献指南
-
-请查看 [docs/guides/contributing.md](docs/guides/contributing.md) 了解如何参与贡献。
 
 ## 许可证
 

@@ -1,6 +1,6 @@
 # lspz
 
-> **lsp** **z**ip - 对 AI Coding Agent 极其友好的 LSP 压缩代理
+> **lsp** **z**ip — 对 AI Coding Agent 极其友好的 LSP 压缩代理
 
 [![Rust](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org)
 [![License](https://img.shields.io/badge/license-MIT%2FApache-blue.svg)](LICENSE)
@@ -8,22 +8,30 @@
 
 ## 概述
 
-lspz 是一个**三模态 LSP 压缩代理系统**，通过 Token 敏感的智能压缩，让 AI Coding Agent 用更少上下文理解更多代码问题。
+lspz 是一个**三模态 LSP 压缩代理系统**，通过 Token 敏感的智能压缩，让 AI Coding Agent
+用更少上下文理解更多代码问题。
 
 ### 核心特性
 
-- **Token 节省**: 诊断消息压缩 ≥40%，降低 API 成本
+- **Token 节省**: 4 种 LSP 消息类型压缩，平均节省 40–80%
 - **透明集成**: Agent 无需感知，像正常使用 LSP 一样
 - **灵活部署**: 支持作为库、独立代理、MCP 服务器三种形态
-- **标准兼容**: 永不破坏 LSP 协议标准
+- **标准兼容**: 永不破坏 LSP 协议标准（fail-open 保证）
 
-### 调研结论
+### 已实现的 4 个压缩器
 
-经过对 OpenCode 和 4 个真实 LSP 服务器的分析：
+| 压缩器 | 消息类型 | 策略 | Token 节省 |
+|--------|----------|------|------------|
+| **Diagnostics** | `publishDiagnostics` | 去重合并 + 字段裁剪 + range delta 编码 | 40–80% |
+| **Completion** | `textDocument/completion` | 截断 + 字段裁剪 + kind 编码 + doc 去重 | 30–60% |
+| **Hover** | `textDocument/hover` | Markdown 压缩 + 字段裁剪 + MarkupKind 缩减 | 20–40% |
+| **DocumentSymbol** | `textDocument/documentSymbol` | 递归树压缩 + SymbolKind 编码 + 字段裁剪 | 30–50% |
 
-- OpenCode 已经对诊断做了有损压缩（只保留 ERROR，每文件 20 条上限）—— lspz 可以**在协议层以紧凑格式保留 WARNING 信号**，同时保持结构化
-- 去重合并是 #1 收益策略：30 个 "unused variable" 错误 → 1 条 + 30 个 range 引用
-- 没有现有产品做面向 AI Agent 的 LSP 消息压缩——**lspz 是首创**
+### 一键验证
+
+```bash
+bash scripts/compress-demo.sh
+```
 
 ---
 
@@ -53,6 +61,21 @@ lspz 是一个**三模态 LSP 压缩代理系统**，通过 Token 敏感的智�
 
 ## 快速开始
 
+### Proxy 模式（推荐体验方式）
+
+```bash
+# 安装
+cargo install lspz
+
+# 直接使用（以 rust-analyzer 为例）
+lspz --backend rust-analyzer
+
+# 自定义配置
+lspz --backend gopls -d -c -H -S           # 全部启用（默认）
+lspz --backend gopls --compress-diag false   # 仅禁用诊断压缩
+lspz --backend gopls -l debug                # 调试日志
+```
+
 ### 作为库使用（Library Mode）
 
 ```toml
@@ -61,43 +84,32 @@ lspz-core = "0.1"
 ```
 
 ```rust
-use lspz_core::{Proxy, Config};
+use lspz_core::{Config, Proxy, StdioTransport};
+use lspz_core::interceptors::{Interceptor, InterceptorChain, Direction};
+use lspz_core::DiagnosticsCompressor;
 
-#[tokio::main]
-async fn main() -> Result<()> {
-    let config = Config::builder()
-        .backend_cmd("rust-analyzer")
-        .enable_diag_compress(true)
-        .build();
+let config = Config::builder()
+    .backend_cmd("rust-analyzer")
+    .enable_diag_compress(true)
+    .build()?;
 
-    let proxy = Proxy::new(config).await?;
-    proxy.initialize().await?;
+let transport = StdioTransport::spawn("rust-analyzer")?;
+let chain = InterceptorChain::new(vec![
+    Box::new(DiagnosticsCompressor::default()),
+]);
 
-    let diagnostics = proxy.get_diagnostics(uri).await?;
-
-    Ok(())
-}
-```
-
-### 作为代理使用（Proxy Mode）
-
-```bash
-# 安装
-cargo install lspz
-
-# 使用
-lspz --backend rust-analyzer --stdio
+let mut proxy = Proxy::new(config, Box::new(transport), chain);
+proxy.start().await?;
 ```
 
 ### 作为 MCP 服务器（MCP Mode）
 
 ```json
-// Claude Desktop 配置
 {
   "mcpServers": {
     "lspz": {
-      "command": "lspz-mcp",
-      "args": ["--backend", "rust-analyzer"]
+      "command": "lspz",
+      "args": ["mcp"]
     }
   }
 }
@@ -105,53 +117,63 @@ lspz --backend rust-analyzer --stdio
 
 ---
 
-## 文档
+## 验证压缩效果
 
-### 新手入门
+```bash
+# 一键验证（无需 LSP 服务器）
+bash scripts/compress-demo.sh
 
-1. **[ROADMAP.md](ROADMAP.md)** - 项目路线图和愿景
-2. **[docs/README.md](docs/README.md)** - 开发者前导（**必读！**）
+# 输出示例:
+#   📦 DiagnosticsCompressor           712B → 340B   (52.2%  μs=42)
+#   📦 CompletionCompressor            562B → 348B   (38.1%  μs=28)
+#   📦 HoverCompressor                 254B → 184B   (27.6%  μs=15)
+#   📦 DocumentSymbolCompressor        416B → 200B   (51.9%  μs=12)
+#   ────────────────────────────────────────────────────
+#   TOTAL:     1944 bytes → 1072 bytes  (44.9% saved)
+```
 
-### 技术文档
+---
 
-- **[docs/specs/001-tri-modal-architecture.md](docs/specs/001-tri-modal-architecture.md)** - 三模态架构规格
-- **[docs/specs/002-compression-format.md](docs/specs/002-compression-format.md)** - 压缩格式规范
-- **[docs/specs/003-lsp-compatibility.md](docs/specs/003-lsp-compatibility.md)** - LSP 兼容性规范
+## 项目结构
 
-### 开发指南
+```
+crates/
+├── lspz-core/         # 核心库 — Proxy, Transport, Interceptor 链
+├── lspz/              # CLI — Proxy + MCP server 入口
+├── lspz-mcp/          # MCP server crate
+└── lspz-agent-sdk/    # Agent SDK — AgentHandle + AgentPool
 
-- **[docs/plan/01-mvp-phase.md](docs/plan/01-mvp-phase.md)** - MVP 实施计划
-- **[docs/guides/coding-conventions.md](docs/guides/coding-conventions.md)** - 编码规范
-- **[docs/guides/testing-guide.md](docs/guides/testing-guide.md)** - 测试指南
-- **[docs/guides/contributing.md](docs/guides/contributing.md)** - 贡献指南
+scripts/
+├── compress-demo.sh   # 一键压缩验证脚本
+└── gen-docs.py        # 文档生成器（SSOT）
+```
+
+---
+
+## 质量
+
+```
+cargo clippy      ── 零警告
+cargo fmt --check ── 通过
+cargo test        ── 97+ 测试通过（3 suites）
+just gen-check    ── 17/17 文档同步
+```
 
 ---
 
 ## 项目状态
 
-### 当前版本: v0.3.0 (Agent SDK)
+### 当前版本: v0.5.0
 
-- [x] 项目规划和文档
-- [x] lspz-core 基础实现
-- [x] 诊断压缩功能
-- [x] LSP 代理模式
-- [x] MCP 服务器模式
-- [x] Agent SDK
-- [ ] 生产加固 & 补全压缩 (v0.4.0 in-progress)
+- ✅ 所有 4 个 LSP 消息类型压缩器已实现
+- ✅ Proxy / Library / MCP 三种模式
+- ✅ Agent SDK（AgentHandle + AgentPool）
+- ✅ 97+ 测试，clippy 零警告，文档 SSOT 同步
+- ✅ fail-open：任何压缩失败不影响消息转发
 
-详细路线图: [ROADMAP.md](ROADMAP.md)
+### 路线图
 
----
-
-## 贡献
-
-欢迎贡献！请阅读 [贡献指南](docs/guides/contributing.md) 了解如何参与。
-
-### 开发前必读
-
-1. [docs/README.md](docs/README.md) - 开发者前导
-2. [docs/guides/coding-conventions.md](docs/guides/coding-conventions.md) - 编码规范
-3. [docs/guides/testing-guide.md](docs/guides/testing-guide.md) - 测试指南
+参见 [ROADMAP.md](ROADMAP.md) 了解详细版本计划和未来方向。
 
 ---
 
@@ -161,21 +183,3 @@ lspz --backend rust-analyzer --stdio
 
 - MIT License ([LICENSE-MIT](LICENSE-MIT) 或 http://opensource.org/licenses/MIT)
 - Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE) 或 http://www.apache.org/licenses/LICENSE-2.0)
-
-你可以选择其中之一。
-
----
-
-## 致谢
-
-- [Language Server Protocol](https://microsoft.github.io/language-server-protocol/) - LSP 规范
-- [tower-lsp](https://github.com/kinggoesgaming/tower-lsp) - LSP 实现参考
-- 所有贡献者
-
----
-
-## 联系方式
-
-- **GitHub**: https://github.com/your-org/lspz
-- **Issues**: https://github.com/your-org/lspz/issues
-- **Discussions**: https://github.com/your-org/lspz/discussions
