@@ -7,14 +7,28 @@
 
 ## 概述
 
-lspz 必须完全符合 [Language Server Protocol 3.17](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) 规范，确保与任何标准 LSP 客户端和服务器兼容。
+lspz 必须完全符合 [Language Server Protocol 3.17](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/) 规范，确保输入侧（LSP 服务器端）兼容所有标准实现。
+
+**输出侧**（AI Agent 端）不受 LSP 标准约束——lspz 的消费端始终是 LLM，
+而非标准 LSP Client。这意味着输出格式可以完全脱离 JSON，采用
+[TOON 输出格式](005-toon-format.md) 等 LLM 原生友好的格式。
 
 ### 兼容性原则
 
-1. **不破坏标准**: 永不违反 LSP 规范
-2. **透明转发**: 非目标消息必须透明转发
-3. **能力协商**: 正确处理 server/client capabilities
-4. **错误隔离**: 压缩失败不影响 LSP 通信
+1. **输入兼容**: 输入（Server→lspz）必须完全符合 LSP 3.17 规范
+2. **输出自由**: 输出（lspz→Agent）不受 LSP 标准约束，以 token 效率优先
+3. **透明转发**: 非目标消息必须透明转发，不干扰 LSP 通信流
+4. **能力协商**: 正确处理 server/client capabilities，不做篡改
+5. **错误隔离**: 压缩失败不影响 LSP 通信
+
+### 核心假设调整
+
+| 主题 | 原假设（v0.1–v0.5） | 新假设（v0.7+） |
+|------|---------------------|-----------------|
+| 输出格式 | 必须兼容标准 LSP Client | 只给 LLM 消费，格式可任意 |
+| JSON 约束 | 必须保持合法 JSON | 可放弃 JSON，用行协议 |
+| 字段名 | 需自解释（`message`, `severity`） | LLM 能从上下文推断（`m`, `s` 或空）|
+| 兼容性重点 | LSP Client 端解析 | LLM 端语义理解 |
 
 ---
 
@@ -371,3 +385,5 @@ match compress_diagnostics(diagnostics) {
 - [JSON-RPC 2.0 规范](https://www.jsonrpc.org/specification)
 - [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范
 - [specs/001-tri-modal-architecture.md](001-tri-modal-architecture.md) - 三模态架构
+- [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范（含输出格式进化路线）
+- [specs/005-toon-format.md](005-toon-format.md) - TOON 输出格式格式草案
