@@ -55,6 +55,15 @@ enum Cli {
         )]
         compress_hover: bool,
 
+        /// Enable document symbol compression (default: true)
+        #[arg(
+            short = 'S',
+            long = "compress-document-symbol",
+            env = "LSPZ_ENABLE_DOCUMENT_SYMBOL_COMPRESS",
+            default_value_t = true
+        )]
+        compress_document_symbol: bool,
+
         /// Log level (trace, debug, info, warn, error)
         #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
         log_level: String,
@@ -77,6 +86,7 @@ async fn main() -> ExitCode {
             compress_diag,
             compress_completion,
             compress_hover,
+            compress_document_symbol,
             log_level,
         } => {
             run_proxy(
@@ -84,6 +94,7 @@ async fn main() -> ExitCode {
                 compress_diag,
                 compress_completion,
                 compress_hover,
+                compress_document_symbol,
                 log_level,
             )
             .await
@@ -99,6 +110,7 @@ async fn run_proxy(
     compress_diag: bool,
     compress_completion: bool,
     compress_hover: bool,
+    compress_document_symbol: bool,
     log_level: String,
 ) -> ExitCode {
     // Initialize tracing
@@ -113,6 +125,7 @@ async fn run_proxy(
         .enable_diag_compress(compress_diag)
         .enable_completion_compress(compress_completion)
         .enable_hover_compress(compress_hover)
+        .enable_document_symbol_compress(compress_document_symbol)
         .log_level(&log_level)
         .build()
     {
@@ -145,6 +158,10 @@ async fn run_proxy(
     if config.enable_hover_compress {
         interceptors.push(Box::new(lspz_core::HoverCompressor::default()));
         tracing::info!("Hover compression enabled");
+    }
+    if config.enable_document_symbol_compress {
+        interceptors.push(Box::new(lspz_core::DocumentSymbolCompressor));
+        tracing::info!("Document symbol compression enabled");
     }
     let interceptor_chain = InterceptorChain::new(interceptors);
 

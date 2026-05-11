@@ -15,6 +15,8 @@ pub struct Config {
     pub enable_completion_compress: bool,
     /// Whether to enable hover compression (default: true).
     pub enable_hover_compress: bool,
+    /// Whether to enable document symbol compression (default: true).
+    pub enable_document_symbol_compress: bool,
     /// Log level (trace, debug, info, warn, error).
     pub log_level: String,
 }
@@ -26,6 +28,7 @@ impl Default for Config {
             enable_diag_compress: true,
             enable_completion_compress: true,
             enable_hover_compress: true,
+            enable_document_symbol_compress: true,
             log_level: "info".into(),
         }
     }
@@ -45,6 +48,7 @@ pub struct ConfigBuilder {
     enable_diag_compress: Option<bool>,
     enable_completion_compress: Option<bool>,
     enable_hover_compress: Option<bool>,
+    enable_document_symbol_compress: Option<bool>,
     log_level: Option<String>,
 }
 
@@ -70,6 +74,12 @@ impl ConfigBuilder {
     /// Enable or disable hover compression.
     pub fn enable_hover_compress(mut self, enable: bool) -> Self {
         self.enable_hover_compress = Some(enable);
+        self
+    }
+
+    /// Enable or disable document symbol compression.
+    pub fn enable_document_symbol_compress(mut self, enable: bool) -> Self {
+        self.enable_document_symbol_compress = Some(enable);
         self
     }
 
@@ -113,6 +123,15 @@ impl ConfigBuilder {
             })
             .unwrap_or(true);
 
+        let enable_document_symbol_compress = self
+            .enable_document_symbol_compress
+            .or_else(|| {
+                std::env::var("LSPZ_ENABLE_DOCUMENT_SYMBOL_COMPRESS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+            })
+            .unwrap_or(true);
+
         let log_level = self
             .log_level
             .or_else(|| std::env::var("LSPZ_LOG_LEVEL").ok())
@@ -123,6 +142,7 @@ impl ConfigBuilder {
             enable_diag_compress,
             enable_completion_compress,
             enable_hover_compress,
+            enable_document_symbol_compress,
             log_level,
         })
     }
