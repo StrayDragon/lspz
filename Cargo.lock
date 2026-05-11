@@ -700,6 +700,7 @@ dependencies = [
  "lspz-core",
  "lspz-mcp",
  "rmcp",
+ "shell-words",
  "tokio",
  "tracing",
  "tracing-subscriber",

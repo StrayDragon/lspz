@@ -50,7 +50,7 @@ impl LspTestHarness {
         }
 
         let temp_dir = TempDir::with_prefix("lspz_e2e_").ok()?;
-        let transport = StdioTransport::spawn(cmd).ok()?;
+        let transport = StdioTransport::spawn(cmd, &[]).ok()?;
 
         let mut harness = Self {
             transport,

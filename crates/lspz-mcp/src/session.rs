@@ -26,7 +26,7 @@ pub struct LspSession {
 impl LspSession {
     /// Spawn an LSP server and return an uninitialized session.
     pub fn spawn(cmd: &str) -> Result<Self, anyhow::Error> {
-        let transport = StdioTransport::spawn(cmd)?;
+        let transport = StdioTransport::spawn(cmd, &[])?;
         Ok(Self {
             transport: Box::new(transport),
             next_id: AtomicI64::new(1),

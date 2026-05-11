@@ -28,6 +28,11 @@ enum Cli {
         #[arg(short, long, env = "LSPZ_BACKEND_CMD")]
         backend: String,
 
+        /// Arguments to pass through to the backend LSP server
+        /// (placed after `--` on the command line)
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+        backend_args: Vec<String>,
+
         /// Enable diagnostic compression (default: true)
         #[arg(
             short = 'd',
@@ -83,6 +88,7 @@ async fn main() -> ExitCode {
     match Cli::parse() {
         Cli::Proxy {
             backend,
+            backend_args,
             compress_diag,
             compress_completion,
             compress_hover,
@@ -91,6 +97,7 @@ async fn main() -> ExitCode {
         } => {
             run_proxy(
                 backend,
+                backend_args,
                 compress_diag,
                 compress_completion,
                 compress_hover,
@@ -107,12 +114,55 @@ async fn main() -> ExitCode {
 #[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 async fn run_proxy(
     backend: String,
+    backend_args: Vec<String>,
     compress_diag: bool,
     compress_completion: bool,
     compress_hover: bool,
     compress_document_symbol: bool,
     log_level: String,
 ) -> ExitCode {
+    // If backend args contain --help or -h, spawn backend directly and show its help output
+    if backend_args.iter().any(|a| a == "--help" || a == "-h") {
+        let parts = match shell_words::split(&backend) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to parse backend command '{backend}': {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let mut iter = parts.into_iter();
+        let program = match iter.next() {
+            Some(p) => p,
+            None => {
+                eprintln!("Empty backend command");
+                return ExitCode::FAILURE;
+            }
+        };
+        let mut args: Vec<String> = iter.collect();
+        args.extend(backend_args);
+
+        let status = match tokio::process::Command::new(&program)
+            .args(&args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::inherit())
+            .stderr(std::process::Stdio::inherit())
+            .status()
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Failed to execute backend '{program}': {e}");
+                return ExitCode::FAILURE;
+            }
+        };
+
+        return if status.success() {
+            ExitCode::SUCCESS
+        } else {
+            ExitCode::FAILURE
+        };
+    }
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::builder().parse_lossy(&log_level))
@@ -137,7 +187,7 @@ async fn run_proxy(
     };
 
     // Create transport
-    let transport = match StdioTransport::spawn(&config.backend_cmd) {
+    let transport = match StdioTransport::spawn(&config.backend_cmd, &backend_args) {
         Ok(t) => Box::new(t) as Box<dyn lspz_core::Transport>,
         Err(e) => {
             eprintln!("Failed to start backend server: {e}");

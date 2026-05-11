@@ -22,9 +22,12 @@ impl StdioTransport {
     /// Spawn a new process and connect to its stdio.
     ///
     /// The `cmd` is split on whitespace into program + arguments.
-    pub fn spawn(cmd: &str) -> Result<Self, LspzError> {
-        let parts = shell_words::split(cmd)
+    /// `extra_args` are appended after the parsed command-line arguments
+    /// (e.g. arguments captured from the `--` separator on the CLI).
+    pub fn spawn(cmd: &str, extra_args: &[String]) -> Result<Self, LspzError> {
+        let mut parts = shell_words::split(cmd)
             .map_err(|e| LspzError::Config(format!("failed to parse command '{cmd}': {e}")))?;
+        parts.extend_from_slice(extra_args);
 
         let mut iter = parts.into_iter();
         let program = iter
