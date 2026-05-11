@@ -56,3 +56,16 @@ gen-error-docs:
 # Generate metadata docs from Cargo.toml.
 gen-meta-docs:
     @echo "TODO: extract workspace members and deps from Cargo.toml"
+
+# Run Criterion throughput benchmarks.
+bench:
+    cargo bench -p lspz-core
+
+# Run compression ratio report (quick, no Criterion).
+bench-report:
+    cargo run --example bench-report -p lspz-core
+
+# Run full benchmark suite + save report.
+bench-all:
+    cargo bench -p lspz-core
+    bash scripts/run-bench.sh

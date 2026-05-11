@@ -104,7 +104,7 @@ async fn main() -> ExitCode {
 }
 
 /// Run in proxy mode — transparent LSP proxy with diagnostic compression.
-#[allow(clippy::too_many_arguments)]
+#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
 async fn run_proxy(
     backend: String,
     compress_diag: bool,
