@@ -95,5 +95,5 @@ Ensure you prefix the file path with `file://` as shown in the examples above.
 ## References
 
 - [lspz README](../../README.md)
-- [MCP Phase Plan](../plan/02-mcp-phase.md)
+- [ROADMAP.md](../../ROADMAP.md)
 - [LSP Compatibility Spec](../specs/003-lsp-compatibility.md)

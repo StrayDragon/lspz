@@ -83,3 +83,60 @@ Agent SDK — declarative LSP integration for AI coding agents.
 - License: MIT
 - Synthetic fixture tests for basedpyright and typescript-language-server diagnostic formats
 - Claude Desktop integration guide (`docs/guides/claude-desktop-integration.md`)
+
+## v0.4.0 (2026-05-10)
+
+Production hardening & completion compression.
+
+- `CompletionCompressor`: CompletionItemKind 枚举缩减 (1-25 → 单 char), 字段裁剪, doc 去重
+- E2E 测试框架 (LspTestHarness) with gopls/rust-analyzer/basedpyright/typescript-language-server
+- 4 组压测 fixture (diagnostics, completions, hover, symbols)
+
+## v0.5.0 (2026-05-11)
+
+Hover compression & DocumentSymbol compression.
+
+- `HoverCompressor`: Markdown 空白行折叠, code fence 缩短, MarkupKind 缩减
+- `DocumentSymbolCompressor`: SymbolKind 1-26 单字符编码, 递归 children 压缩, 双格式支持 (DocumentSymbol 分层 + SymbolInformation 扁平)
+
+## v0.6.0 (2026-05-11)
+
+Documentation cleanup & verification tooling.
+
+- README/ROADMAP 重写
+- `just compress-demo` 一键验证 (展示全部压缩器 token 节省)
+- Documentation alignment across all specs/guides
+
+## v0.7.0 (2026-05-11)
+
+TOON output format & benchmark/report system.
+
+- `codec/toon.rs`: TOON (Token-Oriented Object Notation) 输出格式 — 自解释行协议 + 表格
+- `--output toon|json|passthrough` CLI flag
+- TOON 输出 for: diagnostics, completions, hover, symbols
+- Benchmark report system: Criterion 吞吐量 + 压缩比报告 (bytes + tokens)
+- `docs/reports/latest.md` 自动生成
+
+## v0.8.0 (2026-05-12)
+
+Response capping & proxy response interception.
+
+- `CappingInterceptor`: 截断 + 压缩正交叠加
+- `--max-diags` / `--max-completions` / `--max-symbols` CLI flags
+- `CappingConfig` struct + builder + env-var 支持
+- Proxy 新增 `pending_requests` 跟踪机制, 支持 response 消息拦截
+- CompletionCompressor / HoverCompressor / DocumentSymbolCompressor 现可在 proxy 模式下工作
+
+## v0.9.0 (2026-05-12)
+
+Location compression, TCP/WebSocket transport, runtime metrics, config hot-reload.
+
+- `LocationCompressor`: references/definition/implementation/typeDefinition (URI 去重 + delta range)
+- `WorkspaceSymbolCompressor`: workspace/symbol (SymbolKind 复用 + URI 去重)
+- `WorkspaceDiagnosticCompressor`: workspace/diagnostic (unchanged 跳过 + 复用 DiagnosticsCompressor)
+- TCP transport (`TcpTransport`) — default feature
+- WebSocket transport (`WsTransport`) — `transport-websocket` feature
+- Runtime metrics: `MetredInterceptor` wrapper + `MetricsSnapshot` (压缩率, 延迟, 计数)
+- Config hot-reload: `ConfigWatcher` using `notify` crate + `Arc<RwLock<Config>>`
+- Agent SDK 统一到 InterceptorChain (所有 7 个压缩器)
+- 176+ tests passing

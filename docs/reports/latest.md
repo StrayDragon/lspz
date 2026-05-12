@@ -1,8 +1,8 @@
 # lspz Compression Benchmark Report
 
-**Version**: v0.7.0
+**Version**: v0.9.0
 
-**Date**: 2026-05-11
+**Date**: 2026-05-12
 
 ## DiagnosticsCompressor
 
