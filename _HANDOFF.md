@@ -140,7 +140,6 @@ v0.11.0 → Workspace Diagnostic 压缩
 - TCP/WebSocket Transport (无外部需求)
 - Metrics & Tracing 增强 (按需实施)
 - Config 热重载 (低优先级)
-- Python/TypeScript 解压缩客户端库 (等待格式稳定)
 - proc-macro 拦截器派生 (不值得, 除非 10+ 拦截器)
 
 ## 已完成: Phase 8 — Response Capping ✅
