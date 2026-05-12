@@ -209,6 +209,93 @@ just gen-check     # 检查文档是否过时 (CI 使用)
 
 ---
 
+## 异步超时与 CI 可靠性
+
+### 教训: 无限循环必须有超时保护
+
+2026-05-12: CI 在 `cargo test --workspace` 步骤卡死 1h+，原因是 `LspSession::send_request()`
+和 `LspTestHarness::get_diagnostics()` 中的 `loop { transport.receive()... }` 没有超时保护。
+当 LSP 服务器启动缓慢或版本不兼容时，这些循环永远不退出。
+
+### 强制规则
+
+| 模式 | 规则 | 示例 |
+|------|------|------|
+| 异步 receive 循环 | 必须使用 `tokio::time::timeout` 包裹 | `tokio::time::timeout(Duration::from_secs(30), self.transport.receive()).await?` |
+| 测试 LSP 服务器 | 必须优雅跳过而非 panic | `if initialize failed → SKIP` |
+| CI job | 必须设置 `timeout-minutes` | `timeout-minutes: 15` (job 级别) |
+| CI step | 每个耗时步骤单独设置超时 | `timeout-minutes: 10` (test 步骤) |
+
+### 超时值参考
+
+| 场景 | 建议超时 | 说明 |
+|------|---------|------|
+| LSP 请求/响应 | 30s | 足够 LSP 服务器返回结果 |
+| E2E 测试 (单个) | 30–60s | 含 LSP 服务器启动 + 分析 |
+| CI test 步骤 | 10 min | 完整测试套件 |
+| CI job 总超时 | 15 min | 全流程 (fmt + lint + test + gen-check) |
+| CI clippy 步骤 | 5 min | 纯静态检查 |
+| CI fmt 步骤 | 3 min | 纯静态检查 |
+| CI gen-docs | 2 min | 脚本执行 |
+
+### E2E 测试最佳实践
+
+1. **外部服务检测**: 使用 `which` 检查二进制是否存在，不存在 → 优雅跳过
+2. **启动失败处理**: 服务器启动或初始化握手失败 → 优雅跳过，不 panic
+3. **断言宽容**: 不假设外部服务一定返回特定结果；验证"通知已收到"而非"诊断非空"
+4. **项目脚手架**: 为每个语言创建最小项目结构（`Cargo.toml`、`go.mod` 等），否则 LSP 服务器无法分析文件
+5. **启动参数**: 不同服务器需要不同参数（如 `typescript-language-server --stdio`），通过 `try_new_with_args()` 支持
+
+### 错误示例 vs 正确示例
+
+```rust
+// ❌ 错误: 无限循环，无超时
+loop {
+    let raw = self.transport.receive().await?;
+    // 如果服务器无响应，永远不退出
+}
+
+// ✅ 正确: 带超时的 receive 循环
+loop {
+    let raw = tokio::time::timeout(
+        Duration::from_secs(30),
+        self.transport.receive()
+    )
+    .await
+    .map_err(|_| "timeout waiting for response")??;
+    // 30s 后优雅返回错误
+}
+```
+
+```rust
+// ❌ 错误: 外部服务失败导致测试 panic
+let result = server.initialize().await.unwrap();
+
+// ✅ 正确: 外部服务失败时优雅跳过
+if harness.initialize().await.is_err() {
+    eprintln!("  SKIP: server init failed");
+    return None;
+}
+```
+
+### CI 费用控制
+
+GitHub Actions 按运行时间计费。必须为每个 job 和耗时 step 设置合理的 `timeout-minutes`：
+
+```yaml
+jobs:
+  qa:
+    timeout-minutes: 15    # 最高安全阀
+    steps:
+      - name: Run tests
+        timeout-minutes: 10  # 每个步骤独立超时
+        run: cargo test --workspace
+```
+
+> 原则: 宁可超时失败（CI 红色），不可让 job 无限运行（费用爆炸）。
+
+---
+
 ## SSOT Harness (代码即 SSOT)
 
 ### 原则
