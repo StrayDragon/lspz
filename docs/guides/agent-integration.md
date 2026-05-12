@@ -1,6 +1,6 @@
 # Agent SDK Integration Guide
 
-The `lspz-agent-sdk` crate provides a high-level API for embedding LSP capabilities
+The `lspz` crate (feature = "agent-sdk") provides a high-level API for embedding LSP capabilities
 into AI coding agents. It manages LSP server process lifecycle, file synchronization,
 and provides type-safe query methods.
 
@@ -9,11 +9,11 @@ and provides type-safe query methods.
 ```
 ┌─────────────────────────────────────────┐
 │         Your AI Agent CLI               │
-│    cargo add lspz-agent-sdk             │
+│    cargo add lspz --no-default-features --features agent-sdk  │
 └────────────────┬────────────────────────┘
                  │
 ┌────────────────▼────────────────────────┐
-│         lspz-agent-sdk                   │
+│         lspz (agent-sdk)                 │
 │  AgentHandle (single language)          │
 │  AgentPool   (multi language)           │
 │  → get_diagnostics / get_completions    │
@@ -25,12 +25,12 @@ and provides type-safe query methods.
 └────────────────┬────────────────────────┘
                  │ delegates to
 ┌────────────────▼────────────────────────┐
-│         lspz-mcp :: LspSession           │
+│    lspz::mcp :: LspSession              │
 │  → spawn → initialize → send_request    │
 └────────────────┬────────────────────────┘
                  │
 ┌────────────────▼────────────────────────┐
-│         lspz-core :: compact             │
+│    lspz::codec::compact                  │
 │  → compress / decompress (token saving) │
 └─────────────────────────────────────────┘
 ```
@@ -41,7 +41,7 @@ Add the dependency:
 
 ```toml
 [dependencies]
-lspz-agent-sdk = "0.3"
+lspz = { version = "0.9", default-features = false, features = ["agent-sdk"] }
 tokio = { version = "1.35", features = ["full"] }
 anyhow = "1.0"
 ```
@@ -49,7 +49,7 @@ anyhow = "1.0"
 Basic usage:
 
 ```rust,no_run
-use lspz_agent_sdk::AgentHandle;
+use lspz::agent_sdk::AgentHandle;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -134,7 +134,7 @@ The compact format uses (for all 7 compressors):
 For projects that span multiple languages:
 
 ```rust,no_run
-use lspz_agent_sdk::AgentPool;
+use lspz::agent_sdk::AgentPool;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -237,7 +237,7 @@ Complete examples are available in the repository:
 ## Reference
 
 - [lspz README](../../README.md)
-- [Agent SDK API docs](https://docs.rs/lspz-agent-sdk)
+- [lspz API docs](https://docs.rs/lspz)
 - [Compact Format Spec](../specs/002-compression-format.md)
 - [LSP Compatibility](../specs/003-lsp-compatibility.md)
 - [Testing Guide](./testing-guide.md)

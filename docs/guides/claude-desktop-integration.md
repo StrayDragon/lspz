@@ -4,7 +4,7 @@ This guide explains how to configure Claude Desktop to use lspz's MCP tools for 
 
 ## Prerequisites
 
-- [lspz](https://github.com/straydragon/lspz) installed (`cargo install --path crates/lspz` or from your local workspace)
+- [lspz](https://github.com/straydragon/lspz) installed (`cargo install lspz` or `cargo install --path .` from the repo root)
 - LSP servers installed for your languages (e.g., `rust-analyzer`, `gopls`, `basedpyright`, `typescript-language-server`)
 - [Claude Desktop](https://claude.ai/download) installed
 

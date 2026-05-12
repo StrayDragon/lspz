@@ -22,7 +22,6 @@ def main() -> int:
     cmd = [
         "cargo",
         "clippy",
-        "--workspace",
         "--all-targets",
         "--",
         "-D",

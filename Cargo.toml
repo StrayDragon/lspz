@@ -1,8 +1,5 @@
-[workspace]
-members = ["crates/*"]
-resolver = "2"
-
-[workspace.package]
+[package]
+name = "lspz"
 version = "0.9.0"
 edition = "2024"
 license = "MIT"
@@ -11,11 +8,50 @@ description = "AI-friendly LSP compression proxy"
 readme = "README.md"
 keywords = ["lsp", "proxy", "compression", "ai", "agent"]
 categories = ["development-tools"]
+resolver = "2"
 
-[workspace.dependencies]
+[features]
+default = ["cli"]
+cli = ["dep:clap", "dep:tracing-subscriber"]
+mcp = ["dep:rmcp", "dep:anyhow"]
+agent-sdk = ["mcp"]
+transport-tcp = []
+transport-websocket = ["dep:tokio-tungstenite", "dep:futures-util"]
+
+[dependencies]
 tokio = { version = "1.35", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 async-trait = "0.1"
 thiserror = "1.0"
 tracing = "0.1"
+toml = "0.8"
+notify = "7"
+
+# CLI (optional)
+clap = { version = "4", optional = true, features = ["derive", "env"] }
+tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
+shell-words = "1.1"
+
+# MCP / Agent SDK (optional)
+rmcp = { version = "0.16", optional = true, features = ["server", "transport-io"] }
+anyhow = { version = "1.0", optional = true }
+
+# WebSocket transport (optional)
+tokio-tungstenite = { version = "0.21", optional = true, default-features = false, features = ["connect"] }
+futures-util = { version = "0.3", optional = true, default-features = false, features = ["sink", "std"] }
+
+[[bin]]
+name = "lspz"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tiktoken-rs = "0.11"
+tempfile = "3"
+
+[[bench]]
+name = "compression"
+harness = false
+path = "benches/compression.rs"

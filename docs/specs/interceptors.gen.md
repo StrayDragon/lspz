@@ -332,17 +332,22 @@ async fn intercept(
 
 A chain of interceptors executed in order.
 
+Holds a shared config reference for runtime enable/disable checks.
+
 ```rust
 pub struct InterceptorChain {
 ```
 
-Create a new chain with the given interceptors.
+Create a new chain with the given interceptors and shared config.
 
 ```rust
-pub fn new(interceptors: Vec<Box<dyn Interceptor>>) -> Self {
+pub fn new(interceptors: Vec<Box<dyn Interceptor>>, config: Arc<RwLock<Config>>) -> Self {
 ```
 
 Process a message through all matching interceptors.
+
+Skips interceptors that are disabled in the current config.
+On interceptor failure, logs a WARN and returns the original params (fail-open).
 
 ```rust
 pub async fn process(

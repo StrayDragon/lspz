@@ -9,7 +9,7 @@ echo ""
 
 mkdir -p docs/reports
 
-cargo run --example bench-report -p lspz-core 2>/dev/null | tee docs/reports/latest.md
+cargo run --example bench-report 2>/dev/null | tee docs/reports/latest.md
 
 echo ""
 echo "Report saved to docs/reports/latest.md"

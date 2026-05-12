@@ -195,8 +195,8 @@ git push origin feature/your-feature-name
 
 ```rust
 use async_trait::async_trait;
-use lspz_core::interceptor::{Interceptor, Direction};
-use lspz_core::error::LspzError;
+use lspz::interceptors::{Interceptor, Direction};
+use lspz::error::LspzError;
 
 pub struct MyInterceptor;
 
@@ -234,8 +234,8 @@ async fn test_my_interceptor() {
 
 ```rust
 use async_trait::async_trait;
-use lspz_core::transport::Transport;
-use lspz_core::error::LspzError;
+use lspz::transport::Transport;
+use lspz::error::LspzError;
 
 pub struct MyTransport;
 

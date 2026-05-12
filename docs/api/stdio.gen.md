@@ -1,4 +1,4 @@
-# API: `crates/lspz-core/src/transport/stdio`
+# API: `src/transport/stdio`
 
 > 自动从 `///` 注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 
@@ -24,10 +24,4 @@ Check if the child process has exited.
 
 ```rust
 pub fn try_wait(&mut self) -> Result<Option<std::process::ExitStatus>, LspzError> {
-```
-
-Parse Content-Length from the accumulated header bytes.
-
-```rust
-fn parse_content_length_from_header(header: &str) -> Result<u64, LspzError> {
 ```

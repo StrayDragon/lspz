@@ -31,20 +31,18 @@
 
 ```
 lspz/
-├── Cargo.toml           # workspace root → members = ["crates/*"]
-├── crates/
-│   ├── lspz-core/       # 核心库 crate
-│   │   └── src/
-│   │       ├── lib.rs       # 公共 API
-│   │       ├── proxy.rs     # Proxy 核心
-│   │       ├── interceptors/
-│   │       ├── codec/
-│   │       ├── transport/
-│   │       ├── config.rs
-│   │       └── error.rs
-│   ├── lspz/            # CLI 二进制 crate
-│   │   └── src/main.rs
-│   └── lspz-mcp/        # MCP 服务器 crate（v0.2）
+├── Cargo.toml           # single crate, feature flags
+├── src/
+│   ├── lib.rs           # 公共 API + 模块声明
+│   ├── main.rs          # CLI 入口 (feature = "cli")
+│   ├── proxy.rs         # Proxy 核心
+│   ├── interceptors/    # 所有拦截器实现
+│   ├── codec/           # 编解码层（JSON-RPC, 紧凑格式）
+│   ├── transport/       # 传输层实现（stdio, TCP, WS）
+│   ├── mcp/             # MCP 服务器 (feature = "mcp")
+│   ├── agent_sdk/       # Agent SDK (feature = "agent-sdk")
+│   ├── config.rs
+│   └── error.rs
 └── examples/            # 示例代码
 ```
 
@@ -58,7 +56,7 @@ lspz/
 
 ### 公共 API 设计
 
-**原则**: lspz-core 是库，公共 API 必须稳定且易用。
+**原则**: 核心库部分公共 API 必须稳定且易用。
 
 ```rust
 // ✅ 好: 清晰的构建器模式
@@ -348,7 +346,7 @@ let config = Config::from_env()?;
 /// # 示例
 ///
 /// ```no_run
-/// use lspz_core::{Proxy, Config};
+/// use lspz::{Proxy, Config};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -384,8 +382,8 @@ pub struct Proxy {
 /// # 示例
 ///
 /// ```
-/// use lspz_core::interceptor::{Interceptor, Direction};
-/// use lspz_core::{JsonRpcMessage, LspzError};
+/// use lspz::interceptors::{Interceptor, Direction};
+/// use lspz::{JsonRpcMessage, LspzError};
 ///
 /// struct MyInterceptor;
 ///
