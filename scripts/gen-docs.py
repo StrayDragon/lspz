@@ -28,8 +28,6 @@ def find_rust_files(root: Path) -> list[Path]:
     """Find all .rs files in the project workspace."""
     search_dirs = [
         root / "src",
-        root / "crates" / "lspz-core" / "src",
-        root / "crates" / "lspz" / "src",
         root / "examples",
     ]
     files = []
@@ -136,8 +134,6 @@ def generate_config_docs() -> dict[str, str]:
     outputs = {}
     config_paths = [
         PROJECT_ROOT / "src" / "config.rs",
-        PROJECT_ROOT / "crates" / "lspz-core" / "src" / "config.rs",
-        PROJECT_ROOT / "crates" / "lspz" / "src" / "config.rs",
     ]
     config_file = next((p for p in config_paths if p.exists()), None)
     if not config_file:
@@ -186,7 +182,6 @@ def generate_error_docs() -> dict[str, str]:
     outputs = {}
     error_paths = [
         PROJECT_ROOT / "src" / "error.rs",
-        PROJECT_ROOT / "crates" / "lspz-core" / "src" / "error.rs",
     ]
     error_file = next((p for p in error_paths if p.exists()), None)
     if not error_file:
@@ -251,7 +246,6 @@ def generate_interceptor_docs() -> dict[str, str]:
     outputs = {}
     interceptor_paths = [
         PROJECT_ROOT / "src" / "interceptors" / "mod.rs",
-        PROJECT_ROOT / "crates" / "lspz-core" / "src" / "interceptors" / "mod.rs",
     ]
     mod_file = next((p for p in interceptor_paths if p.exists()), None)
     if not mod_file:

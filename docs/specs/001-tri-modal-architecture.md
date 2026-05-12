@@ -14,17 +14,19 @@ lspz 采用三模态架构设计，支持作为库、LSP 代理、MCP 服务器�
 
 ```mermaid
 graph TB
-    subgraph Core["lspz-core (纯逻辑库)"]
+    subgraph Core["lspz crate (feature flags)"]
         PROXY["Proxy Core<br/>生命周期管理<br/>消息路由"]
         INTERCEPTOR["Interceptor Chain<br/>转换/压缩/过滤"]
         CODEC["Codec Layer<br/>JSON-RPC 编解码<br/>紧凑格式"]
         TRANSPORT["Transport Trait<br/>抽象 I/O 通道"]
+        MCPMOD["MCP Server<br/>(feature = mcp)"]
+        AGENT["Agent SDK<br/>(feature = agent-sdk)"]
         CONFIG["Config<br/>Builder + Env"]
         ERROR["Error Types<br/>thiserror"]
     end
 
     subgraph Delivery["交付形态"]
-        LIB["Library Mode<br/>use lspz_core::Proxy"]
+        LIB["Library Mode<br/>use lspz::Proxy"]
         CLIBIN["Proxy Mode<br/>lspz --backend ra"]
         MCP["MCP Mode<br/>lspz mcp"]
     end
@@ -36,8 +38,8 @@ graph TB
     PROXY --> ERROR
     INTERCEPTOR --> CODEC
     CODEC --> ERROR
-
-    CLIBIN --> PROXY
+    MCPMOD --> PROXY
+    AGENT --> MCPMOD
     LIB --> PROXY
 
     classDef core fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
@@ -289,7 +291,7 @@ pub enum LspMessage {
 ### 使用示例
 
 ```rust
-use lspz_core::{Proxy, Config, StdioTransport};
+use lspz::{Proxy, Config, StdioTransport};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -312,7 +314,7 @@ async fn main() -> Result<()> {
 
 ### 关键约束
 
-1. **API 稳定性**: lspz-core 公共 API 在主版本不变时承诺向后兼容
+1. **API 稳定性**: 公共 API 在主版本不变时承诺向后兼容
 2. **异步设计**: 所有 I/O 操作基于 tokio 异步
 3. **错误处理**: 使用 `Result<T, LspzError>` 统一错误类型
 
@@ -404,9 +406,9 @@ flowchart LR
     subgraph Client["Agent (MCP Client)"]
         C1["MCP Protocol"]
     end
-    subgraph Mcp["lspz-mcp"]
+    subgraph Mcp["lspz (feature = mcp)"]
         M1["MCP Tools:<br/>- get_diagnostics<br/>- get_completions<br/>- get_symbols"]
-        M2["lspz-core"]
+        M2["lspz core"]
         M3["LSP Server Pool"]
     end
     subgraph Servers["LSP Servers"]
@@ -457,10 +459,10 @@ flowchart TD
     START["开发 AI Coding Agent?"] -->|"是, 自研 Agent CLI"| Q1
     START -->|"否, 使用第三方 Agent"| Q2
 
-    Q1["使用 Rust 开发?"] -->|"是"| LIB["Library Mode<br/>use lspz_core"]
+    Q1["使用 Rust 开发?"] -->|"是"| LIB["Library Mode<br/>cargo add lspz"]
     Q1 -->|"否"| Q2
 
-    Q2["Agent 支持 MCP?"] -->|"是, 且只需按需查询"| MCP["MCP Mode<br/>lspz-mcp"]
+    Q2["Agent 支持 MCP?"] -->|"是, 且只需按需查询"| MCP["MCP Mode<br/>lspz mcp"]
     Q2 -->|"否, 或需要实时诊断推送"| PROXY["Proxy Mode<br/>lspz --backend"]
 
     LIB -->|"最终方案"| DONE["✅ 零开销, 完全控制"]
@@ -493,22 +495,19 @@ flowchart TD
 
 ---
 
-## Crate 工作区结构
+## Crate 结构
 
 ```mermaid
 graph TD
-    subgraph Workspace["lspz Workspace"]
-        CORE["lspz-core<br/>(pure logic library)"]
-        CLI["lspz<br/>(CLI binary)"]
-        MCP2["lspz-mcp<br/>(MCP server)"]
-        SDK["lspz-agent-sdk<br/>(Agent SDK)"]
-    end
-
-    subgraph CoreModules["lspz-core Modules"]
+    subgraph Crate["lspz (single crate, feature flags)"]
+        LIB["src/lib.rs<br/>Public API + module decl"]
+        CLI["src/main.rs<br/>CLI entry (feature = cli)"]
         PROXY["proxy.rs<br/>Proxy lifecycle<br/>Message routing<br/>State machine"]
         INTERCEPTOR["interceptors/<br/>mod.rs - Interceptor trait + Chain<br/>8 interceptors (7 compressors + capping)"]
         CODEC["codec/<br/>json_rpc.rs - JSON-RPC 2.0<br/>compact.rs - Compact format<br/>toon.rs - TOON format"]
         TRANSPORT["transport/<br/>stdio.rs - StdioTransport<br/>tcp.rs - TcpTransport<br/>websocket.rs - WsTransport<br/>mock.rs - MockTransport"]
+        MCPMOD["mcp/<br/>McpServer (feature = mcp)<br/>LspSession (feature = mcp)<br/>LspPool (feature = mcp)"]
+        AGENT["agent_sdk/<br/>AgentHandle (feature = agent-sdk)<br/>AgentPool (feature = agent-sdk)"]
         CONFIG["config.rs + config_watcher.rs<br/>Config + Builder + TOML + hot-reload"]
         METRICS["metrics.rs<br/>MetredInterceptor + MetricsSnapshot"]
         ERROR["error.rs<br/>LspzError enum<br/>thiserror derive"]
@@ -521,10 +520,15 @@ graph TD
         INTERCEPTORDOC["docs/specs/interceptors.gen.md<br/>from Interceptor + impls"]
     end
 
-    CLI --> CORE
-    MCP2 --> CORE
-    SDK --> MCP2
-    SDK --> CORE
+    CLI -.-> LIB
+    MCPMOD -.-> LIB
+    AGENT -.-> MCPMOD
+    LIB --> PROXY
+    LIB --> INTERCEPTOR
+    LIB --> CODEC
+    LIB --> TRANSPORT
+    LIB --> CONFIG
+    LIB --> ERROR
     PROXY --> INTERCEPTOR
     PROXY --> CODEC
     PROXY --> TRANSPORT
@@ -534,17 +538,19 @@ graph TD
     INTERCEPTOR --> ERROR
     CODEC --> ERROR
 
-    CORE -.-> APIDOC
+    LIB -.-> APIDOC
     CONFIG -.-> CONFIGDOC
     ERROR -.-> ERRDOC
     INTERCEPTOR -.-> INTERCEPTORDOC
 
-    classDef workspace fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
+    classDef crate fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
     classDef module fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
     classDef ssot fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
+    classDef optional fill:#9013FE,stroke:#6A0DAD,stroke-width:2px,color:#fff
 
-    class CORE,CLI,MCP2,SDK workspace
+    class LIB,CLI crate
     class PROXY,INTERCEPTOR,CODEC,TRANSPORT,CONFIG,METRICS,ERROR module
+    class MCPMOD,AGENT optional
     class APIDOC,CONFIGDOC,ERRDOC,INTERCEPTORDOC ssot
 ```
 

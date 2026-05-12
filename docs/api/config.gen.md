@@ -1,11 +1,11 @@
-# API: `crates/lspz-core/src/config`
+# API: `src/config`
 
 > 自动从 `///` 注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 
 Output format for the proxy.
 
 ```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 ```
 
 Compact JSON (current default).
@@ -31,7 +31,7 @@ Per-type capping limits for LSP server responses.
 A value of 0 means no limit (capping disabled for that type).
 
 ```rust
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, Deserialize)]
 ```
 
 Maximum number of diagnostics to keep (0 = unlimited).
@@ -61,7 +61,7 @@ pub fn any_enabled(&self) -> bool {
 Configuration for the lspz proxy.
 
 ```rust
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Deserialize)]
 ```
 
 Command used to launch the backend LSP server.
@@ -73,67 +73,90 @@ pub backend_cmd: String,
 Per-type response capping limits.
 
 ```rust
-pub capping: CappingConfig,
+#[serde(default)]
 ```
 
 Whether to enable diagnostic compression.
 
 ```rust
-pub enable_diag_compress: bool,
+#[serde(default = "default_true")]
 ```
 
 Whether to enable completion compression (default: true).
 
 ```rust
-pub enable_completion_compress: bool,
+#[serde(default = "default_true")]
 ```
 
 Whether to enable hover compression (default: true).
 
 ```rust
-pub enable_hover_compress: bool,
+#[serde(default = "default_true")]
 ```
 
 Whether to enable document symbol compression (default: true).
 
 ```rust
-pub enable_document_symbol_compress: bool,
+#[serde(default = "default_true")]
 ```
 
 Whether to enable location compression (default: true).
 
 ```rust
-pub enable_location_compress: bool,
+#[serde(default = "default_true")]
 ```
 
 Whether to enable workspace symbol compression (default: true).
 
 ```rust
-pub enable_workspace_symbol_compress: bool,
+#[serde(default = "default_true")]
 ```
 
 Whether to enable workspace diagnostic compression (default: true).
 
 ```rust
-pub enable_workspace_diag_compress: bool,
+#[serde(default = "default_true")]
 ```
 
 Output format for intercepted messages (json, toon, passthrough).
 
 ```rust
-pub output_format: OutputFormat,
+#[serde(default = "default_output_format")]
 ```
 
 Log level (trace, debug, info, warn, error).
 
 ```rust
-pub log_level: String,
+#[serde(default = "default_log_level")]
+```
+
+Runtime metrics configuration.
+
+```rust
+#[serde(default)]
 ```
 
 Create a new [`ConfigBuilder`].
 
 ```rust
 pub fn builder() -> ConfigBuilder {
+```
+
+Load config from a TOML file.
+
+Missing fields use their default values (same as `Config::default()`).
+
+```rust
+pub fn from_file(path: impl AsRef<Path>) -> Result<Self, LspzError> {
+```
+
+Returns `true` if the named interceptor is enabled in this config.
+
+Used by [`InterceptorChain`](crate::interceptors::InterceptorChain) at runtime
+to skip disabled interceptors without removing them from the chain.
+
+```rust
+pub fn is_interceptor_enabled(&self, name: &str) -> bool {
 ```
 
 Builder for [`Config`].
@@ -206,6 +229,12 @@ Set the response capping limits.
 
 ```rust
 pub fn capping(mut self, capping: CappingConfig) -> Self {
+```
+
+Set the runtime metrics configuration.
+
+```rust
+pub fn metrics(mut self, metrics: MetricsConfig) -> Self {
 ```
 
 Build the [`Config`], validating required fields.

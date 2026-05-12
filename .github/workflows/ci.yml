@@ -32,11 +32,11 @@ jobs:
 
       - name: Run clippy
         timeout-minutes: 5
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --all-targets -- -D warnings
 
       - name: Run tests
         timeout-minutes: 10
-        run: cargo test --workspace
+        run: cargo test
 
       - name: Check generated docs are up to date
         timeout-minutes: 2

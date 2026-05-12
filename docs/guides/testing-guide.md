@@ -110,8 +110,7 @@ cargo tarpaulin --out Html
 ```rust
 // tests/integration/rust_analyzer.rs
 
-use lspz_core::Proxy;
-use lspz_core::Config;
+use lspz::{Proxy, Config};
 
 #[tokio::test]
 async fn test_rust_analyzer_diagnostics() {

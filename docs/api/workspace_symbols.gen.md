@@ -1,4 +1,4 @@
-# API: `crates/lspz-core/src/interceptors/workspace_symbols`
+# API: `src/interceptors/workspace_symbols`
 
 > 自动从 `///` 注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 

@@ -15,9 +15,9 @@ fmt:
 lint:
     cargo clippy
 
-# Run cargo test --workspace.
+# Run cargo test.
 test:
-    cargo test --workspace
+    cargo test
 
 # Run all checks (qa = fmt-check + lint + test + gen-check).
 qa: gen-check fmt-check lint test
@@ -55,21 +55,21 @@ gen-error-docs:
 
 # Generate metadata docs from Cargo.toml.
 gen-meta-docs:
-    @echo "TODO: extract workspace members and deps from Cargo.toml"
+    @echo "TODO: extract crate deps from Cargo.toml"
 
 # Run Criterion throughput benchmarks.
 bench:
-    cargo bench -p lspz-core
+    cargo bench
 
 # Run compression ratio report (fixture-based benchmark).
 bench-report:
-    cargo run --example bench-report -p lspz-core
+    cargo run --example bench-report
 
 # Run compression demo with sample data (quick verification).
 compress-demo:
-    cargo run --example compress-demo -p lspz-core
+    cargo run --example compress-demo
 
 # Run full benchmark suite + save report.
 bench-all:
-    cargo bench -p lspz-core
+    cargo bench
     bash scripts/run-bench.sh

@@ -11,15 +11,16 @@
 ## `Config`
 
 - **`backend_cmd`**: `String` — Command used to launch the backend LSP server.
-- **`capping`**: `CappingConfig` — Per-type response capping limits.
-- **`enable_diag_compress`**: `bool` — Whether to enable diagnostic compression.
-- **`enable_completion_compress`**: `bool` — Whether to enable completion compression (default: true).
-- **`enable_hover_compress`**: `bool` — Whether to enable hover compression (default: true).
-- **`enable_document_symbol_compress`**: `bool` — Whether to enable document symbol compression (default: true).
-- **`enable_location_compress`**: `bool` — Whether to enable location compression (default: true).
-- **`enable_workspace_symbol_compress`**: `bool` — Whether to enable workspace symbol compression (default: true).
-- **`enable_workspace_diag_compress`**: `bool` — Whether to enable workspace diagnostic compression (default: true).
-- **`output_format`**: `OutputFormat` — Output format for intercepted messages (json, toon, passthrough).
-- **`log_level`**: `String` — Log level (trace, debug, info, warn, error).
+- **`capping`**: `CappingConfig`
+- **`enable_diag_compress`**: `bool`
+- **`enable_completion_compress`**: `bool`
+- **`enable_hover_compress`**: `bool`
+- **`enable_document_symbol_compress`**: `bool`
+- **`enable_location_compress`**: `bool`
+- **`enable_workspace_symbol_compress`**: `bool`
+- **`enable_workspace_diag_compress`**: `bool`
+- **`output_format`**: `OutputFormat`
+- **`log_level`**: `String`
+- **`metrics`**: `MetricsConfig`
 
 ## `ConfigBuilder`

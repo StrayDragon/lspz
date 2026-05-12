@@ -1,8 +1,17 @@
-# API: `crates/lspz-core/src/transport/mod`
+# API: `src/transport/mod`
 
 > 自动从 `///` 注释生成。编辑源码注释后运行 `just gen-api-docs` 刷新。
 
+This module is only available with the `transport-websocket` feature.
+
+```rust
+#[cfg(feature = "transport-websocket")]
+```
+
 Abstract I/O channel for LSP communication.
+
+All LSP message I/O (regardless of transport protocol) is defined by this trait.
+Implementations handle Content-Length framing internally and expose raw framed bytes.
 
 ```rust
 #[async_trait::async_trait]

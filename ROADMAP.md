@@ -12,22 +12,23 @@
 ## 三种产品形态
 
 ```
-                    ┌─────────────────┐
-                    │    lspz-core    │
-                    └────────┬────────┘
-                             │
-        ┌────────────────────┼────────────────────┐
-        │                    │                    │
-        ▼                    ▼                    ▼
-┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-│Library Mode  │    │ Proxy Mode   │    │  MCP Mode    │
-│  (lspz-core) │    │  (lspz CLI)  │    │ (lspz-mcp)   │
-└──────────────┘    └──────────────┘    └──────────────┘
+                    ┌──────────────────────┐
+                    │   lspz (单一 crate)   │
+                    │  Feature flags 编译   │
+                    └───────────┬──────────┘
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        │                       │                       │
+        ▼                       ▼                       ▼
+┌───────────────────┐  ┌───────────────────┐  ┌───────────────────┐
+│  Library Mode     │  │   Proxy Mode      │  │   MCP Mode        │
+│  (no-default)     │  │   (default=cli)   │  │   (feature mcp)   │
+└───────────────────┘  └───────────────────┘  └───────────────────┘
 ```
 
 | 模式 | 目标用户 | 典型场景 | 集成方式 |
 |------|----------|----------|----------|
-| **Library** | 自研 Agent CLI | 完全控制，零开销 | `use lspz_core::Proxy` |
+| **Library** | 自研 Agent CLI | 完全控制，零开销 | `lspz::Proxy` / crate 的直接引用 |
 | **Proxy** | Claude Code/Continue/Cody | 即插即用，透明代理 | `lspz --backend gopls` |
 | **MCP** | 快速实验/多工具协同 | 融入生态，按需查询 | MCP server 配置 |
 
@@ -74,14 +75,15 @@
 | 配置热重载 | `--config <file>` | TOML 文件变更时自动 reload |
 | 环境变量 | `LSPZ_*` | 所有 CLI flag 均有对应 env var |
 
-### Workspace Crates
+### Feature Flags
 
-| Crate | 说明 | 核心类型 |
-|-------|------|---------|
-| `lspz-core` | 核心库 | `Proxy`, `InterceptorChain`, `Transport`, `Config` |
-| `lspz-mcp` | MCP 服务器 | `McpServer`, `LspSession`, `LspPool` |
-| `lspz-agent-sdk` | Agent SDK | `AgentHandle`, `AgentPool` |
-| `lspz` | CLI 入口 | `lspz proxy`, `lspz mcp` |
+| Feature | 说明 | 默认启用 |
+|---------|------|---------|
+| `cli` | CLI 入口 (`lspz proxy` 子命令) | ✅ |
+| `mcp` | MCP 服务器 (`lspz mcp`, `rmcp` 集成) | ❌ |
+| `agent-sdk` | Agent SDK API (自动启用 `mcp`) | ❌ |
+| `transport-tcp` | TCP socket 传输 | ❌ |
+| `transport-websocket` | WebSocket 传输 | ❌ |
 
 ### Agent SDK 查询方法
 

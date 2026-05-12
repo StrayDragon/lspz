@@ -128,7 +128,7 @@ just gen-meta-docs    # 从 Cargo.toml 生成元数据
 /// # 示例
 ///
 /// ```rust
-/// use lspz_core::{Proxy, Config};
+/// use lspz::{Proxy, Config};
 ///
 /// #[tokio::main]
 /// async fn main() -> Result<()> {
@@ -146,9 +146,9 @@ pub struct Proxy;
 #### 模块级文档
 
 ```rust
-//! # lspz-core
+//! # lspz
 //!
-//! LSP 压缩代理核心库。采用三模态架构设计。
+//! LSP 压缩代理库。采用三模态架构设计。
 //!
 //! ## 模块结构
 //!

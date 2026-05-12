@@ -12,7 +12,7 @@ Project conventions for lspz (LSP compression proxy).
 
 - Edition 2024
 - Stable toolchain (pinned in `rust-toolchain.toml`)
-- All cargo commands use `--workspace` flag (workspace split planned per PRD)
+- Single crate `lspz` with feature flags (`cli`, `mcp`, `agent-sdk`, `transport-tcp`, `transport-websocket`)
 
 ### Code Quality
 
@@ -315,7 +315,7 @@ jobs:
 
 1. **Interceptor chain 是核心抽象**: 所有 Server→Client 消息转换必须通过 `Interceptor` trait，禁止在 Proxy 核心中直接硬编码消息处理逻辑
 2. **Fail-open**: 任何压缩/转换失败 → 只记录 WARN 日志，透明转发原始消息，禁止抛出异常或中断 LSP 通信
-3. **Transport-agnostic core**: `lspz-core` 不依赖任何特定传输实现（stdio/TCP/WS），只依赖 `Transport` trait
+3. **Transport-agnostic core**: 核心不依赖任何特定传输实现（stdio/TCP/WS），只依赖 `Transport` trait
 4. **Config-driven**: 所有运行时行为通过 `Config` 结构体控制，禁止硬编码开关或行为
 5. **Zero-copy preference**: 在 Hot Path（消息收发、拦截器处理）中优先使用引用 `&str` / `&[u8]`、`Cow`、`Arc`，避免不必要的克隆
 6. **LSP version locked**: 明确锁定 LSP 3.17 规范，不引入 3.18+ 特性直到项目正式声明支持
@@ -364,8 +364,7 @@ jobs:
 
 ### Cargo.toml
 
-- Workspace 成员统一版本
-- 依赖版本在 workspace dependencies 中定义
+- 单一 crate，通过 feature flags 控制编译
 - 避免循环依赖
 
 ### 外部依赖
@@ -424,7 +423,7 @@ jobs:
 
 ### 兼容性承诺
 
-- lspz-core 公共 API: 主版本不变时向后兼容
+- lspz 公共 API: 主版本不变时向后兼容
 - 压缩格式: Agent 端解压库支持所有历史版本
 - LSP 兼容性: 永不破坏标准 LSP 协议
 
