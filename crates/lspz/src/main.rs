@@ -71,6 +71,15 @@ enum Cli {
         )]
         compress_document_symbol: bool,
 
+        /// Enable location compression (default: true)
+        #[arg(
+            short = 'L',
+            long = "compress-location",
+            env = "LSPZ_ENABLE_LOCATION_COMPRESS",
+            default_value_t = true
+        )]
+        compress_location: bool,
+
         /// Output format: toon, json (compact), or passthrough
         #[arg(
             short = 'o',
@@ -116,6 +125,7 @@ async fn main() -> ExitCode {
             compress_completion,
             compress_hover,
             compress_document_symbol,
+            compress_location,
             output,
             log_level,
             max_diags,
@@ -129,6 +139,7 @@ async fn main() -> ExitCode {
                 compress_completion,
                 compress_hover,
                 compress_document_symbol,
+                compress_location,
                 output,
                 log_level,
                 max_diags,
@@ -150,6 +161,7 @@ async fn run_proxy(
     compress_completion: bool,
     compress_hover: bool,
     compress_document_symbol: bool,
+    compress_location: bool,
     output: String,
     log_level: String,
     max_diags: usize,
@@ -224,6 +236,7 @@ async fn run_proxy(
         .enable_completion_compress(compress_completion)
         .enable_hover_compress(compress_hover)
         .enable_document_symbol_compress(compress_document_symbol)
+        .enable_location_compress(compress_location)
         .output_format(output_format)
         .log_level(&log_level)
         .build()
@@ -274,6 +287,10 @@ async fn run_proxy(
     if config.enable_document_symbol_compress {
         interceptors.push(Box::new(lspz_core::DocumentSymbolCompressor));
         tracing::info!("Document symbol compression enabled");
+    }
+    if config.enable_location_compress {
+        interceptors.push(Box::new(lspz_core::LocationCompressor));
+        tracing::info!("Location compression enabled");
     }
     let interceptor_chain = InterceptorChain::new(interceptors);
 

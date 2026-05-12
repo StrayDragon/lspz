@@ -16,7 +16,6 @@ Project conventions for lspz (LSP compression proxy).
 
 ### Code Quality
 
-- Clippy thresholds configured in `.clippy.toml`
 - Clippy thresholds configured in `.clippy.toml`; lint flags in justfile
 - Format config in `rustfmt.toml`
 - Nightly-only options are not allowed
@@ -110,8 +109,6 @@ Project conventions for lspz (LSP compression proxy).
 - `just qa` = fmt-check + lint + test（所有检查）
 - `just check` = qa 的别名
 - `just ci` = prek run --all-files + qa（完整 CI 模拟）
-- Shell: `bash -euo pipefail`
-
 - Shell: `bash -euo pipefail`
 
 **原则**: Scripts 是 SSOT，justfile 和 prek hooks 委托给脚本执行。

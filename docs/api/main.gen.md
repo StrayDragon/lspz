@@ -45,6 +45,12 @@ Enable document symbol compression (default: true)
 #[arg(
 ```
 
+Enable location compression (default: true)
+
+```rust
+#[arg(
+```
+
 Output format: toon, json (compact), or passthrough
 
 ```rust

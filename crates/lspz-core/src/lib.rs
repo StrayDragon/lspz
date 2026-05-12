@@ -29,6 +29,7 @@ pub use interceptors::capping::CappingInterceptor;
 pub use interceptors::completions::CompletionCompressor;
 pub use interceptors::diagnostics::DiagnosticsCompressor;
 pub use interceptors::hover::HoverCompressor;
+pub use interceptors::locations::LocationCompressor;
 pub use interceptors::symbols::DocumentSymbolCompressor;
 pub use proxy::Proxy;
 pub use transport::Transport;

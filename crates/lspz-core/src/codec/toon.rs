@@ -461,6 +461,90 @@ fn format_symbol_range(range: &Value) -> String {
     format!("{}:{}-{}:{}", sl, sc, el, ec)
 }
 
+// ─── Locations ───────────────────────────────────────────────────────────────
+
+/// Convert compact location response to TOON tabular format.
+///
+/// Input is the compact JSON `Value` produced by `LocationCompressor`.
+///
+/// ```toon
+/// uris[2]:
+///   file:///src/main.rs
+///   file:///src/lib.rs
+/// locations[3]{uri,range}:
+///   0,10:5-10:10
+///   0,20:0-20:5
+///   1,5:10-5:15
+/// ```
+pub fn locations_to_toon(value: &Value) -> Result<String, LspzError> {
+    let uris = value
+        .get("uris")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| LspzError::Protocol("locations missing 'uris' array".into()))?;
+
+    let items = value
+        .get("items")
+        .and_then(|v| v.as_array())
+        .ok_or_else(|| LspzError::Protocol("locations missing 'items' array".into()))?;
+
+    let mut out = String::new();
+
+    // URI pool header
+    out.push_str(&format!("uris[{}]:\n", uris.len()));
+    for uri in uris {
+        if let Some(u) = uri.as_str() {
+            out.push_str(&format!("  {}\n", u));
+        }
+    }
+
+    // Detect if any item has a selection range (LocationLink)
+    let has_selection = items.iter().any(|item| item.get("s").is_some());
+
+    // Table header
+    let fields: &[&str] = if has_selection {
+        &["uri", "range", "selection"]
+    } else {
+        &["uri", "range"]
+    };
+    out.push_str(&format!(
+        "locations[{}]{{{}}}:\n",
+        items.len(),
+        fields.join(",")
+    ));
+
+    // Table rows
+    for item in items {
+        let uri_idx = item.get("u").and_then(|v| v.as_u64()).unwrap_or(0);
+        let range = item.get("r").map(format_compact_range).unwrap_or_default();
+        let row = if has_selection {
+            let sel = item.get("s").map(format_compact_range).unwrap_or_default();
+            format!("  {},{},{}\n", uri_idx, range, sel)
+        } else {
+            format!("  {},{}\n", uri_idx, range)
+        };
+        out.push_str(&row);
+    }
+
+    Ok(out)
+}
+
+/// Format a compact range `{ s: { l, c }, e: { l, c } }` to `L:C-L:C`.
+fn format_compact_range(range: &Value) -> String {
+    let s = match range.get("s") {
+        Some(s) => s,
+        None => return String::new(),
+    };
+    let e = match range.get("e") {
+        Some(e) => e,
+        None => return String::new(),
+    };
+    let sl = s.get("l").and_then(|v| v.as_i64()).unwrap_or(0);
+    let sc = s.get("c").and_then(|v| v.as_i64()).unwrap_or(0);
+    let el = e.get("l").and_then(|v| v.as_i64()).unwrap_or(0);
+    let ec = e.get("c").and_then(|v| v.as_i64()).unwrap_or(0);
+    format!("{}:{}-{}:{}", sl, sc, el, ec)
+}
+
 // ─── Tests ──────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -675,5 +759,67 @@ mod tests {
         assert_eq!(severity_to_str(CompactSeverity::W), "warning");
         assert_eq!(severity_to_str(CompactSeverity::I), "info");
         assert_eq!(severity_to_str(CompactSeverity::H), "hint");
+    }
+
+    // ── Locations ──────────────────────────────────────────────────────────
+
+    #[test]
+    fn test_locations_to_toon_basic() {
+        let value = json!({
+            "version": 1,
+            "uris": ["file:///src/main.rs", "file:///src/lib.rs"],
+            "items": [
+                {"u": 0, "r": {"s": {"l": 10, "c": 5}, "e": {"l": 10, "c": 10}}},
+                {"u": 0, "r": {"s": {"l": 20, "c": 0}, "e": {"l": 20, "c": 5}}},
+                {"u": 1, "r": {"s": {"l": 5, "c": 10}, "e": {"l": 5, "c": 15}}},
+            ]
+        });
+        let toon = locations_to_toon(&value).unwrap();
+
+        assert!(toon.contains("uris[2]:"));
+        assert!(toon.contains("  file:///src/main.rs"));
+        assert!(toon.contains("  file:///src/lib.rs"));
+        assert!(toon.contains("locations[3]{uri,range}:"));
+        assert!(toon.contains("  0,10:5-10:10"));
+        assert!(toon.contains("  0,20:0-20:5"));
+        assert!(toon.contains("  1,5:10-5:15"));
+
+        eprintln!("\n=== Locations TOON ===\n{}", toon);
+    }
+
+    #[test]
+    fn test_locations_to_toon_with_selection() {
+        let value = json!({
+            "version": 1,
+            "uris": ["file:///src/lib.rs"],
+            "items": [
+                {
+                    "u": 0,
+                    "r": {"s": {"l": 5, "c": 0}, "e": {"l": 50, "c": 1}},
+                    "s": {"s": {"l": 5, "c": 0}, "e": {"l": 15, "c": 10}}
+                }
+            ]
+        });
+        let toon = locations_to_toon(&value).unwrap();
+
+        assert!(toon.contains("locations[1]{uri,range,selection}:"));
+        assert!(toon.contains("0,5:0-50:1,5:0-15:10"));
+
+        eprintln!("\n=== LocationLinks TOON ===\n{}", toon);
+    }
+
+    #[test]
+    fn test_locations_to_toon_empty() {
+        let value = json!({"version": 1, "uris": [], "items": []});
+        let toon = locations_to_toon(&value).unwrap();
+
+        assert!(toon.contains("uris[0]:"));
+        assert!(toon.contains("locations[0]{"));
+    }
+
+    #[test]
+    fn test_locations_to_toon_missing_fields() {
+        let value = json!({"version": 1});
+        assert!(locations_to_toon(&value).is_err());
     }
 }

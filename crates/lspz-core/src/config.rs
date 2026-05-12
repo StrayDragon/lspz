@@ -65,6 +65,8 @@ pub struct Config {
     pub enable_hover_compress: bool,
     /// Whether to enable document symbol compression (default: true).
     pub enable_document_symbol_compress: bool,
+    /// Whether to enable location compression (default: true).
+    pub enable_location_compress: bool,
     /// Output format for intercepted messages (json, toon, passthrough).
     pub output_format: OutputFormat,
     /// Log level (trace, debug, info, warn, error).
@@ -80,6 +82,7 @@ impl Default for Config {
             enable_completion_compress: true,
             enable_hover_compress: true,
             enable_document_symbol_compress: true,
+            enable_location_compress: true,
             output_format: OutputFormat::Json,
             log_level: "info".into(),
         }
@@ -102,6 +105,7 @@ pub struct ConfigBuilder {
     enable_completion_compress: Option<bool>,
     enable_hover_compress: Option<bool>,
     enable_document_symbol_compress: Option<bool>,
+    enable_location_compress: Option<bool>,
     output_format: Option<OutputFormat>,
     log_level: Option<String>,
 }
@@ -134,6 +138,12 @@ impl ConfigBuilder {
     /// Enable or disable document symbol compression.
     pub fn enable_document_symbol_compress(mut self, enable: bool) -> Self {
         self.enable_document_symbol_compress = Some(enable);
+        self
+    }
+
+    /// Enable or disable location compression.
+    pub fn enable_location_compress(mut self, enable: bool) -> Self {
+        self.enable_location_compress = Some(enable);
         self
     }
 
@@ -198,6 +208,15 @@ impl ConfigBuilder {
             })
             .unwrap_or(true);
 
+        let enable_location_compress = self
+            .enable_location_compress
+            .or_else(|| {
+                std::env::var("LSPZ_ENABLE_LOCATION_COMPRESS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+            })
+            .unwrap_or(true);
+
         let log_level = self
             .log_level
             .or_else(|| std::env::var("LSPZ_LOG_LEVEL").ok())
@@ -235,6 +254,7 @@ impl ConfigBuilder {
             enable_completion_compress,
             enable_hover_compress,
             enable_document_symbol_compress,
+            enable_location_compress,
             output_format,
             log_level,
         })

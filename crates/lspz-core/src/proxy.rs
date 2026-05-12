@@ -318,6 +318,13 @@ impl Proxy {
                 Ok(t) => t,
                 Err(_) => return raw.to_vec(),
             },
+            "textDocument/references"
+            | "textDocument/definition"
+            | "textDocument/implementation"
+            | "textDocument/typeDefinition" => match toon::locations_to_toon(params) {
+                Ok(t) => t,
+                Err(_) => return raw.to_vec(),
+            },
             // Unknown method → passthrough
             _ => return raw.to_vec(),
         };

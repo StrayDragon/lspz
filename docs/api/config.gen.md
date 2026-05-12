@@ -100,6 +100,12 @@ Whether to enable document symbol compression (default: true).
 pub enable_document_symbol_compress: bool,
 ```
 
+Whether to enable location compression (default: true).
+
+```rust
+pub enable_location_compress: bool,
+```
+
 Output format for intercepted messages (json, toon, passthrough).
 
 ```rust
@@ -152,6 +158,12 @@ Enable or disable document symbol compression.
 
 ```rust
 pub fn enable_document_symbol_compress(mut self, enable: bool) -> Self {
+```
+
+Enable or disable location compression.
+
+```rust
+pub fn enable_location_compress(mut self, enable: bool) -> Self {
 ```
 
 Set the output format (json, toon, passthrough).
