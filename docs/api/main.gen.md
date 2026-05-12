@@ -45,10 +45,34 @@ Enable document symbol compression (default: true)
 #[arg(
 ```
 
+Output format: toon, json (compact), or passthrough
+
+```rust
+#[arg(
+```
+
 Log level (trace, debug, info, warn, error)
 
 ```rust
 #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
+```
+
+Maximum number of diagnostics to keep (0 = unlimited)
+
+```rust
+#[arg(long, env = "LSPZ_MAX_DIAGS", default_value_t = 0)]
+```
+
+Maximum number of completion items to keep (0 = unlimited)
+
+```rust
+#[arg(long, env = "LSPZ_MAX_COMPLETIONS", default_value_t = 0)]
+```
+
+Maximum number of document symbols to keep (0 = unlimited)
+
+```rust
+#[arg(long, env = "LSPZ_MAX_SYMBOLS", default_value_t = 0)]
 ```
 
 Run as MCP server — exposes LSP tools via Model Context Protocol

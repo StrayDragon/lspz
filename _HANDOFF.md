@@ -1,8 +1,8 @@
-# _HANDOFF.md — lspz v0.5.0 (Phase 6-7 completed)
+# _HANDOFF.md — lspz v0.8.0 (Phase 8 completed)
 
 > 创建: 2026-05-09
-> 更新: 2026-05-11
-> 状态: **v0.5.0** — 4 个压缩器 + Benchmark & Report 系统
+> 更新: 2026-05-12
+> 状态: **v0.8.0** — Response Capping + Proxy 响应拦截 + 4 个压缩器 + TOON
 
 ## 已完成
 
@@ -16,10 +16,22 @@
 | 5 | `v0.5.0` | HoverCompressor + DocumentSymbolCompressor |
 | 6 | — | 文档清理 + 一键验证脚本 + README/ROADMAP 重写 |
 | 7 | — | Benchmark & Report 系统 (Criterion + 压缩比报告) |
+| 8 | — | Response Capping: 截断 + 压缩正交叠加，Proxy 响应拦截 | |
 
 ## 交付物
 
-### Phase 6 — DocumentSymbolCompressor
+### Phase 8 — Response Capping
+
+| 文件 | 说明 |
+|------|------|
+| `crates/lspz-core/src/interceptors/capping.rs` | CappingInterceptor 实现 + 10 单元测试 |
+| `crates/lspz-core/src/interceptors/mod.rs` | `pub mod capping;` |
+| `crates/lspz-core/src/lib.rs` | `pub use CappingInterceptor;` |
+| `crates/lspz-core/src/config.rs` | `CappingConfig` 结构体 + builder + env-var |
+| `crates/lspz/src/main.rs` | `--max-diags` / `--max-completions` / `--max-symbols` flags |
+| `crates/lspz-core/src/proxy.rs` | `pending_requests` 跟踪 + response 拦截 |
+
+### Phase 7 — Benchmark & Report System
 
 | 文件 | 说明 |
 |------|------|
@@ -45,13 +57,12 @@
 ## 最新测试统计
 
 ```
-cargo test --workspace:   97 passed
+cargo test --workspace:   141 passed (lib + integration)
 cargo clippy:             零警告
 cargo fmt --check:        通过
-gen-check:                15/15 文件同步
 ```
 
-## 当前版本号
+## 当前版本号 (Phase 8 无变更)
 
 | Crate | 版本 |
 |-------|------|
@@ -89,6 +100,7 @@ v0.2.0 → MCP 集成 (McpServer + LspPool + 3 tools)
 v0.3.0 → Agent SDK (AgentHandle + AgentPool)
 v0.4.0 → 生产加固 & 补全压缩
 v0.5.0 → Hover + DocumentSymbol 压缩
+v0.8.0 → Response Capping + Proxy 响应拦截
 ```
 
 ## 剩余项 (低优先级)
@@ -100,10 +112,22 @@ v0.5.0 → Hover + DocumentSymbol 压缩
 - Python/TypeScript 解压缩客户端库 (等待格式稳定)
 - proc-macro 拦截器派生 (不值得, 除非 10+ 拦截器)
 
-## 待规划: Phase 8 — Response Capping
+## 已完成: Phase 8 — Response Capping ✅
 
-参见 `ROADMAP.md` Phase 8 详细定义。核心思路:
-- 在压缩前可配置截断 LSP 返回条目数（如 `--max-diags 20`）
-- 针对 LLM 不需要全部条目的场景，优先丢弃尾部噪音
-- 新增 `CappingInterceptor` 位于 Interceptor 链最前端
+### 核心能力
+- `--max-diags <N>` / `--max-completions <N>` / `--max-symbols <N>`
+- `CappingInterceptor` 位于 Interceptor 链最前端，在压缩前截断
+- Proxy 新增 Response 拦截能力（track pending request ID → method）
+- CompletionCompressor / HoverCompressor / DocumentSymbolCompressor 现可在 proxy 模式下工作
 - 截断 + 压缩正交叠加，总计可节省 80-95% token
+
+### 剩余项 (低优先级)
+
+| 方向 | 说明 |
+|------|------|
+| Agent SDK 统一 | Agent SDK 当前直接调用 `compact::compress()`，未使用 InterceptorChain。可统一到 InterceptorChain 以获得 completions/symbols 压缩支持 |
+| TCP/WebSocket Transport | 无外部需求 |
+| Metrics & Tracing 增强 | 按需实施 |
+| Config 热重载 | 低优先级，重启即可变更 |
+| Python/TypeScript 解压缩客户端库 | 等待格式稳定 |
+| proc-macro 拦截器派生 | 不值得，除非 10+ 拦截器 |

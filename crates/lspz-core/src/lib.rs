@@ -23,8 +23,9 @@ pub mod proxy;
 pub mod transport;
 
 // Re-exports for convenience.
-pub use config::{Config, OutputFormat};
+pub use config::{CappingConfig, Config, OutputFormat};
 pub use error::LspzError;
+pub use interceptors::capping::CappingInterceptor;
 pub use interceptors::completions::CompletionCompressor;
 pub use interceptors::diagnostics::DiagnosticsCompressor;
 pub use interceptors::hover::HoverCompressor;

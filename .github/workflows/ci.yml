@@ -22,6 +22,9 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
 
+      - name: Install rust-analyzer for E2E tests
+        run: rustup component add rust-analyzer
+
       - name: Check formatting
         run: cargo fmt --check --all
 

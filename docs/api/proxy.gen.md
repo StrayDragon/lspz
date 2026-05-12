@@ -47,6 +47,12 @@ and an [`InterceptorChain`] for Server→Client message transformation.
 pub struct Proxy {
 ```
 
+Tracks in-flight request IDs to their method for response interception.
+
+```rust
+pending_requests: HashMap<u64, String>,
+```
+
 Create a new [`Proxy`].
 
 ```rust
@@ -82,11 +88,40 @@ async fn message_loop(&mut self) -> Result<(), LspzError> {
 
 Process a raw server→client message through the interceptor chain.
 
+Supports both notifications (with `method`) and responses (with `id`).
 Returns the (possibly transformed) frame bytes, or empty if dropped.
 Always succeeds: on error, returns the original raw bytes (fail-open).
 
 ```rust
-async fn process_server_message(&self, raw: &[u8]) -> Vec<u8> {
+async fn process_server_message(&mut self, raw: &[u8]) -> Vec<u8> {
+```
+
+Process a notification or server→client request through the interceptor chain.
+
+```rust
+async fn process_notification(
+```
+
+Process a server→client response (no method, has id).
+
+Looks up the original request method from `pending_requests`,
+passes the response `result` through the interceptor chain,
+then reconstructs the response.
+
+```rust
+async fn process_response(&mut self, json_val: &serde_json::Value, raw: &[u8]) -> Vec<u8> {
+```
+
+Convert transformed params to TOON format and wrap in JSON-RPC.
+
+```rust
+fn toon_output(&self, method: &str, params: &serde_json::Value, raw: &[u8]) -> Vec<u8> {
+```
+
+Track a client→server request ID → method mapping for response interception.
+
+```rust
+fn track_pending_request(raw: &[u8], pending: &mut HashMap<u64, String>) {
 ```
 
 Read one complete Content-Length framed message from stdin.
