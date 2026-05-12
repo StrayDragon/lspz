@@ -196,7 +196,138 @@
 
 ---
 
+
+---
+
+## Phase 9: Location 结果压缩 — v0.9 (计划中)
+
+> **核心洞察**: `textDocument/references` 可返回数百个 `Location`，每个包含完整 URI + Range。
+> URI 字符串在大型项目中可达 50+ tokens，且跨引用时**同文件 URI 重复出现**。
+> URI 去重 + Range 压缩可节省 70-85%。
+
+### 覆盖的方法
+
+| 方法 | 响应类型 | 数据量 | AI Agent 典型场景 |
+|------|----------|--------|-------------------|
+| `textDocument/references` | `Location[]` | 高 — 数百条 | "找出所有引用此符号的位置" |
+| `textDocument/definition` | Location / Location[] / LocationLink[] | 低 — 1~5 条 | "跳转到定义" |
+| `textDocument/implementation` | Location / Location[] / LocationLink[] | 中 — 接口实现 | "找到此接口的所有实现" |
+| `textDocument/typeDefinition` | Location / Location[] / LocationLink[] | 低 — 少量 | "查看类型定义" |
+
+**4 个方法共享同一个复合响应类型 `Location`，用 1 个 LocationCompressor 覆盖所有。**
+
+### 压缩策略
+
+1. **URI 去重** — `uri` → 池化 ID（`u1`, `u2`, ...），同文件多条结果共享 1 个 URI
+2. **Range 编码** — 复用 diagnostics delta-encoding
+3. **字段缩减** — `Location`: `uri`→`u`, `range`→`r`; `LocationLink`: 同理
+4. **TOON 格式** — 表格式: `uri,range`
+
+### 任务
+
+```
+[P9-A] LocationCompressor 实现 — locations.rs, 4 个 applies_to, 8+ 测试
+[P9-B] TOON 输出 — locations_to_toon()
+[P9-C] Config + CLI — --compress-location / -L, LSPZ_ENABLE_LOCATION_COMPRESS
+[P9-D] 集成测试 + 文档
+```
+
+### Token 节省估算
+
+| 场景 | 原始 | 压缩后 | 节省 |
+|------|------|--------|------|
+| 50 references（10 个不同文件） | ~2500t | ~400t | **−84%** |
+| 5 definition + LocationLink | ~300t | ~120t | **−60%** |
+| 20 个接口实现 | ~1000t | ~200t | **−80%** |
+
+---
+
+## Phase 10: Workspace Symbol 压缩 — v0.10 (计划中)
+
+> **核心洞察**: `workspace/symbol` 空查询可返回数千个符号。DocumentSymbol 的
+> SymbolKind 编码 (1-26 单字符) 完全复用。
+
+### 压缩策略
+
+1. **复用 `encode_symbol_kind()`** — 已实现的 1-26 单字符编码
+2. **URI 去重** — 同 LocationCompressor 的 pool 模式
+3. **丢弃字段**: `deprecated`、`tags`、`data`
+4. **字段缩减**: `name`→`n`, `kind`→`k`, `containerName`→`c`
+
+### 任务
+
+```
+[P10-A] WorkspaceSymbolCompressor 实现 — workspace_symbols.rs, 6+ 测试
+[P10-B] TOON + Compact 格式
+[P10-C] Config + CLI — --compress-workspace-symbol, LSPZ_ENABLE_WORKSPACE_SYMBOL_COMPRESS
+[P10-D] 集成测试 + 文档
+```
+
+### Token 节省估算
+
+| 场景 | 原始 | 压缩后 | 节省 |
+|------|------|--------|------|
+| 100 workspace symbols | ~5000t | ~1500t | **−70%** |
+| 500 空查询结果 | ~25000t | ~6000t | **−76%** |
+
+---
+
+## Phase 11: Workspace Diagnostic 压缩 — v0.11 (计划中)
+
+> **核心洞察**: LSP 3.17 拉式诊断 `workspace/diagnostic` 返回所有文件的诊断。
+> `kind: 'unchanged'` 文档直接跳过，`kind: 'full'` 调用现有 DiagnosticsCompressor。
+
+### 压缩策略
+
+1. **`kind: 'unchanged'` 跳过** — 无诊断内容，直接透传
+2. **每文档调用现有 DiagnosticsCompressor** — 复用完整 5 步管道
+3. **URI 去重** — workspace 级别共享
+4. **TOON 格式** — 按文件分组的诊断表
+
+### 任务
+
+```
+[P11-A] WorkspaceDiagnosticCompressor — workspace_diagnostics.rs, ~200 行核心
+[P11-B] TOON 输出
+[P11-C] Config + CLI — --compress-workspace-diag, LSPZ_ENABLE_WORKSPACE_DIAG_COMPRESS
+[P11-D] 测试 + 文档
+```
+
+### Token 节省估算
+
+| 场景 | 原始 | 压缩后 | 节省 |
+|------|------|--------|------|
+| 10 文件 x 30 条诊断 | ~15000t | ~1500t | **−90%** |
+| 5 文件变更 + 20 unchanged | ~3000t | ~500t | **−83%** |
+
+---
+
+## 调研评估: 已排除的方法
+
+以下 LSP 方法不适合当前路线图：
+
+| 方法 | 排除原因 |
+|------|----------|
+| `textDocument/codeAction` | 交互性操作，人来触发。action item 对 LLM 有用但 token 量不大，ROI 低 |
+| `textDocument/semanticTokens/full` | 响应已是 delta 压缩后的 `uinteger[]` 扁平数组 |
+| `textDocument/signatureHelp` | 通常只有 1-5 个 signature，数据量极小 |
+| `textDocument/inlayHint/codeLens/documentHighlight` | UI 辅助功能，AI agent 使用频率低 |
+
+---
+
+## 路线图总览
+
+| Phase | 版本 | 说明 | 状态 |
+|-------|------|------|------|
+| 0-7 | v0.7 | 4 压缩器 + TOON + Benchmark | :white_check_mark: |
+| 8 | v0.8 | Response Capping + Proxy 响应拦截 | :white_check_mark: 当前 |
+| 9 | v0.9 | Location 压缩 (references/definition/impl) | :ledger: 计划 |
+| 10 | v0.10 | Workspace Symbol 压缩 | :ledger: 计划 |
+| 11 | v0.11 | Workspace Diagnostic 压缩 | :ledger: 计划 |
+
 ## 剩余事项 (低优先级)
+
+
 
 ### Metrics & Tracing 增强
 埋点记录压缩率 / 延迟 / 节省 token 数。不违反 fail-open 原则。
