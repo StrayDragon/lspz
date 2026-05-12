@@ -1,0 +1,73 @@
+[
+  {
+    "name": "2 symbols, different files",
+    "method": "workspace/symbol",
+    "params": [
+      {
+        "name": "my_function",
+        "kind": 12,
+        "location": {
+          "uri": "file:///src/main.rs",
+          "range": { "start": { "line": 5, "character": 0 }, "end": { "line": 15, "character": 1 } }
+        },
+        "containerName": "my_module"
+      },
+      {
+        "name": "MyStruct",
+        "kind": 23,
+        "location": {
+          "uri": "file:///src/lib.rs",
+          "range": { "start": { "line": 1, "character": 0 }, "end": { "line": 20, "character": 1 } }
+        },
+        "containerName": ""
+      }
+    ]
+  },
+  {
+    "name": "4 symbols, same file",
+    "method": "workspace/symbol",
+    "params": [
+      {
+        "name": "parse",
+        "kind": 12,
+        "location": {
+          "uri": "file:///src/parser.rs",
+          "range": { "start": { "line": 10, "character": 0 }, "end": { "line": 45, "character": 1 } }
+        },
+        "containerName": "parser"
+      },
+      {
+        "name": "Token",
+        "kind": 23,
+        "location": {
+          "uri": "file:///src/parser.rs",
+          "range": { "start": { "line": 1, "character": 0 }, "end": { "line": 8, "character": 1 } }
+        },
+        "containerName": ""
+      },
+      {
+        "name": "Lexer",
+        "kind": 23,
+        "location": {
+          "uri": "file:///src/parser.rs",
+          "range": { "start": { "line": 50, "character": 0 }, "end": { "line": 80, "character": 1 } }
+        },
+        "containerName": ""
+      },
+      {
+        "name": "tokenize",
+        "kind": 12,
+        "location": {
+          "uri": "file:///src/parser.rs",
+          "range": { "start": { "line": 55, "character": 4 }, "end": { "line": 75, "character": 5 } }
+        },
+        "containerName": "Lexer"
+      }
+    ]
+  },
+  {
+    "name": "empty result",
+    "method": "workspace/symbol",
+    "params": []
+  }
+]

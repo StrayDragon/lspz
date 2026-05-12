@@ -1,6 +1,6 @@
-//! lspz Compression Benchmark Report (v0.7.0)
+//! lspz Compression Benchmark Report
 //!
-//! Loads JSON fixture files from `fixtures/bench/`, runs all 4 compressors,
+//! Loads JSON fixture files from `fixtures/bench/`, runs all 7 compressors,
 //! measures bytes and token savings for both Compact JSON and TOON output formats,
 //! and outputs a Markdown report.
 //! Also loads per-LSP-server diagnostics from `fixtures/bench/lsp/*.json`
@@ -15,9 +15,12 @@ use tiktoken_rs::cl100k_base;
 
 use lspz_core::codec::compact::CompactDiagnostics;
 use lspz_core::codec::toon;
+use lspz_core::interceptors::workspace_diagnostics::workspace_diagnostics_to_toon;
+use lspz_core::interceptors::workspace_symbols::workspace_symbols_to_toon;
 use lspz_core::interceptors::{Direction, Interceptor};
 use lspz_core::{
     CompletionCompressor, DiagnosticsCompressor, DocumentSymbolCompressor, HoverCompressor,
+    LocationCompressor, WorkspaceDiagnosticCompressor, WorkspaceSymbolCompressor,
 };
 
 /// Get today's date as a formatted string.
@@ -76,6 +79,12 @@ fn make_compressor(method: &str) -> Option<Box<dyn Interceptor>> {
         "textDocument/completion" => Some(Box::new(CompletionCompressor::default())),
         "textDocument/hover" => Some(Box::new(HoverCompressor::default())),
         "textDocument/documentSymbol" => Some(Box::new(DocumentSymbolCompressor)),
+        "textDocument/references"
+        | "textDocument/definition"
+        | "textDocument/implementation"
+        | "textDocument/typeDefinition" => Some(Box::new(LocationCompressor)),
+        "workspace/symbol" => Some(Box::new(WorkspaceSymbolCompressor)),
+        "workspace/diagnostic" => Some(Box::new(WorkspaceDiagnosticCompressor)),
         _ => None,
     }
 }
@@ -91,6 +100,9 @@ fn convert_to_toon(method: &str, compact: &Value) -> Result<String, String> {
         "textDocument/completion" => toon::completions_to_toon(compact).map_err(|e| e.to_string()),
         "textDocument/hover" => toon::hover_to_toon(compact).map_err(|e| e.to_string()),
         "textDocument/documentSymbol" => toon::symbols_to_toon(compact).map_err(|e| e.to_string()),
+        "textDocument/references" => toon::locations_to_toon(compact).map_err(|e| e.to_string()),
+        "workspace/symbol" => workspace_symbols_to_toon(compact).map_err(|e| e.to_string()),
+        "workspace/diagnostic" => workspace_diagnostics_to_toon(compact).map_err(|e| e.to_string()),
         _ => Err("no TOON converter".into()),
     }
 }
@@ -105,6 +117,12 @@ async fn main() {
         ("completions.json", "CompletionCompressor"),
         ("hover.json", "HoverCompressor"),
         ("symbols.json", "DocumentSymbolCompressor"),
+        ("locations.json", "LocationCompressor"),
+        ("workspace_symbols.json", "WorkspaceSymbolCompressor"),
+        (
+            "workspace_diagnostics.json",
+            "WorkspaceDiagnosticCompressor",
+        ),
     ];
 
     println!("# lspz Compression Benchmark Report\n");
@@ -122,6 +140,9 @@ async fn main() {
             "textDocument/completion",
             "textDocument/hover",
             "textDocument/documentSymbol",
+            "textDocument/references",
+            "workspace/symbol",
+            "workspace/diagnostic",
         ];
 
         println!("## {}\n", compressor_name);
