@@ -61,9 +61,13 @@ gen-meta-docs:
 bench:
     cargo bench -p lspz-core
 
-# Run compression ratio report (quick, no Criterion).
+# Run compression ratio report (fixture-based benchmark).
 bench-report:
     cargo run --example bench-report -p lspz-core
+
+# Run compression demo with sample data (quick verification).
+compress-demo:
+    cargo run --example compress-demo -p lspz-core
 
 # Run full benchmark suite + save report.
 bench-all:

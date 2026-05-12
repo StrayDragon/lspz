@@ -1,0 +1,47 @@
+[
+  {
+    "name": "2 references, same file",
+    "method": "textDocument/references",
+    "params": [
+      {
+        "uri": "file:///src/main.rs",
+        "range": { "start": { "line": 42, "character": 4 }, "end": { "line": 42, "character": 8 } }
+      },
+      {
+        "uri": "file:///src/main.rs",
+        "range": { "start": { "line": 100, "character": 2 }, "end": { "line": 100, "character": 6 } }
+      }
+    ]
+  },
+  {
+    "name": "3 references, multiple files",
+    "method": "textDocument/references",
+    "params": [
+      {
+        "uri": "file:///src/main.rs",
+        "range": { "start": { "line": 42, "character": 4 }, "end": { "line": 42, "character": 8 } }
+      },
+      {
+        "uri": "file:///src/lib.rs",
+        "range": { "start": { "line": 10, "character": 0 }, "end": { "line": 15, "character": 0 } }
+      },
+      {
+        "uri": "file:///src/lib.rs",
+        "range": { "start": { "line": 24, "character": 8 }, "end": { "line": 24, "character": 12 } }
+      }
+    ]
+  },
+  {
+    "name": "definition, single location",
+    "method": "textDocument/definition",
+    "params": {
+      "uri": "file:///src/main.rs",
+      "range": { "start": { "line": 1, "character": 0 }, "end": { "line": 20, "character": 1 } }
+    }
+  },
+  {
+    "name": "null (no references)",
+    "method": "textDocument/references",
+    "params": null
+  }
+]

@@ -1,8 +1,8 @@
-//! lspz Compression Demo (v0.7.0)
+//! lspz Compression Demo
 //!
 //! Run: cargo run --example compress-demo -p lspz-core
 //!
-//! Demonstrates all 4 LSP compressors with sample data,
+//! Demonstrates all 7 LSP compressors with sample data,
 //! comparing Raw JSON vs Compact JSON vs TOON format.
 //! Token counts (cl100k_base) are the primary metric.
 //! Bytes shown for reference.
@@ -11,9 +11,12 @@ use std::time::Instant;
 
 use lspz_core::codec::compact::CompactDiagnostics;
 use lspz_core::codec::toon;
+use lspz_core::interceptors::workspace_diagnostics::workspace_diagnostics_to_toon;
+use lspz_core::interceptors::workspace_symbols::workspace_symbols_to_toon;
 use lspz_core::interceptors::{Direction, Interceptor};
 use lspz_core::{
     CompletionCompressor, DiagnosticsCompressor, DocumentSymbolCompressor, HoverCompressor,
+    LocationCompressor, WorkspaceDiagnosticCompressor, WorkspaceSymbolCompressor,
 };
 use serde_json::{Value, json};
 use tiktoken_rs::CoreBPE;
@@ -36,7 +39,7 @@ async fn main() {
 
     println!();
     println!("  ╔══════════════════════════════════════════════════╗");
-    println!("  ║        lspz Compression Demo  (v0.7.0)          ║");
+    println!("  ║        lspz Compression Demo                    ║");
     println!("  ║  Token-optimized LSP for AI coding agents       ║");
     println!("  ╚══════════════════════════════════════════════════╝");
     println!();
@@ -46,6 +49,9 @@ async fn main() {
         "textDocument/completion",
         "textDocument/hover",
         "textDocument/documentSymbol",
+        "textDocument/references",
+        "workspace/symbol",
+        "workspace/diagnostic",
     ];
 
     let mut results: Vec<DemoResult> = Vec::new();
@@ -133,6 +139,83 @@ async fn main() {
                 }
             ]),
             Box::new(DocumentSymbolCompressor),
+        ),
+        (
+            "LocationCompressor",
+            "textDocument/references",
+            json!([
+                {
+                    "uri": "file:///src/main.rs",
+                    "range": { "start": { "line": 42, "character": 4 }, "end": { "line": 42, "character": 8 } }
+                },
+                {
+                    "uri": "file:///src/lib.rs",
+                    "range": { "start": { "line": 10, "character": 0 }, "end": { "line": 10, "character": 15 } }
+                },
+                {
+                    "uri": "file:///src/main.rs",
+                    "range": { "start": { "line": 100, "character": 2 }, "end": { "line": 100, "character": 6 } }
+                }
+            ]),
+            Box::new(LocationCompressor),
+        ),
+        (
+            "WorkspaceSymbolCompressor",
+            "workspace/symbol",
+            json!([
+                {
+                    "name": "my_function",
+                    "kind": 12,
+                    "location": {
+                        "uri": "file:///src/main.rs",
+                        "range": { "start": { "line": 5, "character": 0 }, "end": { "line": 15, "character": 1 } }
+                    },
+                    "containerName": "my_module"
+                },
+                {
+                    "name": "MyStruct",
+                    "kind": 23,
+                    "location": {
+                        "uri": "file:///src/lib.rs",
+                        "range": { "start": { "line": 1, "character": 0 }, "end": { "line": 20, "character": 1 } }
+                    },
+                    "containerName": ""
+                }
+            ]),
+            Box::new(WorkspaceSymbolCompressor),
+        ),
+        (
+            "WorkspaceDiagnosticCompressor",
+            "workspace/diagnostic",
+            json!({
+                "items": [
+                    {
+                        "uri": "file:///src/main.rs",
+                        "kind": "full",
+                        "diagnostics": [
+                            {
+                                "range": { "start": { "line": 10, "character": 5 }, "end": { "line": 10, "character": 15 } },
+                                "severity": 2,
+                                "message": "unused variable: `x`",
+                                "code": "unused_variables",
+                                "source": "rust-analyzer"
+                            },
+                            {
+                                "range": { "start": { "line": 20, "character": 0 }, "end": { "line": 20, "character": 10 } },
+                                "severity": 1,
+                                "message": "cannot find value `y` in this scope",
+                                "code": "E0425",
+                                "source": "rust-analyzer"
+                            }
+                        ]
+                    },
+                    {
+                        "uri": "file:///src/lib.rs",
+                        "kind": "unchanged"
+                    }
+                ]
+            }),
+            Box::new(WorkspaceDiagnosticCompressor),
         ),
     ] {
         let result = run_demo(name, method, params, &*compressor, &toon_methods, &bpe).await;
@@ -346,6 +429,9 @@ fn convert_compact_to_toon(method: &str, compact: &Value) -> Option<String> {
         "textDocument/completion" => toon::completions_to_toon(compact).ok(),
         "textDocument/hover" => toon::hover_to_toon(compact).ok(),
         "textDocument/documentSymbol" => toon::symbols_to_toon(compact).ok(),
+        "textDocument/references" => toon::locations_to_toon(compact).ok(),
+        "workspace/symbol" => workspace_symbols_to_toon(compact).ok(),
+        "workspace/diagnostic" => workspace_diagnostics_to_toon(compact).ok(),
         _ => None,
     }
 }
