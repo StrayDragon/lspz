@@ -17,6 +17,7 @@
 
 pub mod codec;
 pub mod config;
+pub mod config_watcher;
 pub mod error;
 pub mod interceptors;
 pub mod metrics;
