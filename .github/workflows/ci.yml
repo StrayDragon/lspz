@@ -12,6 +12,7 @@ env:
 jobs:
   qa:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 
@@ -26,13 +27,17 @@ jobs:
         run: rustup component add rust-analyzer
 
       - name: Check formatting
+        timeout-minutes: 3
         run: cargo fmt --check --all
 
       - name: Run clippy
+        timeout-minutes: 5
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Run tests
+        timeout-minutes: 10
         run: cargo test --workspace
 
       - name: Check generated docs are up to date
+        timeout-minutes: 2
         run: python3 scripts/gen-docs.py --check
