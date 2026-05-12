@@ -4,10 +4,12 @@
 
 use std::process::Stdio;
 
-use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::process::{Child, ChildStdin, ChildStdout, Command};
 
 use crate::error::LspzError;
+
+use super::framing;
 
 /// Transport over a child process's stdio.
 ///
@@ -75,47 +77,7 @@ impl StdioTransport {
 #[async_trait::async_trait]
 impl super::Transport for StdioTransport {
     async fn receive(&mut self) -> Result<Vec<u8>, LspzError> {
-        let mut buffer = Vec::with_capacity(4096);
-
-        // Read headers until we find \r\n\r\n
-        loop {
-            let byte = self.reader.read_u8().await.map_err(|e| {
-                // Map EOF to ServerExited
-                if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                    LspzError::ServerExited
-                } else {
-                    LspzError::Io(e)
-                }
-            })?;
-            buffer.push(byte);
-
-            // Check for \r\n\r\n terminator at end of buffer
-            if buffer.len() >= 4 && buffer[buffer.len() - 4..] == [b'\r', b'\n', b'\r', b'\n'] {
-                break;
-            }
-        }
-
-        let header = std::str::from_utf8(&buffer)
-            .map_err(|_| LspzError::Protocol("header is not valid UTF-8".into()))?;
-
-        // Parse Content-Length
-        let content_length = parse_content_length_from_header(header)?;
-
-        // Read the body
-        let mut body = vec![0u8; content_length as usize];
-        self.reader.read_exact(&mut body).await.map_err(|e| {
-            if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                LspzError::ServerExited
-            } else {
-                LspzError::Io(e)
-            }
-        })?;
-
-        // Reconstruct: header + body
-        let mut frame = Vec::with_capacity(buffer.len() + body.len());
-        frame.extend_from_slice(&buffer);
-        frame.extend_from_slice(&body);
-        Ok(frame)
+        framing::read_frame(&mut self.reader).await
     }
 
     async fn send(&mut self, data: &[u8]) -> Result<(), LspzError> {
@@ -134,20 +96,6 @@ impl Drop for StdioTransport {
     }
 }
 
-/// Parse Content-Length from the accumulated header bytes.
-fn parse_content_length_from_header(header: &str) -> Result<u64, LspzError> {
-    for line in header.lines() {
-        let line = line.trim();
-        if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
-            let value = value.trim();
-            return value
-                .parse::<u64>()
-                .map_err(|_| LspzError::Protocol(format!("invalid Content-Length: {value}")));
-        }
-    }
-    Err(LspzError::Protocol("missing Content-Length header".into()))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -155,25 +103,25 @@ mod tests {
     #[test]
     fn test_parse_content_length() {
         let header = "Content-Length: 47\r\n\r\n";
-        assert_eq!(parse_content_length_from_header(header).unwrap(), 47);
+        assert_eq!(framing::parse_content_length(header).unwrap(), 47);
     }
 
     #[test]
     fn test_parse_content_length_case_insensitive() {
         let header = "content-length: 128\r\n\r\n";
-        assert_eq!(parse_content_length_from_header(header).unwrap(), 128);
+        assert_eq!(framing::parse_content_length(header).unwrap(), 128);
     }
 
     #[test]
     fn test_parse_content_length_whitespace() {
         let header = "Content-Length:   99   \r\n\r\n";
-        assert_eq!(parse_content_length_from_header(header).unwrap(), 99);
+        assert_eq!(framing::parse_content_length(header).unwrap(), 99);
     }
 
     #[test]
     fn test_missing_content_length() {
         let header = "\r\n\r\n";
-        match parse_content_length_from_header(header) {
+        match framing::parse_content_length(header) {
             Err(LspzError::Protocol(msg)) => assert!(msg.contains("missing")),
             _ => panic!("expected Protocol error"),
         }
@@ -182,7 +130,7 @@ mod tests {
     #[test]
     fn test_invalid_content_length() {
         let header = "Content-Length: abc\r\n\r\n";
-        match parse_content_length_from_header(header) {
+        match framing::parse_content_length(header) {
             Err(LspzError::Protocol(msg)) => assert!(msg.contains("invalid")),
             _ => panic!("expected Protocol error"),
         }

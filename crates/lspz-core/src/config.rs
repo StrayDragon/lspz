@@ -5,6 +5,7 @@
 use std::str::FromStr;
 
 use crate::error::LspzError;
+use crate::metrics::MetricsConfig;
 
 /// Output format for the proxy.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -75,6 +76,8 @@ pub struct Config {
     pub output_format: OutputFormat,
     /// Log level (trace, debug, info, warn, error).
     pub log_level: String,
+    /// Runtime metrics configuration.
+    pub metrics: MetricsConfig,
 }
 
 impl Default for Config {
@@ -91,6 +94,7 @@ impl Default for Config {
             enable_workspace_diag_compress: true,
             output_format: OutputFormat::Json,
             log_level: "info".into(),
+            metrics: MetricsConfig::default(),
         }
     }
 }
@@ -116,6 +120,7 @@ pub struct ConfigBuilder {
     enable_workspace_diag_compress: Option<bool>,
     output_format: Option<OutputFormat>,
     log_level: Option<String>,
+    metrics: Option<MetricsConfig>,
 }
 
 impl ConfigBuilder {
@@ -182,6 +187,12 @@ impl ConfigBuilder {
     /// Set the response capping limits.
     pub fn capping(mut self, capping: CappingConfig) -> Self {
         self.capping = Some(capping);
+        self
+    }
+
+    /// Set the runtime metrics configuration.
+    pub fn metrics(mut self, metrics: MetricsConfig) -> Self {
+        self.metrics = Some(metrics);
         self
     }
 
@@ -269,6 +280,18 @@ impl ConfigBuilder {
             })
             .unwrap_or(OutputFormat::Toon);
 
+        // Read metrics config from env vars or use builder value
+        let metrics = self.metrics.unwrap_or_else(|| MetricsConfig {
+            enabled: std::env::var("LSPZ_METRICS_ENABLED")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(false),
+            report_interval_secs: std::env::var("LSPZ_METRICS_INTERVAL")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+        });
+
         // Read capping from env vars or use builder value
         let capping = self.capping.unwrap_or_else(|| CappingConfig {
             max_diags: std::env::var("LSPZ_MAX_DIAGS")
@@ -297,6 +320,7 @@ impl ConfigBuilder {
             enable_workspace_diag_compress,
             output_format,
             log_level,
+            metrics,
         })
     }
 }

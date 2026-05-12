@@ -11,14 +11,42 @@ use std::process::ExitCode;
 use std::str::FromStr;
 
 use clap::Parser;
+use lspz_core::Transport;
 use lspz_core::interceptors::Interceptor;
 use lspz_core::interceptors::InterceptorChain;
 use lspz_core::interceptors::capping::CappingInterceptor;
 use lspz_core::interceptors::diagnostics::DiagnosticsCompressor;
-use lspz_core::{CappingConfig, Config, OutputFormat, Proxy, StdioTransport};
+use lspz_core::metrics::MetredInterceptor;
+use lspz_core::{
+    CappingConfig, Config, MetricsConfig, OutputFormat, Proxy, StdioTransport, TcpTransport,
+};
 use rmcp::ServiceExt;
 use rmcp::transport::stdio;
 use tracing_subscriber::EnvFilter;
+
+#[cfg(feature = "transport-websocket")]
+use lspz_core::WsTransport;
+
+/// Grouped CLI arguments for proxy mode to reduce function parameter count.
+struct ProxyArgs {
+    backend: String,
+    backend_args: Vec<String>,
+    transport_scheme: String,
+    output: String,
+    log_level: String,
+    max_diags: usize,
+    max_completions: usize,
+    max_symbols: usize,
+    metrics_enabled: bool,
+    metrics_interval: u64,
+    compress_diag: bool,
+    compress_completion: bool,
+    compress_hover: bool,
+    compress_document_symbol: bool,
+    compress_location: bool,
+    compress_workspace_symbol: bool,
+    compress_workspace_diag: bool,
+}
 
 #[derive(Parser, Debug)]
 #[command(version, about)]
@@ -34,6 +62,15 @@ enum Cli {
         /// (placed after `--` on the command line)
         #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
         backend_args: Vec<String>,
+
+        /// Transport type: stdio, tcp://host:port, ws://url, wss://url
+        #[arg(
+            short = 't',
+            long = "transport",
+            env = "LSPZ_TRANSPORT",
+            default_value = "stdio"
+        )]
+        transport: String,
 
         /// Enable diagnostic compression (default: true)
         #[arg(
@@ -121,6 +158,14 @@ enum Cli {
         /// Maximum number of document symbols to keep (0 = unlimited)
         #[arg(long, env = "LSPZ_MAX_SYMBOLS", default_value_t = 0)]
         max_symbols: usize,
+
+        /// Enable runtime metrics collection
+        #[arg(long, env = "LSPZ_METRICS_ENABLED", default_value_t = false)]
+        metrics: bool,
+
+        /// Metrics report interval in seconds (0 = only on shutdown)
+        #[arg(long, env = "LSPZ_METRICS_INTERVAL", default_value_t = 0)]
+        metrics_interval: u64,
     },
 
     /// Run as MCP server — exposes LSP tools via Model Context Protocol
@@ -138,6 +183,14 @@ async fn main() -> ExitCode {
         Cli::Proxy {
             backend,
             backend_args,
+            transport,
+            output,
+            log_level,
+            max_diags,
+            max_completions,
+            max_symbols,
+            metrics,
+            metrics_interval,
             compress_diag,
             compress_completion,
             compress_hover,
@@ -145,15 +198,18 @@ async fn main() -> ExitCode {
             compress_location,
             compress_workspace_symbol,
             compress_workspace_diag,
-            output,
-            log_level,
-            max_diags,
-            max_completions,
-            max_symbols,
         } => {
-            run_proxy(
+            let args = ProxyArgs {
                 backend,
                 backend_args,
+                transport_scheme: transport,
+                output,
+                log_level,
+                max_diags,
+                max_completions,
+                max_symbols,
+                metrics_enabled: metrics,
+                metrics_interval,
                 compress_diag,
                 compress_completion,
                 compress_hover,
@@ -161,129 +217,179 @@ async fn main() -> ExitCode {
                 compress_location,
                 compress_workspace_symbol,
                 compress_workspace_diag,
-                output,
-                log_level,
-                max_diags,
-                max_completions,
-                max_symbols,
-            )
-            .await
+            };
+            run_proxy(args).await
         }
         Cli::Mcp { log_level } => run_mcp(log_level).await,
     }
 }
 
 /// Run in proxy mode — transparent LSP proxy with diagnostic compression.
-#[allow(clippy::too_many_arguments, clippy::fn_params_excessive_bools)]
-async fn run_proxy(
-    backend: String,
-    backend_args: Vec<String>,
-    compress_diag: bool,
-    compress_completion: bool,
-    compress_hover: bool,
-    compress_document_symbol: bool,
-    compress_location: bool,
-    compress_workspace_symbol: bool,
-    compress_workspace_diag: bool,
-    output: String,
-    log_level: String,
-    max_diags: usize,
-    max_completions: usize,
-    max_symbols: usize,
-) -> ExitCode {
-    // If backend args contain --help or -h, spawn backend directly and show its help output
-    if backend_args.iter().any(|a| a == "--help" || a == "-h") {
-        let parts = match shell_words::split(&backend) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Failed to parse backend command '{backend}': {e}");
-                return ExitCode::FAILURE;
-            }
-        };
-        let mut iter = parts.into_iter();
-        let program = match iter.next() {
-            Some(p) => p,
-            None => {
-                eprintln!("Empty backend command");
-                return ExitCode::FAILURE;
-            }
-        };
-        let mut args: Vec<String> = iter.collect();
-        args.extend(backend_args);
-
-        let status = match tokio::process::Command::new(&program)
-            .args(&args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::inherit())
-            .stderr(std::process::Stdio::inherit())
-            .status()
-            .await
-        {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("Failed to execute backend '{program}': {e}");
-                return ExitCode::FAILURE;
-            }
-        };
-
-        return if status.success() {
-            ExitCode::SUCCESS
-        } else {
-            ExitCode::FAILURE
-        };
+async fn run_proxy(args: ProxyArgs) -> ExitCode {
+    // If backend args contain --help or -h, spawn backend directly
+    if let Some(code) = handle_backend_help(&args.backend, &args.backend_args).await {
+        return code;
     }
 
     // Initialize tracing
     tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::builder().parse_lossy(&log_level))
+        .with_env_filter(EnvFilter::builder().parse_lossy(&args.log_level))
         .with_target(false)
         .init();
 
     // Parse output format
-    let output_format = OutputFormat::from_str(&output)
+    let output_format = OutputFormat::from_str(&args.output)
         .ok()
         .unwrap_or(OutputFormat::Json);
 
-    // Build CappingConfig from CLI flags
-    let capping_config = CappingConfig {
-        max_diags,
-        max_completions,
-        max_symbols,
-    };
-
     // Build config
-    let config = match Config::builder()
-        .backend_cmd(&backend)
-        .capping(capping_config)
-        .enable_diag_compress(compress_diag)
-        .enable_completion_compress(compress_completion)
-        .enable_hover_compress(compress_hover)
-        .enable_document_symbol_compress(compress_document_symbol)
-        .enable_location_compress(compress_location)
-        .enable_workspace_symbol_compress(compress_workspace_symbol)
-        .enable_workspace_diag_compress(compress_workspace_diag)
-        .output_format(output_format)
-        .log_level(&log_level)
-        .build()
-    {
+    let config = match build_config(&args, output_format) {
         Ok(c) => c,
-        Err(e) => {
+        Err(code) => return code,
+    };
+
+    // Create transport based on scheme
+    let transport: Box<dyn Transport> = match create_transport(
+        &args.transport_scheme,
+        &config.backend_cmd,
+        &args.backend_args,
+    )
+    .await
+    {
+        Ok(t) => t,
+        Err(code) => return code,
+    };
+
+    // Build interceptor chain
+    let interceptor_chain = build_interceptor_chain(&config);
+
+    // Create and start proxy
+    let mut proxy = Proxy::new(config, transport, interceptor_chain);
+
+    if let Err(e) = proxy.start().await {
+        tracing::error!(error = %e, "Proxy exited with error");
+        return ExitCode::FAILURE;
+    }
+
+    ExitCode::SUCCESS
+}
+
+/// Spawn backend with `--help` args directly if requested.
+async fn handle_backend_help(backend: &str, backend_args: &[String]) -> Option<ExitCode> {
+    if !backend_args.iter().any(|a| a == "--help" || a == "-h") {
+        return None;
+    }
+
+    let parts = shell_words::split(backend).ok()?;
+    let mut iter = parts.into_iter();
+    let program = iter.next()?;
+    let mut args: Vec<String> = iter.collect();
+    args.extend(backend_args.iter().cloned());
+
+    let status = tokio::process::Command::new(&program)
+        .args(&args)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::inherit())
+        .stderr(std::process::Stdio::inherit())
+        .status()
+        .await;
+
+    match status {
+        Ok(s) if s.success() => Some(ExitCode::SUCCESS),
+        _ => Some(ExitCode::FAILURE),
+    }
+}
+
+/// Create a transport by parsing the scheme string.
+async fn create_transport(
+    scheme: &str,
+    backend_cmd: &str,
+    backend_args: &[String],
+) -> Result<Box<dyn Transport>, ExitCode> {
+    if scheme == "stdio" {
+        StdioTransport::spawn(backend_cmd, backend_args)
+            .map(|t| Box::new(t) as Box<dyn Transport>)
+            .map_err(|e| {
+                eprintln!("Failed to start backend server: {e}");
+                ExitCode::FAILURE
+            })
+    } else if let Some(addr) = scheme.strip_prefix("tcp://") {
+        TcpTransport::connect(addr)
+            .await
+            .map(|t| {
+                tracing::info!(addr = %addr, "Connected to TCP LSP server");
+                Box::new(t) as Box<dyn Transport>
+            })
+            .map_err(|e| {
+                eprintln!("Failed to connect to TCP server '{addr}': {e}");
+                ExitCode::FAILURE
+            })
+    } else if scheme.starts_with("ws://") || scheme.starts_with("wss://") {
+        connect_websocket(scheme).await
+    } else {
+        eprintln!(
+            "Unknown transport scheme '{scheme}'. Use 'stdio', 'tcp://host:port', or 'ws://url'."
+        );
+        Err(ExitCode::FAILURE)
+    }
+}
+
+/// Connect via WebSocket transport (feature-gated).
+async fn connect_websocket(scheme: &str) -> Result<Box<dyn Transport>, ExitCode> {
+    #[cfg(feature = "transport-websocket")]
+    {
+        WsTransport::connect(scheme)
+            .await
+            .map(|t| {
+                tracing::info!(url = %scheme, "Connected to WebSocket LSP server");
+                Box::new(t) as Box<dyn Transport>
+            })
+            .map_err(|e| {
+                eprintln!("Failed to connect to WebSocket server '{scheme}': {e}");
+                ExitCode::FAILURE
+            })
+    }
+    #[cfg(not(feature = "transport-websocket"))]
+    {
+        let _ = scheme;
+        eprintln!("WebSocket transport is not enabled. Build with `transport-websocket` feature.");
+        Err(ExitCode::FAILURE)
+    }
+}
+
+/// Build Config from CLI flags.
+fn build_config(args: &ProxyArgs, output_format: OutputFormat) -> Result<Config, ExitCode> {
+    Config::builder()
+        .backend_cmd(&args.backend)
+        .capping(CappingConfig {
+            max_diags: args.max_diags,
+            max_completions: args.max_completions,
+            max_symbols: args.max_symbols,
+        })
+        .enable_diag_compress(args.compress_diag)
+        .enable_completion_compress(args.compress_completion)
+        .enable_hover_compress(args.compress_hover)
+        .enable_document_symbol_compress(args.compress_document_symbol)
+        .enable_location_compress(args.compress_location)
+        .enable_workspace_symbol_compress(args.compress_workspace_symbol)
+        .enable_workspace_diag_compress(args.compress_workspace_diag)
+        .output_format(output_format)
+        .log_level(&args.log_level)
+        .metrics(MetricsConfig {
+            enabled: args.metrics_enabled,
+            report_interval_secs: args.metrics_interval,
+        })
+        .build()
+        .map_err(|e| {
             eprintln!("Configuration error: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
+            ExitCode::FAILURE
+        })
+}
 
-    // Create transport
-    let transport = match StdioTransport::spawn(&config.backend_cmd, &backend_args) {
-        Ok(t) => Box::new(t) as Box<dyn lspz_core::Transport>,
-        Err(e) => {
-            eprintln!("Failed to start backend server: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
-
-    // Build interceptor chain (capping first, then compressors)
+/// Build the interceptor chain from config, optionally wrapped in metrics.
+fn build_interceptor_chain(config: &Config) -> InterceptorChain {
     let mut interceptors: Vec<Box<dyn Interceptor>> = Vec::new();
+
     if config.capping.any_enabled() {
         interceptors.push(Box::new(CappingInterceptor::new(
             config.capping.max_diags,
@@ -325,17 +431,17 @@ async fn run_proxy(
         interceptors.push(Box::new(lspz_core::WorkspaceDiagnosticCompressor));
         tracing::info!("Workspace diagnostic compression enabled");
     }
-    let interceptor_chain = InterceptorChain::new(interceptors);
 
-    // Create and start proxy
-    let mut proxy = Proxy::new(config, transport, interceptor_chain);
-
-    if let Err(e) = proxy.start().await {
-        tracing::error!(error = %e, "Proxy exited with error");
-        return ExitCode::FAILURE;
+    if config.metrics.enabled {
+        tracing::info!("Metrics collection enabled");
+        let wrapped: Vec<Box<dyn Interceptor>> = interceptors
+            .into_iter()
+            .map(|i| Box::new(MetredInterceptor::new(i).enable()) as Box<dyn Interceptor>)
+            .collect();
+        InterceptorChain::new(wrapped)
+    } else {
+        InterceptorChain::new(interceptors)
     }
-
-    ExitCode::SUCCESS
 }
 
 /// Run as MCP server — exposes LSP tools via Model Context Protocol.

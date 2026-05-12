@@ -6,6 +6,11 @@ license.workspace = true
 repository.workspace = true
 description = "AI-friendly LSP compression proxy"
 
+[features]
+default = ["transport-tcp"]
+transport-tcp = ["lspz-core/transport-tcp"]
+transport-websocket = ["lspz-core/transport-websocket"]
+
 [dependencies]
 lspz-core = { path = "../lspz-core" }
 lspz-mcp = { path = "../lspz-mcp" }
