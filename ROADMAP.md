@@ -341,8 +341,6 @@
 ### Config 热重载
 `notify` crate + `Arc<RwLock<Config>>`。但有状态一致性问题，重启即可。
 
-### Python/TypeScript 客户端库
-等待压缩格式稳定（连续 3 个 phase 无变更）。
 
 ---
 
