@@ -17,6 +17,8 @@
 - **`enable_hover_compress`**: `bool` — Whether to enable hover compression (default: true).
 - **`enable_document_symbol_compress`**: `bool` — Whether to enable document symbol compression (default: true).
 - **`enable_location_compress`**: `bool` — Whether to enable location compression (default: true).
+- **`enable_workspace_symbol_compress`**: `bool` — Whether to enable workspace symbol compression (default: true).
+- **`enable_workspace_diag_compress`**: `bool` — Whether to enable workspace diagnostic compression (default: true).
 - **`output_format`**: `OutputFormat` — Output format for intercepted messages (json, toon, passthrough).
 - **`log_level`**: `String` — Log level (trace, debug, info, warn, error).
 

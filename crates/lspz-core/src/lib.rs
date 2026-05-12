@@ -31,6 +31,8 @@ pub use interceptors::diagnostics::DiagnosticsCompressor;
 pub use interceptors::hover::HoverCompressor;
 pub use interceptors::locations::LocationCompressor;
 pub use interceptors::symbols::DocumentSymbolCompressor;
+pub use interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
+pub use interceptors::workspace_symbols::WorkspaceSymbolCompressor;
 pub use proxy::Proxy;
 pub use transport::Transport;
 pub use transport::stdio::StdioTransport;

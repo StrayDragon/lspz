@@ -401,19 +401,19 @@ fn compress_symbol_information(value: &Value) -> Value {
 Compress a Location: `{ uri, range }` → `{ u, r }`.
 
 ```rust
-fn compress_location(location: &Value) -> Value {
+pub(crate) fn compress_location(location: &Value) -> Value {
 ```
 
 Compress a Range: `{ start, end }` → `{ s, e }`, each Position compacted to `{ l, c }`.
 
 ```rust
-fn compress_range(range: &Value) -> Value {
+pub(crate) fn compress_range(range: &Value) -> Value {
 ```
 
 Compress a Position: `{ line, character }` → `{ l, c }`.
 
 ```rust
-fn compress_position(pos: &Value) -> Value {
+pub(crate) fn compress_position(pos: &Value) -> Value {
 ```
 
 Map LSP SymbolKind numeric value to a single character.
@@ -421,5 +421,125 @@ Map LSP SymbolKind numeric value to a single character.
 See <https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind>
 
 ```rust
-fn encode_symbol_kind(kind: u64) -> Option<char> {
+pub(crate) fn encode_symbol_kind(kind: u64) -> Option<char> {
+```
+
+Compression interceptor for `workspace/diagnostic`.
+
+For 'full' entries, reuses the same 5-step pipeline as [`DiagnosticsCompressor`]:
+field pruning, message normalization, severity reduction, dedup, range encoding.
+For 'unchanged' entries, passes through transparently.
+
+```rust
+pub struct WorkspaceDiagnosticCompressor;
+```
+
+Top-level compression entry point.
+
+Processes `{ items: [...] }`, compressing each 'full' entry individually.
+
+```rust
+fn compress_workspace_diagnostics(params: &Value) -> Result<Value, LspzError> {
+```
+
+Compress a single workspace diagnostic document entry.
+
+- `kind: 'unchanged'` → pass through with `_c: "u"` marker
+- `kind: 'full'` → compress diagnostics via compact::compress
+
+```rust
+fn compress_doc_item(item: &Value) -> Value {
+```
+
+Compress a 'full' entry by delegating to the diagnostics compressor.
+
+Constructs a `publishDiagnostics`-shaped `{ uri, diagnostics }` value,
+passes it through `compact::compress`, then stitches the result back.
+
+```rust
+fn compress_full(item: &Value) -> Value {
+```
+
+Mark an unchanged entry with a minimal marker.
+
+```rust
+fn compress_unchanged(item: &Value) -> Value {
+```
+
+Convert compact workspace diagnostic response to TOON format.
+
+Outputs each file's diagnostics in sequence, with unchanged files noted.
+
+```rust
+pub fn workspace_diagnostics_to_toon(value: &Value) -> Result<String, LspzError> {
+```
+
+Map compact severity to full string for TOON output.
+
+```rust
+fn severity_to_str(d: &Value) -> &'static str {
+```
+
+Format a compact diagnostic range to `L:C-L:C`.
+
+```rust
+fn format_ws_diag_range(d: &Value) -> String {
+```
+
+Compression interceptor for `workspace/symbol` responses.
+
+Reuses SymbolKind encoding from [`DocumentSymbolCompressor`] and URI pooling
+from [`LocationCompressor`] for maximum token savings.
+
+```rust
+pub struct WorkspaceSymbolCompressor;
+```
+
+Top-level compression entry point.
+
+```rust
+fn compress_workspace_symbols(params: &Value) -> Result<Value, LspzError> {
+```
+
+Build URI pool from SymbolInformation items (extract `location.uri`).
+
+```rust
+fn build_uri_pool(items: &[Value]) -> Vec<String> {
+```
+
+Compress a single SymbolInformation entry.
+
+Field mapping:
+- `name` → `n`
+- `kind` → `k` (single char via encode_symbol_kind)
+- `containerName` → `c`
+- `location` → `l`: `{ uri, range }` → `{ u: pool_idx, r: { s, e } }`
+- Dropped: `deprecated`, `tags`, `data`
+
+```rust
+fn compress_symbol_item(value: &Value, uri_pool: &[String]) -> Value {
+```
+
+Convert compact workspace symbol response to TOON tabular format.
+
+```rust
+pub fn workspace_symbols_to_toon(value: &Value) -> Result<String, LspzError> {
+```
+
+Map compact symbol kind char back to full string.
+
+```rust
+fn symbol_kind_from_char(k: &str) -> &'static str {
+```
+
+Format a compact range `{ s: { l, c }, e: { l, c } }` to `L:C-L:C`.
+
+```rust
+fn format_ws_range(range: &Value) -> String {
+```
+
+Escape a string for CSV output.
+
+```rust
+fn escape_csv(s: &str) -> String {
 ```

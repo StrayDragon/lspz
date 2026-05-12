@@ -106,6 +106,18 @@ Whether to enable location compression (default: true).
 pub enable_location_compress: bool,
 ```
 
+Whether to enable workspace symbol compression (default: true).
+
+```rust
+pub enable_workspace_symbol_compress: bool,
+```
+
+Whether to enable workspace diagnostic compression (default: true).
+
+```rust
+pub enable_workspace_diag_compress: bool,
+```
+
 Output format for intercepted messages (json, toon, passthrough).
 
 ```rust
@@ -164,6 +176,18 @@ Enable or disable location compression.
 
 ```rust
 pub fn enable_location_compress(mut self, enable: bool) -> Self {
+```
+
+Enable or disable workspace symbol compression.
+
+```rust
+pub fn enable_workspace_symbol_compress(mut self, enable: bool) -> Self {
+```
+
+Enable or disable workspace diagnostic compression.
+
+```rust
+pub fn enable_workspace_diag_compress(mut self, enable: bool) -> Self {
 ```
 
 Set the output format (json, toon, passthrough).

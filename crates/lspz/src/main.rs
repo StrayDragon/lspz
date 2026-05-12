@@ -80,6 +80,23 @@ enum Cli {
         )]
         compress_location: bool,
 
+        /// Enable workspace symbol compression (default: true)
+        #[arg(
+            short = 'W',
+            long = "compress-workspace-symbol",
+            env = "LSPZ_ENABLE_WORKSPACE_SYMBOL_COMPRESS",
+            default_value_t = true
+        )]
+        compress_workspace_symbol: bool,
+
+        /// Enable workspace diagnostic compression (default: true)
+        #[arg(
+            long = "compress-workspace-diag",
+            env = "LSPZ_ENABLE_WORKSPACE_DIAG_COMPRESS",
+            default_value_t = true
+        )]
+        compress_workspace_diag: bool,
+
         /// Output format: toon, json (compact), or passthrough
         #[arg(
             short = 'o',
@@ -126,6 +143,8 @@ async fn main() -> ExitCode {
             compress_hover,
             compress_document_symbol,
             compress_location,
+            compress_workspace_symbol,
+            compress_workspace_diag,
             output,
             log_level,
             max_diags,
@@ -140,6 +159,8 @@ async fn main() -> ExitCode {
                 compress_hover,
                 compress_document_symbol,
                 compress_location,
+                compress_workspace_symbol,
+                compress_workspace_diag,
                 output,
                 log_level,
                 max_diags,
@@ -162,6 +183,8 @@ async fn run_proxy(
     compress_hover: bool,
     compress_document_symbol: bool,
     compress_location: bool,
+    compress_workspace_symbol: bool,
+    compress_workspace_diag: bool,
     output: String,
     log_level: String,
     max_diags: usize,
@@ -237,6 +260,8 @@ async fn run_proxy(
         .enable_hover_compress(compress_hover)
         .enable_document_symbol_compress(compress_document_symbol)
         .enable_location_compress(compress_location)
+        .enable_workspace_symbol_compress(compress_workspace_symbol)
+        .enable_workspace_diag_compress(compress_workspace_diag)
         .output_format(output_format)
         .log_level(&log_level)
         .build()
@@ -291,6 +316,14 @@ async fn run_proxy(
     if config.enable_location_compress {
         interceptors.push(Box::new(lspz_core::LocationCompressor));
         tracing::info!("Location compression enabled");
+    }
+    if config.enable_workspace_symbol_compress {
+        interceptors.push(Box::new(lspz_core::WorkspaceSymbolCompressor));
+        tracing::info!("Workspace symbol compression enabled");
+    }
+    if config.enable_workspace_diag_compress {
+        interceptors.push(Box::new(lspz_core::WorkspaceDiagnosticCompressor));
+        tracing::info!("Workspace diagnostic compression enabled");
     }
     let interceptor_chain = InterceptorChain::new(interceptors);
 

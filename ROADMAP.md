@@ -44,7 +44,10 @@
 
 | 版本 | 阶段 | 主要变更 |
 |------|------|----------|
-| **v0.8.0** *(当前)* | Response Capping | 截断 + 压缩正交叠加，Proxy 响应拦截 |
+| **v0.11.0** *(当前)* | Workspace Symbol + Diagnostic 压缩 | 全部 8 个压缩器完成 |
+| v0.10.0 | Workspace Symbol 压缩 | 复用 SymbolKind 编码 + URI 去重 |
+| v0.9.0 | Location 压缩 | references/definition/impl/typeDef |
+| v0.8.0 | Response Capping | 截断 + 压缩正交叠加，Proxy 响应拦截 |
 | v0.7.0 | TOON 输出格式 | Token-Oriented Object Notation |
 | v0.6.0 | 4 个压缩器全部完成 | DocumentSymbol 压缩 |
 | v0.5.0 | Hover 压缩 | Markdown 紧凑 + Hover 字段压缩 |
@@ -199,7 +202,7 @@
 
 ---
 
-## Phase 9: Location 结果压缩 — v0.9 (计划中)
+## Phase 9: Location 结果压缩 — v0.9 ✅ 已完成
 
 > **核心洞察**: `textDocument/references` 可返回数百个 `Location`，每个包含完整 URI + Range。
 > URI 字符串在大型项目中可达 50+ tokens，且跨引用时**同文件 URI 重复出现**。
@@ -226,10 +229,10 @@
 ### 任务
 
 ```
-[P9-A] LocationCompressor 实现 — locations.rs, 4 个 applies_to, 8+ 测试
-[P9-B] TOON 输出 — locations_to_toon()
-[P9-C] Config + CLI — --compress-location / -L, LSPZ_ENABLE_LOCATION_COMPRESS
-[P9-D] 集成测试 + 文档
+[P9-A] LocationCompressor 实现 — locations.rs, 4 个 applies_to, 11 测试 ✅ 已完成
+[P9-B] TOON 输出 — locations_to_toon() ✅ 已完成
+[P9-C] Config + CLI — --compress-location / -L, LSPZ_ENABLE_LOCATION_COMPRESS ✅ 已完成
+[P9-D] 集成测试 + 文档 ✅ 已完成
 ```
 
 ### Token 节省估算
@@ -242,7 +245,7 @@
 
 ---
 
-## Phase 10: Workspace Symbol 压缩 — v0.10 (计划中)
+## Phase 10: Workspace Symbol 压缩 — v0.10 ✅ 已完成
 
 > **核心洞察**: `workspace/symbol` 空查询可返回数千个符号。DocumentSymbol 的
 > SymbolKind 编码 (1-26 单字符) 完全复用。
@@ -257,10 +260,10 @@
 ### 任务
 
 ```
-[P10-A] WorkspaceSymbolCompressor 实现 — workspace_symbols.rs, 6+ 测试
-[P10-B] TOON + Compact 格式
-[P10-C] Config + CLI — --compress-workspace-symbol, LSPZ_ENABLE_WORKSPACE_SYMBOL_COMPRESS
-[P10-D] 集成测试 + 文档
+[P10-A] WorkspaceSymbolCompressor 实现 — workspace_symbols.rs, 8 测试 ✅ 已完成
+[P10-B] TOON + Compact 格式 ✅ 已完成
+[P10-C] Config + CLI ✅ 已完成
+[P10-D] 集成测试 + 文档 ✅ 已完成
 ```
 
 ### Token 节省估算
@@ -272,7 +275,7 @@
 
 ---
 
-## Phase 11: Workspace Diagnostic 压缩 — v0.11 (计划中)
+## Phase 11: Workspace Diagnostic 压缩 — v0.11 ✅ 已完成
 
 > **核心洞察**: LSP 3.17 拉式诊断 `workspace/diagnostic` 返回所有文件的诊断。
 > `kind: 'unchanged'` 文档直接跳过，`kind: 'full'` 调用现有 DiagnosticsCompressor。
@@ -287,10 +290,10 @@
 ### 任务
 
 ```
-[P11-A] WorkspaceDiagnosticCompressor — workspace_diagnostics.rs, ~200 行核心
-[P11-B] TOON 输出
-[P11-C] Config + CLI — --compress-workspace-diag, LSPZ_ENABLE_WORKSPACE_DIAG_COMPRESS
-[P11-D] 测试 + 文档
+[P11-A] WorkspaceDiagnosticCompressor — workspace_diagnostics.rs ✅ 已完成
+[P11-B] TOON 输出 ✅ 已完成
+[P11-C] Config + CLI ✅ 已完成
+[P11-D] 测试 + 文档 ✅ 已完成
 ```
 
 ### Token 节省估算
@@ -320,10 +323,10 @@
 | Phase | 版本 | 说明 | 状态 |
 |-------|------|------|------|
 | 0-7 | v0.7 | 4 压缩器 + TOON + Benchmark | :white_check_mark: |
-| 8 | v0.8 | Response Capping + Proxy 响应拦截 | :white_check_mark: 当前 |
-| 9 | v0.9 | Location 压缩 (references/definition/impl) | :ledger: 计划 |
-| 10 | v0.10 | Workspace Symbol 压缩 | :ledger: 计划 |
-| 11 | v0.11 | Workspace Diagnostic 压缩 | :ledger: 计划 |
+| 8 | v0.8 | Response Capping + Proxy 响应拦截 | :white_check_mark: |
+| 9 | v0.9 | Location 压缩 (references/definition/impl) | :white_check_mark: |
+| 10 | v0.10 | Workspace Symbol 压缩 | :white_check_mark: |
+| 11 | v0.11 | Workspace Diagnostic 压缩 | :white_check_mark: 当前 |
 
 ## 剩余事项 (低优先级)
 

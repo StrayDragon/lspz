@@ -16,6 +16,8 @@
 - **`crates/lspz-core/src/interceptors/locations`**: Location / LocationLink compression interceptor.
 - **`crates/lspz-core/src/interceptors/mod`**: Interceptor trait and chain.
 - **`crates/lspz-core/src/interceptors/symbols`**: DocumentSymbol / SymbolInformation compression interceptor.
+- **`crates/lspz-core/src/interceptors/workspace_diagnostics`**: Workspace Diagnostic compression interceptor.
+- **`crates/lspz-core/src/interceptors/workspace_symbols`**: Workspace Symbol compression interceptor.
 - **`crates/lspz-core/src/lib`**: # lspz-core
 - **`crates/lspz-core/src/proxy`**: LSP proxy state machine and message loop.
 - **`crates/lspz-core/src/transport/mock`**: Mock transport for testing LspSession without real LSP servers.

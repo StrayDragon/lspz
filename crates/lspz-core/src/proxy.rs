@@ -12,6 +12,8 @@ use crate::codec::json_rpc;
 use crate::codec::toon;
 use crate::config::{Config, OutputFormat};
 use crate::error::LspzError;
+use crate::interceptors::workspace_diagnostics::workspace_diagnostics_to_toon;
+use crate::interceptors::workspace_symbols::workspace_symbols_to_toon;
 use crate::interceptors::{Direction, InterceptorChain};
 use crate::transport::Transport;
 
@@ -322,6 +324,14 @@ impl Proxy {
             | "textDocument/definition"
             | "textDocument/implementation"
             | "textDocument/typeDefinition" => match toon::locations_to_toon(params) {
+                Ok(t) => t,
+                Err(_) => return raw.to_vec(),
+            },
+            "workspace/symbol" => match workspace_symbols_to_toon(params) {
+                Ok(t) => t,
+                Err(_) => return raw.to_vec(),
+            },
+            "workspace/diagnostic" => match workspace_diagnostics_to_toon(params) {
                 Ok(t) => t,
                 Err(_) => return raw.to_vec(),
             },
