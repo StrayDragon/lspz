@@ -4,6 +4,7 @@
 //! request/response/notification message exchange.
 
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Duration;
 
 use lspz_core::StdioTransport;
 use lspz_core::Transport;
@@ -75,9 +76,11 @@ impl LspSession {
         let frame = msg.to_bytes()?;
         self.transport.send(&frame).await?;
 
-        // Read frames until we get the matching response
+        // Read frames until we get the matching response (with 30s timeout)
         loop {
-            let raw = self.transport.receive().await?;
+            let raw = tokio::time::timeout(Duration::from_secs(30), self.transport.receive())
+                .await
+                .map_err(|_| anyhow::anyhow!("timeout waiting for response to '{method}'"))??;
             let parsed = LspMessage::from_frame_bytes(&raw)?;
             match parsed {
                 LspMessage::Response {
@@ -127,10 +130,12 @@ impl LspSession {
 
     /// Read and discard frames until a notification with the given method arrives.
     ///
-    /// Returns the notification params.
+    /// Returns the notification params. Times out after 30 seconds.
     pub async fn wait_for_notification(&mut self, method: &str) -> Result<Value, anyhow::Error> {
         loop {
-            let raw = self.transport.receive().await?;
+            let raw = tokio::time::timeout(Duration::from_secs(30), self.transport.receive())
+                .await
+                .map_err(|_| anyhow::anyhow!("timeout waiting for '{method}' notification"))??;
             let parsed = LspMessage::from_frame_bytes(&raw)?;
             match parsed {
                 LspMessage::Notification { method: m, params } if m == method => return Ok(params),

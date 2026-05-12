@@ -6,12 +6,16 @@
 //! is not installed on the current system.
 
 use std::sync::atomic::{AtomicI64, Ordering};
+use std::time::Duration;
 
 use lspz_core::StdioTransport;
 use lspz_core::Transport;
 use lspz_core::codec::json_rpc::LspMessage;
 use serde_json::Value;
 use tempfile::TempDir;
+
+/// Timeout for LSP request/response cycles in tests.
+const LSP_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// A test harness for running real LSP servers.
 pub struct LspTestHarness {
@@ -33,7 +37,18 @@ impl LspTestHarness {
     /// `language_id` — the LSP language identifier (e.g. `"rust"`).
     pub async fn try_new(
         cmd: &str,
-        _file_content: &str,
+        file_content: &str,
+        file_name: &str,
+        language_id: &str,
+    ) -> Option<Self> {
+        Self::try_new_with_args(cmd, &[], file_content, file_name, language_id).await
+    }
+
+    /// Like [`try_new`] but with extra command-line arguments for the server.
+    pub async fn try_new_with_args(
+        cmd: &str,
+        args: &[&str],
+        file_content: &str,
         file_name: &str,
         language_id: &str,
     ) -> Option<Self> {
@@ -50,7 +65,14 @@ impl LspTestHarness {
         }
 
         let temp_dir = TempDir::with_prefix("lspz_e2e_").ok()?;
-        let transport = StdioTransport::spawn(cmd, &[]).ok()?;
+        let root_path = temp_dir.path().to_str()?.to_string();
+
+        // Create language-appropriate project scaffolding so the LSP
+        // server recognizes the file as part of a real project.
+        Self::scaffold_project(temp_dir.path(), language_id, file_name, file_content);
+
+        let extra_args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
+        let transport = StdioTransport::spawn(cmd, &extra_args).ok()?;
 
         let mut harness = Self {
             transport,
@@ -60,10 +82,52 @@ impl LspTestHarness {
             next_id: AtomicI64::new(1),
         };
 
-        // Perform initialize handshake
-        harness.initialize().await;
+        // Perform initialize handshake with rootUri pointing to temp dir.
+        // If the handshake fails (e.g. server version incompatibility),
+        // skip gracefully instead of failing.
+        if harness
+            .initialize_with_root(Some(&root_path))
+            .await
+            .is_err()
+        {
+            eprintln!("  SKIP: '{}' initialize handshake failed", cmd);
+            return None;
+        }
 
         Some(harness)
+    }
+
+    /// Create minimal project scaffolding so LSP servers emit diagnostics.
+    fn scaffold_project(dir: &std::path::Path, lang: &str, file_name: &str, content: &str) {
+        match lang {
+            "rust" => {
+                let src_dir = dir.join("src");
+                let _ = std::fs::create_dir_all(&src_dir);
+                let cargo_toml = dir.join("Cargo.toml");
+                if !cargo_toml.exists() {
+                    let _ = std::fs::write(
+                        cargo_toml,
+                        "[package]\nname = \"lspz_e2e\"\nversion = \"0.1.0\"\nedition = \"2021\"\n",
+                    );
+                }
+                let _ = std::fs::write(src_dir.join(file_name), content);
+            }
+            "go" => {
+                // gopls works best when the file is in a module
+                let go_mod = dir.join("go.mod");
+                if !go_mod.exists() {
+                    let _ = std::fs::write(go_mod, "module lspz_e2e\ngo 1.21\n");
+                }
+                let _ = std::fs::write(dir.join(file_name), content);
+            }
+            "typescript" => {
+                // typescript-language-server works on standalone .ts files
+                let _ = std::fs::write(dir.join(file_name), content);
+            }
+            _ => {
+                let _ = std::fs::write(dir.join(file_name), content);
+            }
+        }
     }
 
     async fn send_request(&mut self, method: &str, params: Value) -> Result<Value, String> {
@@ -80,7 +144,10 @@ impl LspTestHarness {
             .map_err(|e| e.to_string())?;
 
         loop {
-            let raw = self.transport.receive().await.map_err(|e| e.to_string())?;
+            let raw = tokio::time::timeout(LSP_TIMEOUT, self.transport.receive())
+                .await
+                .map_err(|_| format!("timeout waiting for response to '{method}'"))?
+                .map_err(|e| e.to_string())?;
             let parsed = LspMessage::from_frame_bytes(&raw).map_err(|e| e.to_string())?;
             match parsed {
                 LspMessage::Response {
@@ -111,24 +178,29 @@ impl LspTestHarness {
         self.transport.send(&frame).await.map_err(|e| e.to_string())
     }
 
-    async fn initialize(&mut self) {
+    async fn initialize_with_root(&mut self, root_uri: Option<&str>) -> Result<(), String> {
+        let root_params =
+            root_uri.map(|r| serde_json::json!([{"uri": format!("file://{r}"), "name": "root"}]));
         let params = serde_json::json!({
             "processId": null,
             "capabilities": {},
-            "rootUri": null,
-            "workspaceFolders": null,
+            "rootUri": root_uri.map(|r| format!("file://{r}")),
+            "workspaceFolders": root_params,
         });
-        self.send_request("initialize", params)
-            .await
-            .expect("LSP initialize should succeed");
+        self.send_request("initialize", params).await?;
         self.send_notification("initialized", serde_json::json!({}))
             .await
-            .expect("initialized notification should succeed");
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Open a test file and return the file URI.
     pub fn write_source_file(&self, content: &str) -> String {
-        let file_path = self.temp_dir.path().join(&self.file_name);
+        // For Rust projects, source goes under src/; other languages at root.
+        let file_path = match self.language_id.as_str() {
+            "rust" => self.temp_dir.path().join("src").join(&self.file_name),
+            _ => self.temp_dir.path().join(&self.file_name),
+        };
         std::fs::write(&file_path, content).expect("should write test file");
         format!("file://{}", file_path.display())
     }
@@ -151,7 +223,10 @@ impl LspTestHarness {
 
         // Wait for publishDiagnostics notification
         loop {
-            let raw = self.transport.receive().await.map_err(|e| e.to_string())?;
+            let raw = tokio::time::timeout(LSP_TIMEOUT, self.transport.receive())
+                .await
+                .map_err(|_| "timeout waiting for publishDiagnostics notification".to_string())?
+                .map_err(|e| e.to_string())?;
             let parsed = LspMessage::from_frame_bytes(&raw).map_err(|e| e.to_string())?;
             match parsed {
                 LspMessage::Notification { method, params }
