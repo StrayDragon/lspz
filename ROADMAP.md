@@ -44,7 +44,9 @@
 
 | 版本 | 阶段 | 主要变更 |
 |------|------|----------|
-| **v0.6.0** *(当前)* | 4 个压缩器全部完成 | DocumentSymbol 压缩 |
+| **v0.8.0** *(当前)* | Response Capping | 截断 + 压缩正交叠加，Proxy 响应拦截 |
+| v0.7.0 | TOON 输出格式 | Token-Oriented Object Notation |
+| v0.6.0 | 4 个压缩器全部完成 | DocumentSymbol 压缩 |
 | v0.5.0 | Hover 压缩 | Markdown 紧凑 + Hover 字段压缩 |
 | v0.4.0 | 补全压缩 | CompletionItemKind 编码 + doc 去重 |
 | v0.3.0 | Agent SDK | AgentHandle + AgentPool |
@@ -140,7 +142,7 @@
 
 ---
 
-## Phase 8: Response Capping — v0.8 (计划中)
+## Phase 8: Response Capping — v0.8 ✅ 已完成
 
 > **核心洞察**: LLM 不需要 LSP 返回的**全部**条目。比如 200 个 diagnostics 中，前 20 个就足以反映问题全貌。
 > 在压缩**之前**截断，比压缩本身更省 token。
@@ -153,28 +155,33 @@
 ### 任务
 
 ```
-[P8-A] Config 扩展
-  - --max-diags <N>         （默认 0 = 不限制）
-  - --max-completions <N>   （默认 0 = 不限制）
-  - --max-symbols <N>       （默认 0 = 不限制）
-  - 对应的环境变量 LSPZ_MAX_DIAGS / LSPZ_MAX_COMPLETIONS / LSPZ_MAX_SYMBOLS
-  - 新增 CappingConfig 结构体，可选独立控制每种类型
+[P8-A] Config 扩展  ✅ 已完成
+  - CappingConfig 结构体 + ConfigBuilder.capping() 方法
+  - --max-diags / --max-completions / --max-symbols CLI flags
+  - 环境变量 LSPZ_MAX_DIAGS / LSPZ_MAX_COMPLETIONS / LSPZ_MAX_SYMBOLS
 
-[P8-B] 新增 CappingInterceptor
-  - 位于 Interceptor 链**最前端**（优先于压缩器执行）
-  - Direction::ServerToClient 仅对通知/响应中的 items 列表做截断
-  - 截断策略: 保留前 N 条（按 LSP 返回顺序）
-  - 通过 tracing::info! 记录截断信息
+[P8-B] 新增 CappingInterceptor  ✅ 已完成
+  - crates/lspz-core/src/interceptors/capping.rs
+  - 位于 Interceptor 链最前端（优先于压缩器执行）
+  - 支持 diagnostics / completions / symbols 三种类型截断
+  - 10 个单元测试全部通过
+  - Fail-open 保障
 
-[P8-C] 集成与测试
-  - CLI 参数装配到 InterceptorChain
-  - 单元测试验证截断 + 压缩串联
-  - 集成测试覆盖 diagnostics / completions / symbols 三种类型
+[P8-C] Proxy 响应拦截增强  ✅ 已完成
+  - proxy.rs 新增 pending_requests 跟踪机制
+  - 支持将 server→client 的 response 消息送入 InterceptorChain
+  - CompletionCompressor / HoverCompressor / DocumentSymbolCompressor
+    现在在 proxy 模式下也能正常工作
 
-[P8-D] 文档
+[P8-D] 集成与测试  ✅ 已完成
+  - CLI 参数装配到 Config + InterceptorChain
+  - 141 个测试通过 (lib + integration)
+  - clippy 零警告
+
+[P8-E] 文档  ✅ 已完成
   - ROADMAP.md Phase 8 标记完成
   - _HANDOFF.md 更新
-  - CLI --help 更新
+  - CLI --help 自动更新（clap derive）
 ```
 
 ### Token 节省估算

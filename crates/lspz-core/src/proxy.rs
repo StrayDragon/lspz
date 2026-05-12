@@ -2,6 +2,8 @@
 //!
 //! [MermaidChart:./docs/mmd/proxy-state-machine.mmd]
 
+use std::collections::HashMap;
+
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::select;
 
@@ -37,6 +39,8 @@ pub struct Proxy {
     state: State,
     transport: Box<dyn Transport>,
     interceptor_chain: InterceptorChain,
+    /// Tracks in-flight request IDs to their method for response interception.
+    pending_requests: HashMap<u64, String>,
 }
 
 impl Proxy {
@@ -51,6 +55,7 @@ impl Proxy {
             state: State::Created,
             transport,
             interceptor_chain,
+            pending_requests: HashMap::new(),
         }
     }
 
@@ -139,6 +144,9 @@ impl Proxy {
                         return Ok(());
                     }
 
+                    // Track request ID → method mapping for response interception
+                    track_pending_request(&msg_bytes, &mut self.pending_requests);
+
                     self.transport.send(&msg_bytes).await?;
                 }
 
@@ -169,9 +177,10 @@ impl Proxy {
 
     /// Process a raw server→client message through the interceptor chain.
     ///
+    /// Supports both notifications (with `method`) and responses (with `id`).
     /// Returns the (possibly transformed) frame bytes, or empty if dropped.
     /// Always succeeds: on error, returns the original raw bytes (fail-open).
-    async fn process_server_message(&self, raw: &[u8]) -> Vec<u8> {
+    async fn process_server_message(&mut self, raw: &[u8]) -> Vec<u8> {
         let (frame, _) = match json_rpc::parse_frame(raw) {
             Ok(Some(result)) => result,
             _ => return raw.to_vec(),
@@ -181,11 +190,26 @@ impl Proxy {
             Err(_) => return raw.to_vec(),
         };
 
-        let method = match json_val.get("method").and_then(|v| v.as_str()) {
-            Some(m) => m,
-            None => return raw.to_vec(), // Response without method → no interception
-        };
+        // Notification or server→client request: has `method` field
+        if let Some(method) = json_val.get("method").and_then(|v| v.as_str()) {
+            return self.process_notification(method, &json_val, raw).await;
+        }
 
+        // Response (no `method`): look up from pending requests
+        if json_val.get("id").is_some() {
+            return self.process_response(&json_val, raw).await;
+        }
+
+        raw.to_vec()
+    }
+
+    /// Process a notification or server→client request through the interceptor chain.
+    async fn process_notification(
+        &self,
+        method: &str,
+        json_val: &serde_json::Value,
+        raw: &[u8],
+    ) -> Vec<u8> {
         let params = json_val
             .get("params")
             .cloned()
@@ -212,6 +236,58 @@ impl Proxy {
             None => return raw.to_vec(),
         };
         obj.insert("params".into(), transformed);
+
+        let new_val = serde_json::Value::Object(obj);
+        match json_rpc::serialize_frame(&new_val) {
+            Ok(bytes) => bytes,
+            Err(_) => raw.to_vec(),
+        }
+    }
+
+    /// Process a server→client response (no method, has id).
+    ///
+    /// Looks up the original request method from `pending_requests`,
+    /// passes the response `result` through the interceptor chain,
+    /// then reconstructs the response.
+    async fn process_response(&mut self, json_val: &serde_json::Value, raw: &[u8]) -> Vec<u8> {
+        let id = match json_val.get("id").and_then(|v| v.as_u64()) {
+            Some(id) => id,
+            None => return raw.to_vec(),
+        };
+
+        // Look up and remove the request method; if unknown, pass through
+        let method = match self.pending_requests.remove(&id) {
+            Some(m) => m,
+            None => return raw.to_vec(),
+        };
+
+        // Skip error responses
+        if json_val.get("error").is_some() {
+            return raw.to_vec();
+        }
+
+        // Extract result as params
+        let params = json_val
+            .get("result")
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+
+        let transformed = match self
+            .interceptor_chain
+            .process(&method, params, Direction::ServerToClient)
+            .await
+        {
+            Ok(Some(p)) => p,
+            Ok(None) => return Vec::new(), // Dropped by interceptor
+            Err(_) => return raw.to_vec(), // Fail-open
+        };
+
+        // Reconstruct response with transformed result
+        let mut obj = match json_val.as_object() {
+            Some(o) => o.clone(),
+            None => return raw.to_vec(),
+        };
+        obj.insert("result".into(), transformed);
 
         let new_val = serde_json::Value::Object(obj);
         match json_rpc::serialize_frame(&new_val) {
@@ -261,6 +337,28 @@ impl Proxy {
             Err(_) => raw.to_vec(),
         }
     }
+}
+
+/// Track a client→server request ID → method mapping for response interception.
+fn track_pending_request(raw: &[u8], pending: &mut HashMap<u64, String>) {
+    let (frame, _) = match json_rpc::parse_frame(raw) {
+        Ok(Some(f)) => f,
+        _ => return,
+    };
+    let val: serde_json::Value = match serde_json::from_slice(&frame.body) {
+        Ok(v) => v,
+        _ => return,
+    };
+    // Only track requests (must have both id and method)
+    let id = match val.get("id").and_then(|v| v.as_u64()) {
+        Some(id) => id,
+        None => return,
+    };
+    let method = match val.get("method").and_then(|v| v.as_str()) {
+        Some(m) => m,
+        None => return,
+    };
+    pending.insert(id, method.to_string());
 }
 
 // ─── I/O Helpers ────────────────────────────────────────────────────────────

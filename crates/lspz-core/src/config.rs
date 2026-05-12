@@ -30,11 +30,33 @@ impl FromStr for OutputFormat {
     }
 }
 
+/// Per-type capping limits for LSP server responses.
+///
+/// A value of 0 means no limit (capping disabled for that type).
+#[derive(Debug, Clone, Default)]
+pub struct CappingConfig {
+    /// Maximum number of diagnostics to keep (0 = unlimited).
+    pub max_diags: usize,
+    /// Maximum number of completion items to keep (0 = unlimited).
+    pub max_completions: usize,
+    /// Maximum number of document symbols to keep (0 = unlimited).
+    pub max_symbols: usize,
+}
+
+impl CappingConfig {
+    /// Returns `true` if any capping limit is set.
+    pub fn any_enabled(&self) -> bool {
+        self.max_diags > 0 || self.max_completions > 0 || self.max_symbols > 0
+    }
+}
+
 /// Configuration for the lspz proxy.
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Command used to launch the backend LSP server.
     pub backend_cmd: String,
+    /// Per-type response capping limits.
+    pub capping: CappingConfig,
     /// Whether to enable diagnostic compression.
     pub enable_diag_compress: bool,
     /// Whether to enable completion compression (default: true).
@@ -53,6 +75,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             backend_cmd: String::new(),
+            capping: CappingConfig::default(),
             enable_diag_compress: true,
             enable_completion_compress: true,
             enable_hover_compress: true,
@@ -74,6 +97,7 @@ impl Config {
 #[derive(Debug, Default)]
 pub struct ConfigBuilder {
     backend_cmd: Option<String>,
+    capping: Option<CappingConfig>,
     enable_diag_compress: Option<bool>,
     enable_completion_compress: Option<bool>,
     enable_hover_compress: Option<bool>,
@@ -122,6 +146,12 @@ impl ConfigBuilder {
     /// Set the log level.
     pub fn log_level(mut self, level: impl Into<String>) -> Self {
         self.log_level = Some(level.into());
+        self
+    }
+
+    /// Set the response capping limits.
+    pub fn capping(mut self, capping: CappingConfig) -> Self {
+        self.capping = Some(capping);
         self
     }
 
@@ -182,8 +212,25 @@ impl ConfigBuilder {
             })
             .unwrap_or(OutputFormat::Toon);
 
+        // Read capping from env vars or use builder value
+        let capping = self.capping.unwrap_or_else(|| CappingConfig {
+            max_diags: std::env::var("LSPZ_MAX_DIAGS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+            max_completions: std::env::var("LSPZ_MAX_COMPLETIONS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+            max_symbols: std::env::var("LSPZ_MAX_SYMBOLS")
+                .ok()
+                .and_then(|v| v.parse().ok())
+                .unwrap_or(0),
+        });
+
         Ok(Config {
             backend_cmd,
+            capping,
             enable_diag_compress,
             enable_completion_compress,
             enable_hover_compress,

@@ -13,8 +13,9 @@ use std::str::FromStr;
 use clap::Parser;
 use lspz_core::interceptors::Interceptor;
 use lspz_core::interceptors::InterceptorChain;
+use lspz_core::interceptors::capping::CappingInterceptor;
 use lspz_core::interceptors::diagnostics::DiagnosticsCompressor;
-use lspz_core::{Config, OutputFormat, Proxy, StdioTransport};
+use lspz_core::{CappingConfig, Config, OutputFormat, Proxy, StdioTransport};
 use rmcp::ServiceExt;
 use rmcp::transport::stdio;
 use tracing_subscriber::EnvFilter;
@@ -82,6 +83,18 @@ enum Cli {
         /// Log level (trace, debug, info, warn, error)
         #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
         log_level: String,
+
+        /// Maximum number of diagnostics to keep (0 = unlimited)
+        #[arg(long, env = "LSPZ_MAX_DIAGS", default_value_t = 0)]
+        max_diags: usize,
+
+        /// Maximum number of completion items to keep (0 = unlimited)
+        #[arg(long, env = "LSPZ_MAX_COMPLETIONS", default_value_t = 0)]
+        max_completions: usize,
+
+        /// Maximum number of document symbols to keep (0 = unlimited)
+        #[arg(long, env = "LSPZ_MAX_SYMBOLS", default_value_t = 0)]
+        max_symbols: usize,
     },
 
     /// Run as MCP server — exposes LSP tools via Model Context Protocol
@@ -105,6 +118,9 @@ async fn main() -> ExitCode {
             compress_document_symbol,
             output,
             log_level,
+            max_diags,
+            max_completions,
+            max_symbols,
         } => {
             run_proxy(
                 backend,
@@ -115,6 +131,9 @@ async fn main() -> ExitCode {
                 compress_document_symbol,
                 output,
                 log_level,
+                max_diags,
+                max_completions,
+                max_symbols,
             )
             .await
         }
@@ -133,6 +152,9 @@ async fn run_proxy(
     compress_document_symbol: bool,
     output: String,
     log_level: String,
+    max_diags: usize,
+    max_completions: usize,
+    max_symbols: usize,
 ) -> ExitCode {
     // If backend args contain --help or -h, spawn backend directly and show its help output
     if backend_args.iter().any(|a| a == "--help" || a == "-h") {
@@ -187,9 +209,17 @@ async fn run_proxy(
         .ok()
         .unwrap_or(OutputFormat::Json);
 
+    // Build CappingConfig from CLI flags
+    let capping_config = CappingConfig {
+        max_diags,
+        max_completions,
+        max_symbols,
+    };
+
     // Build config
     let config = match Config::builder()
         .backend_cmd(&backend)
+        .capping(capping_config)
         .enable_diag_compress(compress_diag)
         .enable_completion_compress(compress_completion)
         .enable_hover_compress(compress_hover)
@@ -214,8 +244,21 @@ async fn run_proxy(
         }
     };
 
-    // Build interceptor chain
+    // Build interceptor chain (capping first, then compressors)
     let mut interceptors: Vec<Box<dyn Interceptor>> = Vec::new();
+    if config.capping.any_enabled() {
+        interceptors.push(Box::new(CappingInterceptor::new(
+            config.capping.max_diags,
+            config.capping.max_completions,
+            config.capping.max_symbols,
+        )));
+        tracing::info!(
+            max_diags = config.capping.max_diags,
+            max_completions = config.capping.max_completions,
+            max_symbols = config.capping.max_symbols,
+            "Response capping enabled"
+        );
+    }
     if config.enable_diag_compress {
         interceptors.push(Box::new(DiagnosticsCompressor::default()));
         tracing::info!("Diagnostic compression enabled");

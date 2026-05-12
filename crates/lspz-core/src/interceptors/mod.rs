@@ -2,6 +2,7 @@
 //!
 //! All Server→Client message transformations go through the interceptor chain.
 
+pub mod capping;
 pub mod completions;
 pub mod diagnostics;
 pub mod hover;
