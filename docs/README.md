@@ -17,9 +17,9 @@
    - 掌握核心 Trait（Transport, Interceptor, LspMessage）和状态机
    - 阅读所有 Mermaid 流程图
 
-4. **[plan/01-mvp-phase.md](plan/01-mvp-phase.md)** - MVP 实施计划
-   - v0.1 的具体实施计划（Task A→D）
-   - 技术选型（自实现 JSON-RPC，四步压缩策略优先级）
+4. **[guides/agent-integration.md](guides/agent-integration.md)** - Agent SDK 集成
+   - AgentHandle / AgentPool 使用方法
+   - 所有 10 个查询方法
 
 5. **[specs/002-compression-format.md](specs/002-compression-format.md)** - 压缩格式规范
    - 理解紧凑格式 Schema
@@ -30,11 +30,11 @@
    - 理解 lspz 的 Fail-open 错误处理
    - **了解输出格式进化**: JSON → TOON 表格格式
 
-7. **[specs/005-toon-format.md](specs/005-toon-format.md)** - TOON 输出格式（草案）
+7. **[specs/005-toon-format.md](specs/005-toon-format.md)** - TOON 输出格式
    - 理解 TOON 表格格式和自解释字段名设计
    - 专为 LLM 直接消费设计的输出格式
 
-7. **[specs/004-ssot-rules.md](specs/004-ssot-rules.md)** - 文档生成和 SSOT 规则
+8. **[specs/004-ssot-rules.md](specs/004-ssot-rules.md)** - 文档生成和 SSOT 规则
    - 理解代码→文档的生成流程
    - 掌握 `.gen.` 文件的使用规范
 
@@ -43,25 +43,36 @@
 ```
 docs/
 ├── README.md                    # 本文档（开发者导航）
-├── plan/                        # 阶段性实施计划
-│   ├── 00-prd.md               # 产品需求文档（含调研结论）
-│   └── 01-mvp-phase.md         # v0.1 MVP 阶段（当前）
+├── plan/                        # 产品需求文档
+│   └── 00-prd.md               # 产品需求文档（含调研结论）
 ├── specs/                       # 技术规格文档（核心 SSOT）
 │   ├── 001-tri-modal-architecture.md  # 三模态架构（含 Mermaid 图）
 │   ├── 002-compression-format.md      # 压缩格式规范（含调研数据）
 │   ├── 003-lsp-compatibility.md       # LSP 兼容性规范（含 Agent 分析）
 │   ├── 004-ssot-rules.md              # 文档生成和 SSOT 规则
-│   └── 005-toon-format.md             # TOON 输出格式（草案）
+│   ├── 005-toon-format.md             # TOON 输出格式
+│   └── interceptors.gen.md            # 拦截器列表（自动生成）
 ├── guides/                      # 开发指南
+│   ├── agent-integration.md     # Agent SDK 集成指南
+│   ├── claude-desktop-integration.md # Claude Desktop 配置
 │   ├── coding-conventions.md    # 编码约定
 │   ├── testing-guide.md         # 测试指南
 │   └── contributing.md          # 贡献指南
 ├── api/                         # 自动生成（.gen. 文件，不手改）
-│   ├── modules.gen.md          # 模块索引（从 //! 注释生成）
 │   └── *.gen.md                # API 文档（从 /// 注释生成）
-└── reference/                   # 自动生成（.gen. 文件，不手改）
-    ├── config.gen.md           # 配置参考（从 Config 生成）
-    └── error-types.gen.md      # 错误类型（从 LspzError 生成）
+├── reference/                   # 自动生成（.gen. 文件，不手改）
+│   ├── config.gen.md           # 配置参考（从 Config 生成）
+│   └── error-types.gen.md      # 错误类型（从 LspzError 生成）
+├── reports/
+│   └── latest.md               # 压缩基准报告
+└── mmd/                         # Mermaid 图表
+    ├── architecture.mmd         # 系统架构图
+    ├── interceptor-chain.mmd    # 拦截器链时序图
+    ├── proxy-state-machine.mmd  # 代理状态机
+    ├── compression-pipeline.mmd # 诊断压缩流程
+    ├── json-rpc-frame.mmd       # JSON-RPC 帧解析
+    ├── completion-compression.mmd # 补全压缩流程
+    └── hover-compression.mmd    # Hover 压缩流程
 ```
 
 ## 快速导航
@@ -70,11 +81,12 @@ docs/
 |---------|----------|
 | 了解项目整体规划 | [ROADMAP.md](../ROADMAP.md) |
 | 理解架构设计 | [specs/001-tri-modal-architecture.md](specs/001-tri-modal-architecture.md) |
-| 开始 MVP 开发 | [plan/01-mvp-phase.md](plan/01-mvp-phase.md) |
+| 集成 Agent SDK | [guides/agent-integration.md](guides/agent-integration.md) |
 | 查看编码规范 | [guides/coding-conventions.md](guides/coding-conventions.md) |
 | 了解紧凑 JSON 格式 | [specs/002-compression-format.md](specs/002-compression-format.md) |
-| 了解 TOON 输出格式 | [specs/005-toon-format.md](specs/005-toon-format.md) — **新! 专为 LLM 设计** |
+| 了解 TOON 输出格式 | [specs/005-toon-format.md](specs/005-toon-format.md) |
 | 理解文档生成规则 | [specs/004-ssot-rules.md](specs/004-ssot-rules.md) |
+| 配置 Claude Desktop | [guides/claude-desktop-integration.md](guides/claude-desktop-integration.md) |
 
 ## 关键设计原则
 
@@ -99,4 +111,4 @@ docs/
 
 ## 版本说明
 
-本文档随项目演进更新，当前版本对应项目 v0.7.0（4 个压缩器全部完成 + TOON 输出格式）。
+本文档随项目演进更新，当前版本对应项目 v0.9.0（8 个拦截器 + 3 种输出格式 + TCP/WS 传输）。

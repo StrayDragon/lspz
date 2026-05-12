@@ -498,4 +498,4 @@ cargo test -- --test-threads=1 -- -nocapture --exact
 - [Rust 测试文档](https://doc.rust-lang.org/book/ch11-00-testing.html)
 - [rstest 文档](https://docs.rs/rstest/)
 - [tarpaulin 文档](https://github.com/xd009642/tarpaulin)
-- [plan/01-mvp-phase.md](../plan/01-mvp-phase.md) - MVP 测试目标
+- [ROADMAP.md](../../ROADMAP.md) - 项目路线图

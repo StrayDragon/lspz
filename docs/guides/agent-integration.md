@@ -17,7 +17,11 @@ and provides type-safe query methods.
 │  AgentHandle (single language)          │
 │  AgentPool   (multi language)           │
 │  → get_diagnostics / get_completions    │
-│  → get_symbols / inflate / compress     │
+│  → get_symbols / get_hover              │
+│  → get_references / get_definition      │
+│  → get_implementation / get_type_def    │
+│  → get_workspace_symbols / diagnostics  │
+│  → inflate / compress                   │
 └────────────────┬────────────────────────┘
                  │ delegates to
 ┌────────────────▼────────────────────────┐
@@ -74,6 +78,24 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     println!("Symbols: {symbols}");
 
+    // Get hover information at a position
+    let hover = agent
+        .get_hover("file:///home/user/project/src/main.rs", 10, 5)
+        .await?;
+    println!("Hover: {hover}");
+
+    // Go to definition
+    let def = agent
+        .get_definition("file:///home/user/project/src/main.rs", 10, 5)
+        .await?;
+    println!("Definition: {def}");
+
+    // Find all references
+    let refs = agent
+        .get_references("file:///home/user/project/src/main.rs", 10, 5)
+        .await?;
+    println!("References: {refs}");
+
     // Clean shutdown
     agent.shutdown().await?;
     Ok(())
@@ -82,7 +104,7 @@ async fn main() -> anyhow::Result<()> {
 
 ## Compression
 
-Enable diagnostic compression for token savings (≥40% on typical LSP output):
+Enable compression for token savings (40-95% depending on message type):
 
 ```rust,no_run
 let mut agent = AgentHandle::builder()
@@ -98,11 +120,14 @@ let compressed = agent.get_diagnostics("file:///src/main.rs").await?;
 let expanded = AgentHandle::inflate(&compressed)?;
 ```
 
-The compact format uses:
+The compact format uses (for all 7 compressors):
 - Range array encoding (`[line, col, line, col]` instead of full objects)
-- Severity mapping (`E`/`W`/`I`/`H`)
+- Severity mapping (`E`/`W`/`I`/`H`), SymbolKind (1-26 → single char)
+- URI deduplication (shared pool for location/workspace queries)
 - Delta range encoding for multiple diagnostics
 - Dedup grouping by normalized message
+- Field pruning (drops `source`, `data`, `tags`, `deprecated`, etc.)
+- Doc string interning (shared documentation strings)
 
 ## Multi-Language Support (AgentPool)
 
@@ -145,14 +170,33 @@ Sessions are lazily spawned on first use and cached for subsequent queries.
 
 ## Supported LSP Operations
 
-| Method | LSP Operation | Returns |
-|--------|--------------|---------|
-| `get_diagnostics(uri)` | `textDocument/didOpen` + wait for `publishDiagnostics` | JSON string (optional compact format) |
-| `get_completions(uri, line, char)` | `textDocument/completion` | JSON string with completion items |
-| `get_symbols(uri)` | `textDocument/documentSymbol` | JSON string with symbol tree |
-| `inflate(compressed_json)` | — | Standard LSP diagnostics JSON |
-| `compress(raw_json)` | — | Compact format JSON |
-| `shutdown()` | `shutdown` + `exit` per LSP spec | — |
+### File-scoped queries (require URI)
+
+| Method | LSP Method | Compression |
+|--------|-----------|-------------|
+| `get_diagnostics(uri)` | `textDocument/didOpen` + wait for `publishDiagnostics` | ✅ DiagnosticsCompressor |
+| `get_completions(uri, line, char)` | `textDocument/completion` | ✅ CompletionCompressor |
+| `get_symbols(uri)` | `textDocument/documentSymbol` | ✅ DocumentSymbolCompressor |
+| `get_hover(uri, line, char)` | `textDocument/hover` | ✅ HoverCompressor |
+| `get_references(uri, line, char)` | `textDocument/references` | ✅ LocationCompressor |
+| `get_definition(uri, line, char)` | `textDocument/definition` | ✅ LocationCompressor |
+| `get_implementation(uri, line, char)` | `textDocument/implementation` | ✅ LocationCompressor |
+| `get_type_definition(uri, line, char)` | `textDocument/typeDefinition` | ✅ LocationCompressor |
+
+### Workspace-scoped queries
+
+| Method | LSP Method | Compression |
+|--------|-----------|-------------|
+| `get_workspace_symbols(query)` | `workspace/symbol` | ✅ WorkspaceSymbolCompressor |
+| `get_workspace_diagnostics(uri)` | `workspace/diagnostic` | ✅ WorkspaceDiagnosticCompressor |
+
+### Utility methods
+
+| Method | Description |
+|--------|-------------|
+| `compress(raw_json)` | Compress standard LSP diagnostics to compact format |
+| `inflate(compressed_json)` | Decompress compact format back to standard LSP |
+| `shutdown()` | Send `shutdown` + `exit` per LSP spec |
 
 ## URI Format
 

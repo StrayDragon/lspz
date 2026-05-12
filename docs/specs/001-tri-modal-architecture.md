@@ -1,8 +1,8 @@
 # lspz 三模态架构规格
 
-**版本**: v0.1.0
+**版本**: v0.9.0
 **状态**: 定稿
-**最后更新**: 2026-05-09
+**最后更新**: 2026-05-12
 
 ## 概述
 
@@ -26,7 +26,7 @@ graph TB
     subgraph Delivery["交付形态"]
         LIB["Library Mode<br/>use lspz_core::Proxy"]
         CLIBIN["Proxy Mode<br/>lspz --backend ra"]
-        MCP["MCP Mode<br/>lspz-mcp (Future)"]
+        MCP["MCP Mode<br/>lspz mcp"]
     end
 
     PROXY --> INTERCEPTOR
@@ -127,33 +127,34 @@ flowchart TB
         MSG["LSP Message (JSON-RPC 2.0)"]
     end
 
-    subgraph Chain["Interceptor Chain"]
+    subgraph Chain["Interceptor Chain (8 interceptors, config-gated)"]
         direction TB
-        D1["MessageTypeRouter<br/>Route by method name"]
-        D2["DiagnosticsCompressor<br/>Compress publishDiagnostics"]
-        D3["PassthroughInterceptor<br/>Fallback: forward unchanged"]
-
-        D1 -->|publishDiagnostics| D2
-        D1 -->|other| D3
+        C["CappingInterceptor<br/>截断大返回"]
+        D["DiagnosticsCompressor<br/>去重 + delta range"]
+        CO["CompletionCompressor<br/>Kind 编码 + doc 去重"]
+        H["HoverCompressor<br/>Markdown 折叠"]
+        S["DocumentSymbolCompressor<br/>SymbolKind 编码"]
+        L["LocationCompressor<br/>URI 去重"]
+        WS["WorkspaceSymbolCompressor<br/>workspace/symbol"]
+        WD["WorkspaceDiagnosticCompressor<br/>workspace/diagnostic"]
     end
 
-    subgraph ErrorPath["Error Handling"]
+    subgraph ErrorPath["Error Handling (Fail-Open)"]
         ERR["Compression Failed"]
-        FALLBACK["Transparent Forward (original message)"]
+        FALLBACK["Transparent Forward"]
         LOG["Log WARN + Continue"]
         ERR --> FALLBACK
         ERR --> LOG
     end
 
     subgraph Outgoing["→ AI Agent"]
-        COMPRESSED["Compact Diagnostics"]
+        COMPRESSED["Compressed / TOON"]
         RAW["Original Message"]
     end
 
-    MSG --> D1
-    D2 -->|Success| COMPRESSED
-    D2 -->|Failure| ERR
-    D3 --> RAW
+    MSG --> C --> D --> CO --> H --> S --> L --> WS --> WD
+    WD -->|Success| COMPRESSED
+    WD -->|Failure| ERR
     FALLBACK --> RAW
 
     classDef incoming fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
@@ -162,7 +163,7 @@ flowchart TB
     classDef outgoing fill:#9013FE,stroke:#6A0DAD,stroke-width:2px,color:#fff
 
     class MSG incoming
-    class D1,D2,D3 chain
+    class C,D,CO,H,S,L,WS,WD chain
     class ERR,FALLBACK,LOG error
     class COMPRESSED,RAW outgoing
 ```
@@ -237,8 +238,8 @@ flowchart TB
 /// # 实现者
 ///
 /// - `StdioTransport` (MVP)
-/// - `TcpTransport` (Future)
-/// - `WebSocketTransport` (Future)
+/// - `TcpTransport`
+/// - `WsTransport` (feature-gated)
 #[async_trait]
 pub trait Transport: Send + Sync {
     /// 接收一条原始 LSP 消息（按 Content-Length 分割）。
@@ -390,7 +391,7 @@ cargo run -- --backend rust-analyzer
 
 ---
 
-## 模式 3: MCP Mode (MCP 服务器) — Future
+## 模式 3: MCP Mode (MCP 服务器)
 
 ### 设计目标
 
@@ -482,9 +483,9 @@ flowchart TD
 | 功能 | Library | Proxy | MCP |
 |------|----------|-------|-----|
 | 诊断压缩 | ✅ | ✅ | ✅ |
-| 自定义传输 | ✅ | ❌ | ❌ |
-| 运行时配置 | ✅ | ⚠️ | ⚠️ |
-| 热加载 | ✅ | ❌ | ⚠️ |
+| 自定义传输 | ✅ | ✅ (TCP/WS) | ❌ |
+| 运行时配置 | ✅ | ✅ | ⚠️ |
+| 热加载 | ✅ | ✅ | ⚠️ |
 | 多 server | ✅ | ⚠️ | ✅ |
 | 零额外开销 | ✅ | ❌ (进程间) | ❌ (MCP 协议) |
 
@@ -499,15 +500,17 @@ graph TD
     subgraph Workspace["lspz Workspace"]
         CORE["lspz-core<br/>(pure logic library)"]
         CLI["lspz<br/>(CLI binary)"]
-        MCP2["lspz-mcp<br/>(Future)"]
+        MCP2["lspz-mcp<br/>(MCP server)"]
+        SDK["lspz-agent-sdk<br/>(Agent SDK)"]
     end
 
     subgraph CoreModules["lspz-core Modules"]
         PROXY["proxy.rs<br/>Proxy lifecycle<br/>Message routing<br/>State machine"]
-        INTERCEPTOR["interceptors/<br/>mod.rs - Interceptor trait<br/>diagnostics.rs - DiagnosticsCompressor"]
-        CODEC["codec/<br/>mod.rs - codec traits<br/>json_rpc.rs - JSON-RPC 2.0 parse/serialize<br/>compact.rs - Compact format compress/decompress"]
-        TRANSPORT["transport/<br/>mod.rs - Transport trait<br/>stdio.rs - StdioTransport impl"]
-        CONFIG["config.rs<br/>Config + builder<br/>Env var parsing<br/>CompressionConfig"]
+        INTERCEPTOR["interceptors/<br/>mod.rs - Interceptor trait + Chain<br/>8 interceptors (7 compressors + capping)"]
+        CODEC["codec/<br/>json_rpc.rs - JSON-RPC 2.0<br/>compact.rs - Compact format<br/>toon.rs - TOON format"]
+        TRANSPORT["transport/<br/>stdio.rs - StdioTransport<br/>tcp.rs - TcpTransport<br/>websocket.rs - WsTransport<br/>mock.rs - MockTransport"]
+        CONFIG["config.rs + config_watcher.rs<br/>Config + Builder + TOML + hot-reload"]
+        METRICS["metrics.rs<br/>MetredInterceptor + MetricsSnapshot"]
         ERROR["error.rs<br/>LspzError enum<br/>thiserror derive"]
     end
 
@@ -520,6 +523,8 @@ graph TD
 
     CLI --> CORE
     MCP2 --> CORE
+    SDK --> MCP2
+    SDK --> CORE
     PROXY --> INTERCEPTOR
     PROXY --> CODEC
     PROXY --> TRANSPORT
@@ -538,14 +543,14 @@ graph TD
     classDef module fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
     classDef ssot fill:#F5A623,stroke:#D4880F,stroke-width:2px,color:#fff
 
-    class CORE,CLI,MCP2 workspace
-    class PROXY,INTERCEPTOR,CODEC,TRANSPORT,CONFIG,ERROR module
+    class CORE,CLI,MCP2,SDK workspace
+    class PROXY,INTERCEPTOR,CODEC,TRANSPORT,CONFIG,METRICS,ERROR module
     class APIDOC,CONFIGDOC,ERRDOC,INTERCEPTORDOC ssot
 ```
 
 ---
 
-## 未来扩展
+## 已实现扩展
 
 ### v0.2 (MCP 集成)
 - [x] 实现完整的 MCP Mode
@@ -553,20 +558,19 @@ graph TD
 - [x] 多 LSP server 连接池 (LspPool)
 
 ### v0.3 (Agent SDK)
-- [ ] Agent SDK 和宏
-- [ ] Skill 生成器
+- [x] AgentHandle + AgentPool
+- [x] 10 个查询方法 (diagnostics, completions, symbols, hover, references, definition, implementation, typeDefinition, workspace_symbols, workspace_diagnostics)
 
-### v0.4 (高级特性)
-- [ ] TCP/WebSocket 传输层
-- [ ] 动态配置热加载
-- [ ] Metrics 和 Tracing
+### v0.4+ (高级特性)
+- [x] TCP/WebSocket 传输层
+- [x] 动态配置热加载 (notify crate)
+- [x] Metrics 和 Tracing (MetredInterceptor)
 
 ---
 
 ## 参考文档
 
 - [ROADMAP.md](../../ROADMAP.md) - 项目路线图
-- [plan/01-mvp-phase.md](../plan/01-mvp-phase.md) - MVP 实施计划
 - [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范
 - [specs/003-lsp-compatibility.md](003-lsp-compatibility.md) - LSP 兼容性
 - [specs/004-ssot-rules.md](004-ssot-rules.md) - 文档生成和 SSOT 规则
