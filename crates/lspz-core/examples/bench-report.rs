@@ -126,7 +126,7 @@ async fn main() {
     ];
 
     println!("# lspz Compression Benchmark Report\n");
-    println!("**Version**: v0.7.0\n");
+    println!("**Version**: v0.9.0\n");
     println!("**Date**: {}  \n", get_today());
 
     let mut all_results: Vec<(&str, f64, f64)> = Vec::new();
