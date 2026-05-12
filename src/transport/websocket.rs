@@ -43,6 +43,7 @@ impl Transport for WsTransport {
                 Some(Ok(Message::Ping(_))) => continue, // auto-pong handled by tungstenite
                 Some(Ok(Message::Pong(_))) => continue,
                 Some(Ok(Message::Text(_))) => continue, // LSP uses binary, skip text
+                Some(Ok(Message::Frame(_))) => continue,
                 Some(Err(e)) => {
                     return Err(LspzError::Io(std::io::Error::new(
                         std::io::ErrorKind::ConnectionReset,

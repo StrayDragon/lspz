@@ -369,7 +369,7 @@ async fn create_transport(
 async fn connect_websocket(scheme: &str) -> Result<Box<dyn Transport>, ExitCode> {
     #[cfg(feature = "transport-websocket")]
     {
-        lspz::WsTransport::connect(scheme)
+        WsTransport::connect(scheme)
             .await
             .map(|t| {
                 tracing::info!(url = %scheme, "Connected to WebSocket LSP server");
