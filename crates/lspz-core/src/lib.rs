@@ -19,6 +19,7 @@ pub mod codec;
 pub mod config;
 pub mod error;
 pub mod interceptors;
+pub mod metrics;
 pub mod proxy;
 pub mod transport;
 
@@ -33,6 +34,12 @@ pub use interceptors::locations::LocationCompressor;
 pub use interceptors::symbols::DocumentSymbolCompressor;
 pub use interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
 pub use interceptors::workspace_symbols::WorkspaceSymbolCompressor;
+pub use metrics::MetricsConfig;
 pub use proxy::Proxy;
 pub use transport::Transport;
 pub use transport::stdio::StdioTransport;
+pub use transport::tcp::TcpTransport;
+
+/// WebSocket transport (requires `transport-websocket` feature).
+#[cfg(feature = "transport-websocket")]
+pub use transport::websocket::WsTransport;
