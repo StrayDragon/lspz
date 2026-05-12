@@ -13,6 +13,7 @@
 - **`crates/lspz-core/src/interceptors/completions`**: Completion compression interceptor.
 - **`crates/lspz-core/src/interceptors/diagnostics`**: Diagnostic compression interceptor.
 - **`crates/lspz-core/src/interceptors/hover`**: Hover compression interceptor.
+- **`crates/lspz-core/src/interceptors/locations`**: Location / LocationLink compression interceptor.
 - **`crates/lspz-core/src/interceptors/mod`**: Interceptor trait and chain.
 - **`crates/lspz-core/src/interceptors/symbols`**: DocumentSymbol / SymbolInformation compression interceptor.
 - **`crates/lspz-core/src/lib`**: # lspz-core

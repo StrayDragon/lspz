@@ -135,3 +135,27 @@ Format a compact symbol range `{s:{l,c}, e:{l,c}}` to `L:C-L:C`.
 ```rust
 fn format_symbol_range(range: &Value) -> String {
 ```
+
+Convert compact location response to TOON tabular format.
+
+Input is the compact JSON `Value` produced by `LocationCompressor`.
+
+```toon
+uris[2]:
+file:///src/main.rs
+file:///src/lib.rs
+locations[3]{uri,range}:
+0,10:5-10:10
+0,20:0-20:5
+1,5:10-5:15
+```
+
+```rust
+pub fn locations_to_toon(value: &Value) -> Result<String, LspzError> {
+```
+
+Format a compact range `{ s: { l, c }, e: { l, c } }` to `L:C-L:C`.
+
+```rust
+fn format_compact_range(range: &Value) -> String {
+```

@@ -35,16 +35,6 @@
 
 | 文件 | 说明 |
 |------|------|
-| `crates/lspz-core/src/interceptors/symbols.rs` | 拦截器实现 + 7 单元测试 |
-| `crates/lspz-core/src/interceptors/mod.rs` | `pub mod symbols;` |
-| `crates/lspz-core/src/lib.rs` | `pub use DocumentSymbolCompressor;` |
-| `crates/lspz-core/src/config.rs` | `enable_document_symbol_compress` + builder + env-var |
-| `crates/lspz/src/main.rs` | `--compress-document-symbol` / `-S` flag + chain 注册 |
-
-### Phase 7 — Benchmark & Report System
-
-| 文件 | 说明 |
-|------|------|
 | `fixtures/bench/diagnostics.json` | 诊断压测数据 (3 组: small/medium/large) |
 | `fixtures/bench/completions.json` | 补全压测数据 (3 组) |
 | `fixtures/bench/hover.json` | Hover 压测数据 (3 组) |
