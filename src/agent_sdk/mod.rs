@@ -5,5 +5,5 @@
 mod agent;
 mod pool;
 
-pub use agent::AgentHandle;
+pub use agent::{AgentBuilder, AgentHandle};
 pub use pool::{AgentPool, AgentPoolBuilder};

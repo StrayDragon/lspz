@@ -15,7 +15,7 @@ use crate::interceptors::{Direction, Interceptor};
 
 /// Compression interceptor for `workspace/diagnostic`.
 ///
-/// For 'full' entries, reuses the same 5-step pipeline as [`DiagnosticsCompressor`]:
+/// For 'full' entries, reuses the same 5-step pipeline as [`crate::interceptors::diagnostics::DiagnosticsCompressor`]:
 /// field pruning, message normalization, severity reduction, dedup, range encoding.
 /// For 'unchanged' entries, passes through transparently.
 pub struct WorkspaceDiagnosticCompressor;

@@ -6,10 +6,10 @@
 //!
 //! | Transport | 协议 | Feature Flag | 状态 |
 //! |-----------|----------|-------------|--------|
-//! | [`StdioTransport`] | 子进程 stdio | 始终 | ✅ |
-//! | [`TcpTransport`] | TCP 套接字 | 始终 | ✅ |
-//! | [`WsTransport`] | WebSocket | `transport-websocket` | ✅ |
-//! | [`MockTransport`] | 内存 FIFO | 始终（测试） | ✅ |
+//! | [`stdio::StdioTransport`] | 子进程 stdio | 始终 | ✅ |
+//! | [`tcp::TcpTransport`] | TCP 套接字 | 始终 | ✅ |
+//! | [`websocket::WsTransport`] | WebSocket | `transport-websocket` | ✅ |
+//! | [`mock::MockTransport`] | 内存 FIFO | 始终（测试） | ✅ |
 //!
 //! ## Architecture（架构）
 //!
