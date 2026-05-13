@@ -1,4 +1,4 @@
-//! Compact format for LSP diagnostics.
+//! LSP 诊断的紧凑格式。
 //!
 //! [MermaidChart:docs/src/diagrams/compression-pipeline.mmd]
 
@@ -7,18 +7,18 @@ use serde_json::Value;
 
 use crate::error::LspzError;
 
-/// Severity encoded as a single character.
+/// 编码为单个字符的严重程度。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum CompactSeverity {
-    E, // Error   (LSP severity 1)
-    W, // Warning (LSP severity 2)
-    I, // Info    (LSP severity 3)
-    H, // Hint    (LSP severity 4)
+    E, // 错误   (LSP severity 1)
+    W, // 警告 (LSP severity 2)
+    I, // 信息    (LSP severity 3)
+    H, // 提示    (LSP severity 4)
 }
 
 impl CompactSeverity {
-    /// Convert from LSP severity number (1–4).
+    /// 从 LSP 严重程度数字（1–4）转换。
     pub fn from_lsp(severity: u64) -> Option<Self> {
         match severity {
             1 => Some(Self::E),
@@ -29,7 +29,7 @@ impl CompactSeverity {
         }
     }
 
-    /// Convert back to LSP severity number (1–4).
+    /// 转换回 LSP 严重程度数字（1–4）。
     pub fn to_lsp(self) -> u64 {
         match self {
             Self::E => 1,
@@ -40,25 +40,25 @@ impl CompactSeverity {
     }
 }
 
-/// A single compact diagnostic entry.
+/// 单个紧凑诊断条目。
 ///
-/// Multiple original diagnostics with identical (message, severity, code)
-/// are merged into one entry with multiple ranges.
+/// 多个具有相同（消息、严重程度、代码）的原始诊断
+/// 被合并为一个具有多个范围的条目。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompactDiagnostic {
-    /// Normalized message text.
+    /// 标准化的消息文本。
     pub m: String,
-    /// Single-char severity.
+    /// 单个字符的严重程度。
     pub s: CompactSeverity,
-    /// Ranges: first element is absolute, subsequent ones are delta-encoded.
+    /// 范围：第一个元素是绝对的，后续的是增量编码的。
     pub r: Vec<[i64; 4]>,
-    /// Optional diagnostic code (helps AI categorise errors).
+    /// 可选的诊断代码（帮助 AI 分类错误）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub c: Option<String>,
-    /// Optional tags (comma-separated: "U" / "D" / "U,D").
+    /// 可选的标签（逗号分隔："U" / "D" / "U,D"）。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub t: Option<String>,
-    /// Number of merged diagnostics (default 1).
+    /// 合并的诊断数量（默认为 1）。
     #[serde(default, skip_serializing_if = "is_one")]
     pub n: u32,
 }
@@ -67,14 +67,14 @@ fn is_one(n: &u32) -> bool {
     *n == 1
 }
 
-/// Top-level compact diagnostics message.
+/// 顶层紧凑诊断消息。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompactDiagnostics {
-    /// Format version (currently 1).
+    /// 格式版本（当前为 1）。
     pub version: u32,
-    /// Document URI.
+    /// 文档 URI。
     pub uri: String,
-    /// Compacted diagnostic entries.
+    /// 紧凑诊断条目。
     pub diagnostics: Vec<CompactDiagnostic>,
 }
 

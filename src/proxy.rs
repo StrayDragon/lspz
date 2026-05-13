@@ -1,4 +1,4 @@
-//! LSP proxy state machine and message loop.
+//! LSP 代理状态机和消息循环。
 //!
 //! [MermaidChart:docs/src/diagrams/proxy-state-machine.mmd]
 
@@ -19,25 +19,25 @@ use crate::interceptors::workspace_symbols::workspace_symbols_to_toon;
 use crate::interceptors::{Direction, InterceptorChain};
 use crate::transport::Transport;
 
-/// Proxy state machine states.
+/// 代理状态机状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum State {
-    /// Initial state before [`Proxy::start`] is called.
+    /// 调用 [`Proxy::start`] 之前的初始状态。
     Created,
-    /// Performing LSP initialize/initialized handshake.
+    /// 正在执行 LSP initialize/initialized 握手。
     Initializing,
-    /// Handshake complete, message loop running.
+    /// 握手完成，消息循环运行中。
     Ready,
-    /// Shutdown requested, draining remaining messages.
+    /// 已请求关闭，正在排空剩余消息。
     ShuttingDown,
-    /// Fully exited.
+    /// 完全退出。
     Exited,
 }
 
-/// The lspz proxy.
+/// lspz 代理。
 ///
-/// Combines a client-side I/O (stdin/stdout) with a server-side [`Transport`]
-/// and an [`InterceptorChain`] for Server→Client message transformation.
+/// 将客户端 I/O（stdin/stdout）与服务端 [`Transport`]
+/// 和 [`InterceptorChain`] 组合，用于服务端→客户端消息转换。
 pub struct Proxy {
     config: Arc<RwLock<Config>>,
     state: State,
@@ -48,7 +48,7 @@ pub struct Proxy {
 }
 
 impl Proxy {
-    /// Create a new [`Proxy`].
+    /// 创建新的 [`Proxy`]。
     pub fn new(
         config: Arc<RwLock<Config>>,
         transport: Box<dyn Transport>,
@@ -63,12 +63,12 @@ impl Proxy {
         }
     }
 
-    /// Returns the current [`State`].
+    /// 返回当前 [`State`]。
     pub fn state(&self) -> State {
         self.state
     }
 
-    /// Start the proxy: handshake → message loop.
+    /// 启动代理：握手 → 消息循环。
     pub async fn start(&mut self) -> Result<(), LspzError> {
         self.state = State::Initializing;
         tracing::info!("Proxy starting (handshake)");
@@ -82,7 +82,7 @@ impl Proxy {
 
     // ─── Handshake ─────────────────────────────────────────────────────
 
-    /// LSP initialize/initialized handshake.
+    /// LSP initialize/initialized 握手。
     async fn perform_handshake(&mut self) -> Result<(), LspzError> {
         let mut stdin = BufReader::new(tokio::io::stdin());
         let mut stdout = tokio::io::stdout();

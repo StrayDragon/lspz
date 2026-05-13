@@ -58,37 +58,31 @@ sequenceDiagram
     participant Proxy as lspz Proxy
     participant Server as LSP Server
 
-    rect rgb(240, 248, 255)
-        Note over Agent,Server: Phase 1: Handshake
-        Agent->>Proxy: initialize (params + clientCapabilities)
-        Proxy->>Server: initialize (forward, unmodified)
-        Server-->>Proxy: capabilities + serverInfo
-        Proxy-->>Agent: capabilities (transparent forward)
-        Agent->>Proxy: initialized notification
-        Proxy->>Server: initialized (forward)
-    end
+    Note over Agent,Server: Phase 1: Handshake
+    Agent->>Proxy: initialize (params + clientCapabilities)
+    Proxy->>Server: initialize (forward, unmodified)
+    Server-->>Proxy: capabilities + serverInfo
+    Proxy-->>Agent: capabilities (transparent forward)
+    Agent->>Proxy: initialized notification
+    Proxy->>Server: initialized (forward)
 
-    rect rgb(240, 255, 240)
-        Note over Agent,Server: Phase 2: Document Lifecycle
-        Agent->>Proxy: textDocument/didOpen
-        Proxy->>Server: didOpen (forward)
-        Note over Server: Analyzes file
-        Server-->>Proxy: textDocument/publishDiagnostics (raw)
-        Note over Proxy: Interceptor Chain executes
-        Note over Proxy: ① Dedup (msg+severity)
-        Note over Proxy: ② Prune fields
-        Note over Proxy: ③ Encode enums
-        Note over Proxy: ④ Delta encode ranges
-        Proxy-->>Agent: publishDiagnostics (compact)
-    end
+    Note over Agent,Server: Phase 2: Document Lifecycle
+    Agent->>Proxy: textDocument/didOpen
+    Proxy->>Server: didOpen (forward)
+    Note over Server: Analyzes file
+    Server-->>Proxy: textDocument/publishDiagnostics (raw)
+    Note over Proxy: Interceptor Chain executes
+    Note over Proxy: ① Dedup (msg+severity)
+    Note over Proxy: ② Prune fields
+    Note over Proxy: ③ Encode enums
+    Note over Proxy: ④ Delta encode ranges
+    Proxy-->>Agent: publishDiagnostics (compact)
 
-    rect rgb(255, 248, 220)
-        Note over Agent,Server: Phase 3: Transparent Passthrough
-        Agent->>Proxy: textDocument/hover
-        Proxy->>Server: hover (forward)
-        Server-->>Proxy: hover result
-        Proxy-->>Agent: hover result (unmodified)
-    end
+    Note over Agent,Server: Phase 3: Transparent Passthrough
+    Agent->>Proxy: textDocument/hover
+    Proxy->>Server: hover (forward)
+    Server-->>Proxy: hover result
+    Proxy-->>Agent: hover result (unmodified)
 ```
 
 ---
@@ -125,7 +119,7 @@ stateDiagram-v2
 
 ```mermaid
 flowchart TB
-    subgraph Incoming["Server → Client Messages"]
+    subgraph Incoming["Server to Client Messages"]
         MSG["LSP Message (JSON-RPC 2.0)"]
     end
 
@@ -149,7 +143,7 @@ flowchart TB
         ERR --> LOG
     end
 
-    subgraph Outgoing["→ AI Agent"]
+    subgraph Outgoing["To AI Agent"]
         COMPRESSED["Compressed / TOON"]
         RAW["Original Message"]
     end
@@ -187,8 +181,8 @@ flowchart TB
     subgraph 主循环["消息循环"]
         L1["等待下一条消息 (tokio::select!)"]
         L2["消息来源?"]
-        L3["Client→Server: 透明转发给 LSP 后端"]
-        L4["Server→Client: 进入拦截器链"]
+        L3["Client to Server: 透明转发给 LSP 后端"]
+        L4["Server to Client: 进入拦截器链"]
         L5["拦截器链处理"]
         L6["发送给 Client"]
     end

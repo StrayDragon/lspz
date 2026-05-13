@@ -1,17 +1,17 @@
-//! Transport abstraction.
+//! 传输层抽象。
 //!
-//! Defines the I/O trait that all transports must implement.
+//! 定义所有传输层必须实现的 I/O trait。
 //!
-//! ## Available Transports
+//! ## 可用的传输层
 //!
-//! | Transport | Protocol | Feature Flag | Status |
+//! | Transport | 协议 | Feature Flag | 状态 |
 //! |-----------|----------|-------------|--------|
-//! | [`StdioTransport`] | Child process stdio | always | ✅ |
-//! | [`TcpTransport`] | TCP socket | always | ✅ |
+//! | [`StdioTransport`] | 子进程 stdio | 始终 | ✅ |
+//! | [`TcpTransport`] | TCP 套接字 | 始终 | ✅ |
 //! | [`WsTransport`] | WebSocket | `transport-websocket` | ✅ |
-//! | [`MockTransport`] | In-memory FIFO | always (testing) | ✅ |
+//! | [`MockTransport`] | 内存 FIFO | 始终（测试） | ✅ |
 //!
-//! ## Architecture
+//! ## Architecture（架构）
 //!
 //! [MermaidChart:docs/src/diagrams/transport-architecture.mmd]
 
@@ -20,7 +20,7 @@ pub mod mock;
 pub mod stdio;
 pub mod tcp;
 
-/// This module is only available with the `transport-websocket` feature.
+/// 此模块仅在启用 `transport-websocket` 功能时可用。
 #[cfg(feature = "transport-websocket")]
 pub mod websocket;
 
@@ -28,21 +28,21 @@ use std::process::ExitStatus;
 
 use crate::error::LspzError;
 
-/// Abstract I/O channel for LSP communication.
+/// LSP 通信的抽象 I/O 通道。
 ///
-/// All LSP message I/O (regardless of transport protocol) is defined by this trait.
-/// Implementations handle Content-Length framing internally and expose raw framed bytes.
+/// 所有 LSP 消息 I/O（无论传输协议如何）都由此 trait 定义。
+/// 实现内部处理 Content-Length 分帧，并暴露原始的分帧字节。
 #[async_trait::async_trait]
 pub trait Transport: Send + Sync {
-    /// Receive one raw LSP message (Content-Length framed).
+    /// 接收一条原始 LSP 消息（Content-Length 分帧）。
     async fn receive(&mut self) -> Result<Vec<u8>, LspzError>;
 
-    /// Send raw bytes to the LSP server/client.
+    /// 向 LSP 服务器/客户端发送原始字节。
     async fn send(&mut self, data: &[u8]) -> Result<(), LspzError>;
 
-    /// Check whether the underlying process has exited.
+    /// 检查底层进程是否已退出。
     ///
-    /// Returns `Ok(None)` by default for non-process transports (mock, TCP, WebSocket).
+    /// 对于非进程传输层（mock、TCP、WebSocket），默认返回 `Ok(None)`。
     fn try_wait(&mut self) -> Result<Option<ExitStatus>, LspzError> {
         Ok(None)
     }
