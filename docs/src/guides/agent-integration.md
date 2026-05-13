@@ -236,8 +236,8 @@ Complete examples are available in the repository:
 
 ## Reference
 
-- [lspz README](../../README.md)
+- [lspz README](https://github.com/straydragon/lspz#readme)
 - [lspz API docs](https://docs.rs/lspz)
-- [Compact Format Spec](../specs/002-compression-format.md)
-- [LSP Compatibility](../specs/003-lsp-compatibility.md)
+- [Compact Format Spec](../specs/compression-format.md)
+- [LSP Compatibility](../specs/lsp-compatibility.md)
 - [Testing Guide](./testing-guide.md)

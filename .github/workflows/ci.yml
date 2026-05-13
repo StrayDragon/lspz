@@ -38,6 +38,10 @@ jobs:
         timeout-minutes: 10
         run: cargo test
 
-      - name: Check generated docs are up to date
-        timeout-minutes: 2
-        run: python3 scripts/gen-docs.py --check
+      - name: Build API docs
+        timeout-minutes: 5
+        run: cargo doc --no-deps --all-features
+
+      - name: Run doc tests
+        timeout-minutes: 5
+        run: cargo test --doc --all-features

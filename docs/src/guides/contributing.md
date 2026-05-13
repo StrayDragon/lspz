@@ -10,9 +10,9 @@
 
 在开始贡献前，请按顺序阅读以下文档：
 
-1. **[ROADMAP.md](../../ROADMAP.md)** - 了解项目整体规划
-2. **[docs/README.md](../README.md)** - 开发者前导文档
-3. **[docs/specs/001-tri-modal-architecture.md](../specs/001-tri-modal-architecture.md)** - 理解三模态架构
+1. **[ROADMAP.md](https://github.com/straydragon/lspz/blob/main/ROADMAP.md)** - 了解项目整体规划
+2. **[docs/README.md](../introduction.md)** - 开发者前导文档
+3. **[docs/specs/001-tri-modal-architecture.md](../architecture.md)** - 理解三模态架构
 4. **[docs/guides/coding-conventions.md](coding-conventions.md)** - 熟悉编码规范
 5. **[docs/guides/testing-guide.md](testing-guide.md)** - 了解测试要求
 
@@ -375,7 +375,7 @@ pub enum TransportType {
 
 ## 参考文档
 
-- [ROADMAP.md](../../ROADMAP.md) - 项目路线图
-- [docs/README.md](../README.md) - 开发者文档导航
+- [ROADMAP.md](https://github.com/straydragon/lspz/blob/main/ROADMAP.md) - 项目路线图
+- [docs/README.md](../introduction.md) - 开发者文档导航
 - [docs/guides/coding-conventions.md](coding-conventions.md) - 编码规范
 - [docs/guides/testing-guide.md](testing-guide.md) - 测试指南

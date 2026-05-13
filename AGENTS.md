@@ -138,45 +138,40 @@ Project conventions for lspz (LSP compression proxy).
 
 ### 文档生成规则 (SSOT)
 
-> **详细规则**: 参见 [docs/specs/004-ssot-rules.md](docs/specs/004-ssot-rules.md)
+> **详细规则**: 参见 [docs/src/specs/ssot-rules.md](docs/src/specs/ssot-rules.md)
 
-#### 生成物标记
+#### 两层文档体系
 
-- **全文件生成**: 任何包含 `.gen.` 的文件都是自动生成的，禁止手工编辑
-  - 例如: `modules.gen.md`, `config.gen.md`
-  - 修改方式: 编辑 SSOT 源文件，运行 `just gen-*` 命令
-
-- **注入区块**: 使用 AUTOGEN 注释标记的区块
-  ```markdown
-  <!-- BEGIN AUTOGEN:<id> -->
-  (自动生成内容，不手工编辑)
-  <!-- END AUTOGEN:<id> -->
-  ```
+| 层 | 工具 | 内容 | 维护方式 |
+|----|------|------|----------|
+| API 文档 | `cargo doc` | `///` / `//!` 注释 | 编辑源码注释 |
+| Book | `mdbook` | 指南、规格、架构 | 编辑 `docs/src/**/*.md` |
 
 #### SSOT 位置
 
-| 内容类型 | SSOT 位置 | 生成物 |
-|---------|----------|--------|
-| API 文档 | 代码中的 `///` / `//!` 注释 | `docs/api/*.gen.md` |
-| 模块索引 | `src/lib.rs` 等 crate 入口 | `docs/api/modules.gen.md` |
-| 使用示例 | `examples/*.rs` 可运行代码 | `docs/guides/examples.gen.md` |
-| 配置参考 | `src/config.rs` 结构体定义 | `docs/reference/config.gen.md` |
-| 错误类型 | `src/error.rs` 错误定义 | `docs/reference/error-types.gen.md` |
-| 项目元数据 | `Cargo.toml` | README.md 中的版本信息 |
+| 内容类型 | SSOT 位置 | 生成命令 | 输出 |
+|---------|----------|----------|------|
+| API 文档 | `src/**/*.rs` 注释 | `cargo doc --no-deps --all-features` | `target/doc/lspz/` |
+| 配置参考 | `src/config.rs` 结构体 | `cargo doc` | `target/doc/lspz/config/` |
+| 错误类型 | `src/error.rs` 枚举 | `cargo doc` | `target/doc/lspz/error/` |
+| 文档示例 | `///` 代码块 | `cargo test --doc` | CI 验证 |
+| Mermaid 图表 | `docs/src/diagrams/*.mmd` | mdbook-mermaid | 嵌入 book |
 
-#### 生成命令 (MVP 后可用)
+#### 文档命令
 
 ```bash
-just gen-docs      # 生成所有文档
-just gen-api-docs  # 生成 API 文档
-just gen-check     # 检查文档是否过时 (CI 使用)
+just doc          # 构建 API 文档并在浏览器打开
+just doc-check    # 检查 API 文档构建是否成功 (CI 使用)
+just doc-test     # 运行文档测试 (验证 /// 示例编译)
+just book         # 构建 mdbook
+just book-serve   # 本地预览 book (热重载)
 ```
 
-#### 漂移检测
+#### CI 保证
 
-- 所有生成脚本必须支持 `--check` 模式（只检查不写入）
-- `just qa` 包含文档漂移检测
-- CI 中运行 `just gen-check` 确保文档与代码同步
+- `cargo doc --no-deps --all-features` — API 文档构建检查
+- `cargo test --doc --all-features` — 文档示例编译验证
+- `#![warn(missing_docs)]` — 未文档化公开项产生警告
 
 ---
 
@@ -230,10 +225,11 @@ just gen-check     # 检查文档是否过时 (CI 使用)
 | LSP 请求/响应 | 30s | 足够 LSP 服务器返回结果 |
 | E2E 测试 (单个) | 30–60s | 含 LSP 服务器启动 + 分析 |
 | CI test 步骤 | 10 min | 完整测试套件 |
-| CI job 总超时 | 15 min | 全流程 (fmt + lint + test + gen-check) |
+| CI job 总超时 | 15 min | 全流程 (fmt + lint + test + doc-check + doc-test) |
 | CI clippy 步骤 | 5 min | 纯静态检查 |
 | CI fmt 步骤 | 3 min | 纯静态检查 |
-| CI gen-docs | 2 min | 脚本执行 |
+| CI doc-check | 5 min | cargo doc 构建 |
+| CI doc-test | 5 min | cargo test --doc |
 
 ### E2E 测试最佳实践
 
@@ -297,17 +293,15 @@ jobs:
 
 ### 原则
 
-**代码是唯一的真相源 (Single Source of Truth)**。所有衍生文档从代码注释中自动生成，禁止手写 `.gen.` 文件。
+**代码是唯一的真相源 (Single Source of Truth)**。API 文档由 `cargo doc` 从代码注释自动生成，book 由 `mdbook` 从 `docs/src/` 构建。
 
 ### 生成规则
 
-| SSOT 位置 | 生成物 | 生成命令 |
-|-----------|--------|---------|
-| `///` / `//!` 注释 | `docs/api/*.gen.md` | `just gen-api-docs` |
-| `pub trait Interceptor` 定义 + 实现者 | `docs/specs/interceptors.gen.md` | `just gen-api-docs` |
-| `pub struct Config` 字段 + 文档 | `docs/reference/config.gen.md` | `just gen-config-docs` |
-| `pub enum LspzError` 变体 | `docs/reference/error-types.gen.md` | `just gen-error-docs` |
-| `Cargo.toml` 工作区成员 + 依赖 | README.md 版本区块 | `just gen-meta-docs` |
+| SSOT 位置 | 生成命令 | 输出 |
+|-----------|---------|------|
+| `///` / `//!` 注释 | `cargo doc --no-deps --all-features` | `target/doc/lspz/` |
+| `docs/src/**/*.md` | `mdbook build` (在 `docs/` 目录) | `docs/book/` |
+| `docs/src/diagrams/*.mmd` | mdbook-mermaid | 嵌入 book HTML |
 
 ### 架构不变量 (Architecture Invariants)
 
@@ -324,9 +318,9 @@ jobs:
 
 `just qa` 包含以下检查：
 
-1. `just gen-check` → 检查 `.gen.` 文件是否与当前源码同步（修改时间、内容哈希）
-2. `.gen.` 文件如果有手工编辑痕迹（git diff 检测）则 CI 失败
-3. 缺少文档注释 → 全局 `#![warn(missing_docs)]` 或 clippy 规则
+1. `cargo doc --no-deps --all-features` → API 文档构建是否成功
+2. `cargo test --doc --all-features` → 文档示例是否编译通过
+3. `#![warn(missing_docs)]` → 未文档化公开项产生警告
 4. 架构不变量 → 代码审查中人工核对
 
 ### 架构级代码注释规范
@@ -342,10 +336,6 @@ jobs:
 //!
 //! - **概念 A**: 解释
 //! - **概念 B**: 解释
-//!
-//! ## 架构图
-//!
-//! [MermaidChart:./docs/mmd/module-name.mmd]
 //!
 //! ## 注意事项
 //!

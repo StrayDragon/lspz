@@ -3,7 +3,7 @@
 **版本**: v0.1.0
 **最后更新**: 2026-05-09
 
-> **注意**: lspz 项目的通用编码规范定义在项目根目录的 [AGENTS.md](../../AGENTS.md)（SSOT）。本文档仅包含 lspz 特定的约定和补充。
+> **注意**: lspz 项目的通用编码规范定义在项目根目录的 [AGENTS.md](https://github.com/straydragon/lspz/blob/main/AGENTS.md)（SSOT）。本文档仅包含 lspz 特定的约定和补充。
 
 ---
 
@@ -11,15 +11,15 @@
 
 ### 通用规范（详见 AGENTS.md）
 
-- [Rust Edition & Toolchain](../../AGENTS.md#rust)
-- [命名约定](../../AGENTS.md#命名约定)
-- [错误处理](../../AGENTS.md#错误处理)
-- [异步代码](../../AGENTS.md#异步代码)
-- [日志规范](../../AGENTS.md#日志规范)
-- [测试规范](../../AGENTS.md#测试规范)
-- [文档规范](../../AGENTS.md#文档规范)
-- [安全考虑](../../AGENTS.md#安全考虑)
-- [性能考虑](../../AGENTS.md#性能考虑)
+- [Rust Edition & Toolchain](https://github.com/straydragon/lspz/blob/main/AGENTS.md#rust)
+- [命名约定](https://github.com/straydragon/lspz/blob/main/AGENTS.md#命名约定)
+- [错误处理](https://github.com/straydragon/lspz/blob/main/AGENTS.md#错误处理)
+- [异步代码](https://github.com/straydragon/lspz/blob/main/AGENTS.md#异步代码)
+- [日志规范](https://github.com/straydragon/lspz/blob/main/AGENTS.md#日志规范)
+- [测试规范](https://github.com/straydragon/lspz/blob/main/AGENTS.md#测试规范)
+- [文档规范](https://github.com/straydragon/lspz/blob/main/AGENTS.md#文档规范)
+- [安全考虑](https://github.com/straydragon/lspz/blob/main/AGENTS.md#安全考虑)
+- [性能考虑](https://github.com/straydragon/lspz/blob/main/AGENTS.md#性能考虑)
 
 **请先阅读 AGENTS.md 了解通用规范。**
 
@@ -408,8 +408,8 @@ pub trait Interceptor: Send + Sync {
 
 ## 参考文档
 
-- [AGENTS.md](../../AGENTS.md) - 项目通用规范（SSOT）
-- [specs/001-tri-modal-architecture.md](../specs/001-tri-modal-architecture.md) - 三模态架构
-- [specs/002-compression-format.md](../specs/002-compression-format.md) - 压缩格式规范
-- [specs/003-lsp-compatibility.md](../specs/003-lsp-compatibility.md) - LSP 兼容性规范
+- [AGENTS.md](https://github.com/straydragon/lspz/blob/main/AGENTS.md) - 项目通用规范（SSOT）
+- [specs/001-tri-modal-architecture.md](../architecture.md) - 三模态架构
+- [specs/002-compression-format.md](../specs/compression-format.md) - 压缩格式规范
+- [specs/003-lsp-compatibility.md](../specs/lsp-compatibility.md) - LSP 兼容性规范
 - [guides/testing-guide.md](testing-guide.md) - 测试指南

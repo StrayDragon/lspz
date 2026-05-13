@@ -497,7 +497,7 @@ impl Default for CompressionConfig {
 ## 参考文档
 
 - [LSP Diagnostic 类型](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#diagnostic)
-- [ROADMAP.md](../../ROADMAP.md) - 项目路线图
+- [ROADMAP.md](https://github.com/straydragon/lspz/blob/main/ROADMAP.md) - 项目路线图
 - [specs/001-tri-modal-architecture.md](001-tri-modal-architecture.md) - 三模态架构
 - [specs/003-lsp-compatibility.md](003-lsp-compatibility.md) - LSP 兼容性
 - [specs/005-toon-format.md](005-toon-format.md) - TOON 行协议格式

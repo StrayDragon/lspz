@@ -94,6 +94,6 @@ Ensure you prefix the file path with `file://` as shown in the examples above.
 
 ## References
 
-- [lspz README](../../README.md)
-- [ROADMAP.md](../../ROADMAP.md)
-- [LSP Compatibility Spec](../specs/003-lsp-compatibility.md)
+- [lspz README](https://github.com/straydragon/lspz#readme)
+- [ROADMAP.md](https://github.com/straydragon/lspz/blob/main/ROADMAP.md)
+- [LSP Compatibility Spec](../specs/lsp-compatibility.md)

@@ -19,8 +19,8 @@ lint:
 test:
     cargo test
 
-# Run all checks (qa = fmt-check + lint + test + gen-check).
-qa: gen-check fmt-check lint test
+# Run all checks (qa = fmt-check + lint + test + doc-check).
+qa: fmt-check lint test doc-check
     @echo "All checks passed!"
     prek run --all-files
 
@@ -31,31 +31,29 @@ alias ci := qa
 fmt-check:
     cargo fmt -- --check
 
-# --- SSOT Documentation Generation ---
+# --- Documentation ---
 
-# Generate all documentation from code (SSOT).
-gen-docs:
-    python3 scripts/gen-docs.py
+# Build API docs (cargo doc) and open in browser.
+doc:
+    cargo doc --no-deps --all-features --open
 
-# Check documentation drift (CI).
-gen-check:
-    python3 scripts/gen-docs.py --check
+# Check API docs build without errors.
+doc-check:
+    cargo doc --no-deps --all-features
 
-# Generate API docs from code comments.
-gen-api-docs:
-    python3 scripts/gen-docs.py
+# Run doc tests (verify /// examples compile).
+doc-test:
+    cargo test --doc --all-features
 
-# Generate config docs from Config struct.
-gen-config-docs:
-    python3 scripts/gen-docs.py
+# Build the mdbook.
+book:
+    cd docs && mdbook build
 
-# Generate error type docs from LspzError enum.
-gen-error-docs:
-    python3 scripts/gen-docs.py
+# Serve mdbook with live reload.
+book-serve:
+    cd docs && mdbook serve --open
 
-# Generate metadata docs from Cargo.toml.
-gen-meta-docs:
-    @echo "TODO: extract crate deps from Cargo.toml"
+# --- Benchmarks ---
 
 # Run Criterion throughput benchmarks.
 bench:

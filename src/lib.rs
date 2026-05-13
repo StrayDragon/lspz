@@ -16,6 +16,8 @@
 //!
 //! [MermaidChart:./docs/mmd/architecture.mmd]
 
+#![cfg_attr(docsrs, warn(missing_docs))]
+
 pub mod codec;
 pub mod config;
 pub mod config_watcher;
