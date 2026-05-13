@@ -576,7 +576,7 @@ graph TD
 
 ## 参考文档
 
-- [ROADMAP.md](../../ROADMAP.md) - 项目路线图
+- [ROADMAP.md](https://github.com/straydragon/lspz/blob/main/ROADMAP.md) - 项目路线图
 - [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范
 - [specs/003-lsp-compatibility.md](003-lsp-compatibility.md) - LSP 兼容性
 - [specs/004-ssot-rules.md](004-ssot-rules.md) - 文档生成和 SSOT 规则

@@ -30,6 +30,9 @@ debug/
 target/debug/
 target/release/
 
+# mdbook output
+docs/book/
+
 ### Python ###
 # Python compiled files, virtual environments, and cache
 
