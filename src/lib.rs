@@ -1,18 +1,18 @@
 //! # lspz
 //!
-//! AI-friendly LSP compression proxy — core library.
+//! AI 友好的 LSP 压缩代理 — 核心库。
 //!
-//! ## Feature Flags
+//! ## Feature Flags（功能特性）
 //!
-//! | Feature | Description | Default |
+//! | Feature | 描述 | 默认值 |
 //! |---------|-------------|---------|
-//! | `cli` | CLI binary (clap, tracing-subscriber) | yes |
-//! | `mcp` | MCP server (rmcp) | no |
-//! | `agent-sdk` | Agent SDK API | no |
-//! | `transport-tcp` | TCP transport | no (always on) |
-//! | `transport-websocket` | WebSocket transport | no |
+//! | `cli` | CLI 二进制程序（clap, tracing-subscriber） | 是 |
+//! | `mcp` | MCP 服务器（rmcp） | 否 |
+//! | `agent-sdk` | Agent SDK API | 否 |
+//! | `transport-tcp` | TCP 传输层 | 否（始终启用） |
+//! | `transport-websocket` | WebSocket 传输层 | 否 |
 //!
-//! ## Architecture
+//! ## Architecture（架构）
 //!
 //! [MermaidChart:docs/src/diagrams/architecture.mmd]
 
@@ -50,6 +50,6 @@ pub use transport::Transport;
 pub use transport::stdio::StdioTransport;
 pub use transport::tcp::TcpTransport;
 
-/// WebSocket transport (requires `transport-websocket` feature).
+/// WebSocket 传输层（需要 `transport-websocket` 功能特性）。
 #[cfg(feature = "transport-websocket")]
 pub use transport::websocket::WsTransport;

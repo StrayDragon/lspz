@@ -1,7 +1,7 @@
-//! Message codec layer.
+//! 消息编解码层。
 //!
-//! Provides JSON-RPC 2.0 framing ([`json_rpc`]), compact diagnostic format ([`compact`]),
-//! and TOON output format ([`toon`]).
+//! 提供 JSON-RPC 2.0 分帧（[`json_rpc`]）、紧凑诊断格式（[`compact`]）
+//! 和 TOON 输出格式（[`toon`]）。
 
 pub mod compact;
 pub mod json_rpc;

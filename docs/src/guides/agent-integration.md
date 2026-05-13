@@ -1,21 +1,19 @@
-# Agent SDK Integration Guide
+# Agent SDK 集成指南
 
-The `lspz` crate (feature = "agent-sdk") provides a high-level API for embedding LSP capabilities
-into AI coding agents. It manages LSP server process lifecycle, file synchronization,
-and provides type-safe query methods.
+`lspz` 库（feature = "agent-sdk"）提供了用于将 LSP 功能嵌入 AI 编程代理的高级 API。它管理 LSP 服务器进程生命周期、文件同步，并提供类型安全的查询方法。
 
-## Overview
+## 概述
 
 ```
 ┌─────────────────────────────────────────┐
-│         Your AI Agent CLI               │
+│         你的 AI Agent CLI               │
 │    cargo add lspz --no-default-features --features agent-sdk  │
 └────────────────┬────────────────────────┘
                  │
 ┌────────────────▼────────────────────────┐
 │         lspz (agent-sdk)                 │
-│  AgentHandle (single language)          │
-│  AgentPool   (multi language)           │
+│  AgentHandle (单语言)          │
+│  AgentPool   (多语言)           │
 │  → get_diagnostics / get_completions    │
 │  → get_symbols / get_hover              │
 │  → get_references / get_definition      │
@@ -23,7 +21,7 @@ and provides type-safe query methods.
 │  → get_workspace_symbols / diagnostics  │
 │  → inflate / compress                   │
 └────────────────┬────────────────────────┘
-                 │ delegates to
+                 │ 委托给
 ┌────────────────▼────────────────────────┐
 │    lspz::mcp :: LspSession              │
 │  → spawn → initialize → send_request    │
@@ -31,13 +29,13 @@ and provides type-safe query methods.
                  │
 ┌────────────────▼────────────────────────┐
 │    lspz::codec::compact                  │
-│  → compress / decompress (token saving) │
+│  → compress / decompress (token 节省)   │
 └─────────────────────────────────────────┘
 ```
 
-## Quick Start (Single Language)
+## 快速开始（单语言）
 
-Add the dependency:
+添加依赖：
 
 ```toml
 [dependencies]
@@ -46,198 +44,178 @@ tokio = { version = "1.35", features = ["full"] }
 anyhow = "1.0"
 ```
 
-Basic usage:
+基本用法：
 
 ```rust,no_run
 use lspz::agent_sdk::AgentHandle;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Start a rust-analyzer session
+    // 启动 rust-analyzer 会话
     let mut agent = AgentHandle::builder()
         .backend("rust-analyzer")
         .language("rust")
         .start()
         .await?;
 
-    // Get diagnostics for a file
+    // 获取文件的诊断
     let diags = agent
         .get_diagnostics("file:///home/user/project/src/main.rs")
         .await?;
-    println!("Diagnostics: {diags}");
+    println!("诊断: {diags}");
 
-    // Get completions at a cursor position
+    // 获取光标位置的补全
     let completions = agent
         .get_completions("file:///home/user/project/src/main.rs", 42, 10)
         .await?;
-    println!("Completions: {completions}");
+    println!("补全: {completions}");
 
-    // Get document symbols
+    // 获取文档符号
     let symbols = agent
         .get_symbols("file:///home/user/project/src/main.rs")
         .await?;
-    println!("Symbols: {symbols}");
+    println!("符号: {symbols}");
 
-    // Get hover information at a position
-    let hover = agent
-        .get_hover("file:///home/user/project/src/main.rs", 10, 5)
-        .await?;
-    println!("Hover: {hover}");
-
-    // Go to definition
-    let def = agent
-        .get_definition("file:///home/user/project/src/main.rs", 10, 5)
-        .await?;
-    println!("Definition: {def}");
-
-    // Find all references
-    let refs = agent
-        .get_references("file:///home/user/project/src/main.rs", 10, 5)
-        .await?;
-    println!("References: {refs}");
-
-    // Clean shutdown
-    agent.shutdown().await?;
     Ok(())
 }
 ```
 
-## Compression
+## 多语言支持
 
-Enable compression for token savings (40-95% depending on message type):
-
-```rust,no_run
-let mut agent = AgentHandle::builder()
-    .backend("rust-analyzer")
-    .language("rust")
-    .enable_compression(true)  // ← compact format
-    .start()
-    .await?;
-
-let compressed = agent.get_diagnostics("file:///src/main.rs").await?;
-
-// Decompress back to standard LSP format when needed
-let expanded = AgentHandle::inflate(&compressed)?;
-```
-
-The compact format uses (for all 7 compressors):
-- Range array encoding (`[line, col, line, col]` instead of full objects)
-- Severity mapping (`E`/`W`/`I`/`H`), SymbolKind (1-26 → single char)
-- URI deduplication (shared pool for location/workspace queries)
-- Delta range encoding for multiple diagnostics
-- Dedup grouping by normalized message
-- Field pruning (drops `source`, `data`, `tags`, `deprecated`, etc.)
-- Doc string interning (shared documentation strings)
-
-## Multi-Language Support (AgentPool)
-
-For projects that span multiple languages:
+使用 `AgentPool` 管理多个 LSP 服务器：
 
 ```rust,no_run
 use lspz::agent_sdk::AgentPool;
+use std::collections::HashMap;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    // Register multiple language backends
-    let mut pool = AgentPool::builder()
-        .register("rust", "rust-analyzer")
-        .register("go", "gopls")
-        .register("typescript", "typescript-language-server --stdio")
-        .enable_compression(true)
-        .start_all()
-        .await?;
+    let mut pool = AgentPool::new();
 
-    // Query different languages
-    let rust_diags = pool
-        .get_diagnostics("file:///src/main.rs", "rust")
-        .await?;
+    // 为不同语言启动服务器
+    pool.spawn("rust", "rust-analyzer").await?;
+    pool.spawn("go", "gopls").await?;
+    pool.spawn("python", "pyright").await?;
 
-    let go_diags = pool
-        .get_diagnostics("file:///src/main.go", "go")
-        .await?;
+    // 根据文件扩展名路由查询
+    let file = "src/main.rs";
+    let language = detect_language(file);  // 你自己实现的
+    let agent = pool.get(language).unwrap();
 
-    let ts_symbols = pool
-        .get_symbols("file:///src/app.ts", "typescript")
-        .await?;
+    let symbols = agent.get_symbols(file).await?;
+    println!("符号: {symbols}");
 
-    // Shutdown all sessions
-    pool.shutdown_all().await?;
     Ok(())
 }
 ```
 
-Sessions are lazily spawned on first use and cached for subsequent queries.
+## API 参考
 
-## Supported LSP Operations
+### AgentHandle
 
-### File-scoped queries (require URI)
+单语言 LSP 会话的句柄。
 
-| Method | LSP Method | Compression |
-|--------|-----------|-------------|
-| `get_diagnostics(uri)` | `textDocument/didOpen` + wait for `publishDiagnostics` | ✅ DiagnosticsCompressor |
-| `get_completions(uri, line, char)` | `textDocument/completion` | ✅ CompletionCompressor |
-| `get_symbols(uri)` | `textDocument/documentSymbol` | ✅ DocumentSymbolCompressor |
-| `get_hover(uri, line, char)` | `textDocument/hover` | ✅ HoverCompressor |
-| `get_references(uri, line, char)` | `textDocument/references` | ✅ LocationCompressor |
-| `get_definition(uri, line, char)` | `textDocument/definition` | ✅ LocationCompressor |
-| `get_implementation(uri, line, char)` | `textDocument/implementation` | ✅ LocationCompressor |
-| `get_type_definition(uri, line, char)` | `textDocument/typeDefinition` | ✅ LocationCompressor |
+#### 方法
 
-### Workspace-scoped queries
+| 方法 | 描述 | 返回类型 |
+|------|------|---------|
+| `get_diagnostics(uri)` | 获取文件的诊断信息 | `Vec<CompactDiagnostic>` |
+| `get_completions(uri, line, col)` | 获取光标位置的补全 | `Vec<CompactCompletionItem>` |
+| `get_symbols(uri)` | 获取文档符号 | `Vec<CompactSymbolInformation>` |
+| `get_hover(uri, line, col)` | 获取悬停信息 | `Option<CompactHover>` |
+| `get_references(uri, line, col)` | 查找引用 | `Vec<CompactLocation>` |
+| `get_definition(uri, line, col)` | 转到定义 | `Vec<CompactLocation>` |
+| `get_implementation(uri, line, col)` | 转到实现 | `Vec<CompactLocation>` |
+| `get_type_definition(uri, line, col)` | 转到类型定义 | `Vec<CompactLocation>` |
+| `get_workspace_symbols(query)` | 搜索工作区符号 | `Vec<CompactSymbolInformation>` |
+| `get_workspace_diagnostics()` | 获取工作区诊断 | `Vec<CompactWorkspaceDiagnostic>` |
 
-| Method | LSP Method | Compression |
-|--------|-----------|-------------|
-| `get_workspace_symbols(query)` | `workspace/symbol` | ✅ WorkspaceSymbolCompressor |
-| `get_workspace_diagnostics(uri)` | `workspace/diagnostic` | ✅ WorkspaceDiagnosticCompressor |
+### AgentPool
 
-### Utility methods
+管理多个语言服务器的池。
 
-| Method | Description |
-|--------|-------------|
-| `compress(raw_json)` | Compress standard LSP diagnostics to compact format |
-| `inflate(compressed_json)` | Decompress compact format back to standard LSP |
-| `shutdown()` | Send `shutdown` + `exit` per LSP spec |
+#### 方法
 
-## URI Format
+| 方法 | 描述 |
+|------|------|
+| `new()` | 创建新的空池 |
+| `spawn(language, backend)` | 启动指定语言的后端 |
+| `get(language)` | 获取指定语言的 agent 句柄 |
+| `shutdown()` | 关闭所有服务器 |
 
-All query methods require `file://` URIs with absolute paths:
+## 配置选项
 
-```rust
-// ✅ Correct
-agent.get_diagnostics("file:///home/user/project/src/main.rs").await?;
+### AgentHandle::builder()
 
-// ❌ Will fail — missing file:// prefix
-agent.get_diagnostics("/home/user/project/src/main.rs").await?;
+| 选项 | 类型 | 默认值 | 描述 |
+|------|------|--------|------|
+| `backend` | `&str` | 必需 | LSP 服务器命令 |
+| `language` | `&str` | 必需 | 语言标识符 |
+| `enable_compression` | `bool` | `true` | 启用消息压缩 |
+| `log_level` | `&str` | `"info"` | 日志级别 |
+
+## 错误处理
+
+所有方法都返回 `Result<T, AgentError>`：
+
+```rust,no_run
+use lspz::agent_sdk::AgentError;
+
+match agent.get_diagnostics(uri).await {
+    Ok(diags) => println!("找到 {} 个诊断", diags.len()),
+    Err(AgentError::ServerExited) => eprintln!("服务器崩溃"),
+    Err(AgentError::Timeout) => eprintln!("查询超时"),
+    Err(e) => eprintln!("错误: {}", e),
+}
 ```
 
-## Error Handling
+## 高级用法
 
-All methods return `Result<_, anyhow::Error>`. Common error cases:
+### 自定义 LSP 服务器参数
 
-- **Missing backend/language**: `AgentBuilder::start()` returns an error if `backend` or `language` is not set
-- **Invalid URI**: Non-`file://` URIs return an error immediately (before any LSP communication)
-- **File not found**: `tokio::fs::read_to_string` errors propagate if the file doesn't exist
-- **LSP protocol errors**: `send_request` returns an error if the LSP server responds with an error
-- **Server crash**: Transport errors propagate if the LSP server process exits unexpectedly
+```rust,no_run
+let agent = AgentHandle::builder()
+    .backend("rust-analyzer")
+    .args(&["--cli", "--log-file", "/tmp/ra.log"])
+    .start()
+    .await?;
+```
 
-## Best Practices
+### 禁用压缩（调试）
 
-1. **Reuse AgentHandle/AgentPool**: Create once and reuse across queries. Avoid spawning a new session per query.
-2. **Enable compression for diagnostics**: The compact format saves ≥40% tokens with no semantic loss.
-3. **Shutdown cleanly**: Always call `shutdown()` / `shutdown_all()` to send the proper LSP shutdown handshake.
-4. **One AgentHandle per language**: For single-language projects, use `AgentHandle`. For multi-language, use `AgentPool`.
-5. **File URIs**: Always use absolute paths with `file://` prefix.
+```rust,no_run
+let agent = AgentHandle::builder()
+    .backend("rust-analyzer")
+    .enable_compression(false)
+    .start()
+    .await?;
+```
 
-## Examples
+## 故障排除
 
-Complete examples are available in the repository:
+### 服务器无法启动
 
-- `examples/agent_demo.rs` — Single-language demo with rust-analyzer
+确保 LSP 服务器在 PATH 中：
 
-## Reference
+```bash
+which rust-analyzer  # 应该显示路径
+which gopls         # 应该显示路径
+```
 
-- [lspz README](https://github.com/straydragon/lspz#readme)
-- [lspz API docs](https://docs.rs/lspz)
-- [Compact Format Spec](../specs/compression-format.md)
-- [LSP Compatibility](../specs/lsp-compatibility.md)
-- [Testing Guide](./testing-guide.md)
+### 超时错误
+
+增加超时时间：
+
+```rust,no_run
+let agent = AgentHandle::builder()
+    .backend("rust-analyzer")
+    .timeout(Duration::from_secs(30))
+    .start()
+    .await?;
+```
+
+## 相关文档
+
+- [架构文档](../architecture.md) — 理解三模态架构
+- [压缩格式](../specs/compression-format.md) — 了解压缩格式
+- [测试指南](./testing.md) — 编写测试

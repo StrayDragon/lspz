@@ -1,24 +1,24 @@
-//! Unified error type for lspz.
+//! lspz 的统一错误类型。
 //!
-//! Uses [`thiserror`] for ergonomic error derivation.
+//! 使用 [`thiserror`] 进行符合人体工程学的错误派生。
 
 use std::io;
 
-/// The unified error type for the lspz codebase.
+/// lspz 代码库的统一错误类型。
 #[derive(Debug, thiserror::Error)]
 pub enum LspzError {
-    #[error("IO error: {0}")]
+    #[error("IO 错误: {0}")]
     Io(#[from] io::Error),
 
-    #[error("JSON parse error: {0}")]
+    #[error("JSON 解析错误: {0}")]
     JsonParse(#[from] serde_json::Error),
 
-    #[error("Protocol error: {0}")]
+    #[error("协议错误: {0}")]
     Protocol(String),
 
-    #[error("Server exited unexpectedly")]
+    #[error("服务器意外退出")]
     ServerExited,
 
-    #[error("Configuration error: {0}")]
+    #[error("配置错误: {0}")]
     Config(String),
 }

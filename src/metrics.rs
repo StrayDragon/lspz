@@ -1,9 +1,9 @@
-//! Runtime metrics for the interceptor chain.
+//! 拦截器链的运行时指标。
 //!
-//! Provides configurable metrics collection using atomic counters.
-//! Metrics are recorded per-interceptor via a decorator wrapper.
+//! 使用原子计数器提供可配置的指标收集。
+//! 指标通过装饰器包装器按拦截器记录。
 //!
-//! ## Usage
+//! ## Usage（用法）
 //!
 //! ```ignore
 //! use lspz::metrics::{MetricsConfig, MetredInterceptor, MetricsSnapshot};
@@ -18,35 +18,35 @@ use std::time::Instant;
 use crate::error::LspzError;
 use crate::interceptors::{Direction, Interceptor};
 
-/// Configuration for runtime metrics collection.
+/// 运行时指标收集的配置。
 ///
-/// When `enabled` is false (default), the `MetredInterceptor` wrapper adds zero overhead.
+/// 当 `enabled` 为 false 时（默认），`MetredInterceptor` 包装器增加零开销。
 #[derive(Debug, Default, Clone, serde::Deserialize)]
 pub struct MetricsConfig {
-    /// Whether metrics collection is enabled.
+    /// 是否启用指标收集。
     pub enabled: bool,
-    /// Interval in seconds for periodic metrics logging.
-    /// 0 means only log on shutdown/drop.
+    /// 定期指标记录的间隔（秒）。
+    /// 0 表示仅在关闭/drop 时记录。
     pub report_interval_secs: u64,
 }
 
-/// Atomic snapshot of metrics for a single interceptor.
+/// 单个拦截器的原子指标快照。
 #[derive(Debug)]
 pub struct MetricsSnapshot {
-    /// Total bytes of input params before processing.
+    /// 处理前的输入参数总字节数。
     pub total_input_bytes: AtomicU64,
-    /// Total bytes of output params after processing.
+    /// 处理后的输出参数总字节数。
     pub total_output_bytes: AtomicU64,
-    /// Total latency in microseconds.
+    /// 总延迟（微秒）。
     pub total_latency_us: AtomicU64,
-    /// Number of messages processed.
+    /// 处理的消息数量。
     pub messages_processed: AtomicU64,
-    /// Number of failures (fail-open events).
+    /// 失败次数（失败开放事件）。
     pub failures: AtomicU64,
 }
 
 impl MetricsSnapshot {
-    /// Create a new, zeroed snapshot.
+    /// 创建新的零初始化快照。
     pub fn new() -> Self {
         Self {
             total_input_bytes: AtomicU64::new(0),
@@ -57,7 +57,7 @@ impl MetricsSnapshot {
         }
     }
 
-    /// Compute the compression ratio (1.0 - output/input).
+    /// 计算压缩率（1.0 - 输出/输入）。
     pub fn compression_ratio(&self) -> f64 {
         let input = self.total_input_bytes.load(Ordering::Relaxed);
         let output = self.total_output_bytes.load(Ordering::Relaxed);
@@ -67,7 +67,7 @@ impl MetricsSnapshot {
         1.0 - (output as f64 / input as f64)
     }
 
-    /// Average latency per processed message in microseconds.
+    /// 每个处理消息的平均延迟（微秒）。
     pub fn avg_latency_us(&self) -> f64 {
         let count = self.messages_processed.load(Ordering::Relaxed);
         if count == 0 {
@@ -76,7 +76,7 @@ impl MetricsSnapshot {
         self.total_latency_us.load(Ordering::Relaxed) as f64 / count as f64
     }
 
-    /// Build a tracing-friendly summary string.
+    /// 构建适合 tracing 的摘要字符串。
     pub fn summary(&self, name: &str) -> String {
         let processed = self.messages_processed.load(Ordering::Relaxed);
         let failures = self.failures.load(Ordering::Relaxed);

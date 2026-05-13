@@ -1,6 +1,6 @@
-//! Runtime configuration.
+//! 运行时配置。
 //!
-//! Builder-pattern configuration with env-var overrides and TOML file support.
+//! 支持环境变量覆盖和 TOML 文件的构建器模式配置。
 
 use std::path::Path;
 use std::str::FromStr;
@@ -10,15 +10,15 @@ use serde::Deserialize;
 use crate::error::LspzError;
 use crate::metrics::MetricsConfig;
 
-/// Output format for the proxy.
+/// 代理的输出格式。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
-    /// Compact JSON (current default).
+    /// 紧凑 JSON（当前默认值）。
     Json,
-    /// TOON (Token-Oriented Object Notation).
+    /// TOON（Token-Oriented Object Notation）。
     Toon,
-    /// Standard LSP JSON passthrough (no compression in output).
+    /// 标准 LSP JSON 透传（输出中不压缩）。
     Passthrough,
 }
 
@@ -35,62 +35,62 @@ impl FromStr for OutputFormat {
     }
 }
 
-/// Per-type capping limits for LSP server responses.
+/// LSP 服务器响应的各类型截断限制。
 ///
-/// A value of 0 means no limit (capping disabled for that type).
+/// 值为 0 表示无限制（该类型的截断禁用）。
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct CappingConfig {
-    /// Maximum number of diagnostics to keep (0 = unlimited).
+    /// 保留的最大诊断数量（0 = 无限制）。
     pub max_diags: usize,
-    /// Maximum number of completion items to keep (0 = unlimited).
+    /// 保留的最大完成项数量（0 = 无限制）。
     pub max_completions: usize,
-    /// Maximum number of document symbols to keep (0 = unlimited).
+    /// 保留的最大文档符号数量（0 = 无限制）。
     pub max_symbols: usize,
 }
 
 impl CappingConfig {
-    /// Returns `true` if any capping limit is set.
+    /// 如果设置了任何截断限制，返回 `true`。
     pub fn any_enabled(&self) -> bool {
         self.max_diags > 0 || self.max_completions > 0 || self.max_symbols > 0
     }
 }
 
-/// Configuration for the lspz proxy.
+/// lspz 代理的配置。
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    /// Command used to launch the backend LSP server.
+    /// 用于启动后端 LSP 服务器的命令。
     pub backend_cmd: String,
-    /// Per-type response capping limits.
+    /// 各类型响应截断限制。
     #[serde(default)]
     pub capping: CappingConfig,
-    /// Whether to enable diagnostic compression.
+    /// 是否启用诊断压缩。
     #[serde(default = "default_true")]
     pub enable_diag_compress: bool,
-    /// Whether to enable completion compression (default: true).
+    /// 是否启用补全压缩（默认：true）。
     #[serde(default = "default_true")]
     pub enable_completion_compress: bool,
-    /// Whether to enable hover compression (default: true).
+    /// 是否启用悬停压缩（默认：true）。
     #[serde(default = "default_true")]
     pub enable_hover_compress: bool,
-    /// Whether to enable document symbol compression (default: true).
+    /// 是否启用文档符号压缩（默认：true）。
     #[serde(default = "default_true")]
     pub enable_document_symbol_compress: bool,
-    /// Whether to enable location compression (default: true).
+    /// 是否启用位置压缩（默认：true）。
     #[serde(default = "default_true")]
     pub enable_location_compress: bool,
-    /// Whether to enable workspace symbol compression (default: true).
+    /// 是否启用工作区符号压缩（默认：true）。
     #[serde(default = "default_true")]
     pub enable_workspace_symbol_compress: bool,
-    /// Whether to enable workspace diagnostic compression (default: true).
+    /// 是否启用工作区诊断压缩（默认：true）。
     #[serde(default = "default_true")]
     pub enable_workspace_diag_compress: bool,
-    /// Output format for intercepted messages (json, toon, passthrough).
+    /// 拦截消息的输出格式（json、toon、passthrough）。
     #[serde(default = "default_output_format")]
     pub output_format: OutputFormat,
-    /// Log level (trace, debug, info, warn, error).
+    /// 日志级别（trace、debug、info、warn、error）。
     #[serde(default = "default_log_level")]
     pub log_level: String,
-    /// Runtime metrics configuration.
+    /// 运行时指标配置。
     #[serde(default)]
     pub metrics: MetricsConfig,
 }

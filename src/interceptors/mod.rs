@@ -1,6 +1,6 @@
-//! Interceptor trait and chain.
+//! 拦截器 trait 和链。
 //!
-//! All Server→Client message transformations go through the interceptor chain.
+//! 所有服务端→客户端的消息转换都通过拦截器链进行。
 
 pub mod capping;
 pub mod completions;
@@ -18,32 +18,32 @@ use tokio::sync::RwLock;
 use crate::config::Config;
 use crate::error::LspzError;
 
-/// Direction of an LSP message.
+/// LSP 消息的方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Direction {
-    /// Client → Server
+    /// 客户端 → 服务端
     ClientToServer,
-    /// Server → Client
+    /// 服务端 → 客户端
     ServerToClient,
 }
 
-/// A single interceptor in the chain.
+/// 链中的单个拦截器。
 ///
 /// [MermaidChart:docs/src/diagrams/interceptor-chain.mmd]
 #[async_trait::async_trait]
 pub trait Interceptor: Send + Sync {
-    /// Unique name for logging / configuration.
+    /// 用于日志/配置的唯一名称。
     fn name(&self) -> &str;
 
-    /// Whether this interceptor should process the given message.
+    /// 此拦截器是否应该处理给定的消息。
     fn applies_to(&self, method: &str, direction: Direction) -> bool;
 
-    /// Transform the message params.
+    /// 转换消息参数。
     ///
-    /// Returns:
-    /// - `Ok(Some(params))` — modified params to use
-    /// - `Ok(None)` — drop the message
-    /// - `Err(_)` — fail open; caller should forward original
+    /// 返回：
+    /// - `Ok(Some(params))` — 使用修改后的参数
+    /// - `Ok(None)` — 丢弃消息
+    /// - `Err(_)` — 失败开放；调用者应转发原始消息
     async fn intercept(
         &self,
         method: &str,
@@ -52,16 +52,16 @@ pub trait Interceptor: Send + Sync {
     ) -> Result<Option<serde_json::Value>, LspzError>;
 }
 
-/// A chain of interceptors executed in order.
+/// 按顺序执行的拦截器链。
 ///
-/// Holds a shared config reference for runtime enable/disable checks.
+/// 保存共享配置引用，用于运行时启用/禁用检查。
 pub struct InterceptorChain {
     interceptors: Vec<Box<dyn Interceptor>>,
     config: Arc<RwLock<Config>>,
 }
 
 impl InterceptorChain {
-    /// Create a new chain with the given interceptors and shared config.
+    /// 使用给定的拦截器和共享配置创建新链。
     pub fn new(interceptors: Vec<Box<dyn Interceptor>>, config: Arc<RwLock<Config>>) -> Self {
         Self {
             interceptors,
@@ -69,10 +69,10 @@ impl InterceptorChain {
         }
     }
 
-    /// Process a message through all matching interceptors.
+    /// 通过所有匹配的拦截器处理消息。
     ///
-    /// Skips interceptors that are disabled in the current config.
-    /// On interceptor failure, logs a WARN and returns the original params (fail-open).
+    /// 跳过在当前配置中禁用的拦截器。
+    /// 拦截器失败时，记录 WARN 并返回原始参数（失败开放）。
     pub async fn process(
         &self,
         method: &str,
