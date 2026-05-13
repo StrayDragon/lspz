@@ -5,7 +5,7 @@
 //!
 //! ## Frame Parsing Algorithm
 //!
-//! [MermaidChart:./docs/mmd/json-rpc-frame.mmd]
+//! [MermaidChart:docs/src/diagrams/json-rpc-frame.mmd]
 
 use serde::Serialize;
 use serde_json::Value;
