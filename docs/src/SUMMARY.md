@@ -18,6 +18,8 @@
 - [LSP 兼容性](./specs/lsp-compatibility.md)
 - [TOON 格式](./specs/toon-format.md)
 - [SSOT 规则](./specs/ssot-rules.md)
+- [版本历史](./specs/changelog.md)
+- [路线图](./specs/roadmap.md)
 
 # 参考
 
