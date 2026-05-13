@@ -15,8 +15,8 @@ use crate::interceptors::{Direction, Interceptor};
 
 /// Compression interceptor for `workspace/symbol` responses.
 ///
-/// Reuses SymbolKind encoding from [`DocumentSymbolCompressor`] and URI pooling
-/// from [`LocationCompressor`] for maximum token savings.
+/// Reuses SymbolKind encoding from [`crate::interceptors::symbols::DocumentSymbolCompressor`] and URI pooling
+/// from [`crate::interceptors::locations::LocationCompressor`] for maximum token savings.
 pub struct WorkspaceSymbolCompressor;
 
 impl Default for WorkspaceSymbolCompressor {
