@@ -14,7 +14,7 @@
 //!
 //! ## Architecture
 //!
-//! [MermaidChart:./docs/mmd/architecture.mmd]
+//! [MermaidChart:docs/src/diagrams/architecture.mmd]
 
 #![cfg_attr(docsrs, warn(missing_docs))]
 

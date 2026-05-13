@@ -6,7 +6,7 @@
 //! 2. Reducing `MarkupKind` — `"markdown"` → `"m"`, `"plaintext"` → `"p"`
 //! 3. Using compact field names — `contents`→`c`, `kind`→`k`, `value`→`v`, `range`→`r`
 //!
-//! [MermaidChart:./docs/mmd/hover-compression.mmd]
+//! [MermaidChart:docs/src/diagrams/hover-compression.mmd]
 
 use serde_json::Value;
 

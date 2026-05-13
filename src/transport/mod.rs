@@ -13,7 +13,7 @@
 //!
 //! ## Architecture
 //!
-//! [MermaidChart:./docs/mmd/transport-architecture.mmd]
+//! [MermaidChart:docs/src/diagrams/transport-architecture.mmd]
 
 pub(crate) mod framing;
 pub mod mock;

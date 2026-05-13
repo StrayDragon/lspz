@@ -1,6 +1,6 @@
 //! LSP proxy state machine and message loop.
 //!
-//! [MermaidChart:./docs/mmd/proxy-state-machine.mmd]
+//! [MermaidChart:docs/src/diagrams/proxy-state-machine.mmd]
 
 use std::collections::HashMap;
 use std::sync::Arc;

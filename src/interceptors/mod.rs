@@ -29,7 +29,7 @@ pub enum Direction {
 
 /// A single interceptor in the chain.
 ///
-/// [MermaidChart:./docs/mmd/interceptor-chain.mmd]
+/// [MermaidChart:docs/src/diagrams/interceptor-chain.mmd]
 #[async_trait::async_trait]
 pub trait Interceptor: Send + Sync {
     /// Unique name for logging / configuration.

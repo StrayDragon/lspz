@@ -1,6 +1,6 @@
 //! Compact format for LSP diagnostics.
 //!
-//! [MermaidChart:./docs/mmd/compression-pipeline.mmd]
+//! [MermaidChart:docs/src/diagrams/compression-pipeline.mmd]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
