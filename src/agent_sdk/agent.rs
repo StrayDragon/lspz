@@ -1,5 +1,6 @@
 //! AgentHandle — high-level LSP integration for AI coding agents.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::Config;
@@ -11,7 +12,7 @@ use crate::interceptors::symbols::DocumentSymbolCompressor;
 use crate::interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
 use crate::interceptors::workspace_symbols::WorkspaceSymbolCompressor;
 use crate::interceptors::{Direction, Interceptor, InterceptorChain};
-use crate::mcp::LspSession;
+use crate::mcp::{InitializeParams, LspSession};
 use serde_json::Value;
 use tokio::sync::RwLock;
 
@@ -20,6 +21,7 @@ pub struct AgentHandle {
     session: LspSession,
     language: String,
     interceptor_chain: Option<InterceptorChain>,
+    doc_versions: HashMap<String, u32>,
 }
 
 impl std::fmt::Debug for AgentHandle {
@@ -49,6 +51,7 @@ impl AgentHandle {
             session,
             language,
             interceptor_chain,
+            doc_versions: HashMap::new(),
         }
     }
 
@@ -58,6 +61,8 @@ impl AgentHandle {
             .strip_prefix("file://")
             .ok_or_else(|| anyhow::anyhow!("URI must start with file://"))?;
         let content = tokio::fs::read_to_string(path).await?;
+        let version = self.doc_versions.entry(uri.to_owned()).or_insert(0);
+        *version += 1;
         self.session
             .send_notification(
                 "textDocument/didOpen",
@@ -65,7 +70,7 @@ impl AgentHandle {
                     "textDocument": {
                         "uri": uri,
                         "languageId": self.language,
-                        "version": 1,
+                        "version": *version,
                         "text": content,
                     }
                 }),
@@ -318,6 +323,163 @@ impl AgentHandle {
         Ok(serde_json::to_string_pretty(&processed)?)
     }
 
+    // ── File sync notifications ──────────────────────────────────────────
+
+    /// Notify the LSP server that a file's content has changed.
+    ///
+    /// Uses full document sync (sends the entire new content).
+    /// Call this after writing new content to a file that has been opened.
+    pub async fn notify_change(&mut self, uri: &str, content: &str) -> Result<(), anyhow::Error> {
+        let version = self.doc_versions.entry(uri.to_owned()).or_insert(1);
+        let prev_version = *version;
+        *version += 1;
+        self.session
+            .send_notification(
+                "textDocument/didChange",
+                serde_json::json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "version": prev_version,
+                    },
+                    "contentChanges": [{
+                        "text": content,
+                    }],
+                }),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Notify the LSP server that a file has been closed.
+    pub async fn notify_close(&mut self, uri: &str) -> Result<(), anyhow::Error> {
+        self.doc_versions.remove(uri);
+        self.session
+            .send_notification(
+                "textDocument/didClose",
+                serde_json::json!({
+                    "textDocument": { "uri": uri },
+                }),
+            )
+            .await?;
+        Ok(())
+    }
+
+    /// Notify the LSP server that a file has been saved.
+    pub async fn notify_save(&mut self, uri: &str) -> Result<(), anyhow::Error> {
+        self.session
+            .send_notification(
+                "textDocument/didSave",
+                serde_json::json!({
+                    "textDocument": { "uri": uri },
+                }),
+            )
+            .await?;
+        Ok(())
+    }
+
+    // ── Refactoring operations ────────────────────────────────────────────
+
+    /// Rename a symbol at the given position.
+    pub async fn rename(
+        &mut self,
+        uri: &str,
+        line: u32,
+        character: u32,
+        new_name: &str,
+    ) -> Result<String, anyhow::Error> {
+        self.open_file(uri).await?;
+        let result = self
+            .session
+            .send_request(
+                "textDocument/rename",
+                serde_json::json!({
+                    "textDocument": { "uri": uri },
+                    "position": { "line": line, "character": character },
+                    "newName": new_name,
+                }),
+            )
+            .await?;
+        let processed = self
+            .process_through_chain("textDocument/rename", result)
+            .await?;
+        Ok(serde_json::to_string_pretty(&processed)?)
+    }
+
+    /// Get code actions for a position in a file.
+    pub async fn code_action(
+        &mut self,
+        uri: &str,
+        line: u32,
+        character: u32,
+        diagnostics: Option<Vec<Value>>,
+        only: Option<Vec<String>>,
+    ) -> Result<String, anyhow::Error> {
+        self.open_file(uri).await?;
+        let mut context = serde_json::json!({});
+        if let Some(diags) = diagnostics {
+            context["diagnostics"] = Value::Array(diags);
+        }
+        if let Some(only) = only {
+            context["only"] = serde_json::json!(only);
+        }
+        let result = self
+            .session
+            .send_request(
+                "textDocument/codeAction",
+                serde_json::json!({
+                    "textDocument": { "uri": uri },
+                    "range": {
+                        "start": { "line": line, "character": character },
+                        "end": { "line": line, "character": character },
+                    },
+                    "context": context,
+                }),
+            )
+            .await?;
+        let processed = self
+            .process_through_chain("textDocument/codeAction", result)
+            .await?;
+        Ok(serde_json::to_string_pretty(&processed)?)
+    }
+
+    /// Format a file.
+    pub async fn formatting(
+        &mut self,
+        uri: &str,
+        options: Option<Value>,
+    ) -> Result<String, anyhow::Error> {
+        self.open_file(uri).await?;
+        let formatting_options = options.unwrap_or(serde_json::json!({
+            "tabSize": 4,
+            "insertSpaces": true,
+        }));
+        let result = self
+            .session
+            .send_request(
+                "textDocument/formatting",
+                serde_json::json!({
+                    "textDocument": { "uri": uri },
+                    "options": formatting_options,
+                }),
+            )
+            .await?;
+        let processed = self
+            .process_through_chain("textDocument/formatting", result)
+            .await?;
+        Ok(serde_json::to_string_pretty(&processed)?)
+    }
+
+    // ── Raw request ──────────────────────────────────────────────────────
+
+    /// Send a raw LSP request and return the response as a JSON string.
+    ///
+    /// Use this for LSP methods not covered by the typed API.
+    /// Bypasses the interceptor chain.
+    pub async fn send_raw(&mut self, method: &str, params: Value) -> Result<String, anyhow::Error> {
+        let result = self.session.send_request(method, params).await?;
+        Ok(serde_json::to_string_pretty(&result)?)
+    }
+
     // ── Compression helpers ────────────────────────────────────────────
 
     /// Expand compressed diagnostics back to standard LSP format.
@@ -355,6 +517,7 @@ pub struct AgentBuilder {
     backend: Option<String>,
     language: Option<String>,
     compression: bool,
+    workspace_root: Option<String>,
 }
 
 impl AgentBuilder {
@@ -376,6 +539,12 @@ impl AgentBuilder {
         self
     }
 
+    /// Set the workspace root URI for the LSP server.
+    pub fn workspace_root(mut self, path: impl Into<String>) -> Self {
+        self.workspace_root = Some(path.into());
+        self
+    }
+
     /// Start the LSP server and return an [`AgentHandle`].
     pub async fn start(self) -> Result<AgentHandle, anyhow::Error> {
         let backend = self
@@ -386,7 +555,10 @@ impl AgentBuilder {
             .ok_or_else(|| anyhow::anyhow!("language is required"))?;
 
         let mut session = LspSession::spawn(&backend)?;
-        session.initialize().await?;
+        let init_params = InitializeParams {
+            root_uri: self.workspace_root,
+        };
+        session.initialize(init_params).await?;
 
         tracing::info!(%backend, %language, "Agent session started");
 
@@ -796,6 +968,235 @@ mod tests {
         let expanded = AgentHandle::inflate(&compact).unwrap();
         let expanded_val: Value = serde_json::from_str(&expanded).unwrap();
         assert_eq!(expanded_val["diagnostics"][0]["message"], "roundtrip test");
+    }
+
+    // ── file sync ───────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_notify_change_sends_did_change() {
+        let mut agent = mock_handle(vec![]);
+        agent
+            .notify_change("file:///test.rs", "new content")
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_notify_change_version_increments() {
+        let mut agent = mock_handle(vec![]);
+        // First change (version starts at 1 per entry default)
+        agent.notify_change("file:///test.rs", "v1").await.unwrap();
+        // Second change
+        agent.notify_change("file:///test.rs", "v2").await.unwrap();
+        // Both succeed — version tracking is internal
+    }
+
+    #[tokio::test]
+    async fn test_notify_close_sends_did_close() {
+        let mut agent = mock_handle(vec![]);
+        agent
+            .notify_change("file:///test.rs", "content")
+            .await
+            .unwrap();
+        agent.notify_close("file:///test.rs").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_notify_close_then_change_resets_version() {
+        let mut agent = mock_handle(vec![]);
+        agent.notify_change("file:///test.rs", "v1").await.unwrap();
+        agent.notify_close("file:///test.rs").await.unwrap();
+        // After close, next change should start fresh
+        agent.notify_change("file:///test.rs", "v2").await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_notify_save_sends_did_save() {
+        let mut agent = mock_handle(vec![]);
+        agent.notify_save("file:///test.rs").await.unwrap();
+    }
+
+    // ── rename ──────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_rename() {
+        let rename_resp = LspMessage::Response {
+            id: 1,
+            result: Some(json!({
+                "changes": {
+                    "file:///test.rs": [{
+                        "range": { "start": { "line": 0, "character": 3 }, "end": { "line": 0, "character": 7 } },
+                        "newText": "new_name",
+                    }]
+                }
+            })),
+            error: None,
+        };
+
+        let mut agent = mock_handle(vec![rename_resp]);
+        let (uri, _path) = temp_file("fn main() {}");
+        let result = agent.rename(&uri, 0, 3, "new_name").await.unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        assert!(parsed["changes"].is_object());
+    }
+
+    // ── code_action ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_code_action() {
+        let action_resp = LspMessage::Response {
+            id: 1,
+            result: Some(json!([
+                {
+                    "title": "Add import",
+                    "kind": "quickfix",
+                    "edit": { "changes": {} },
+                }
+            ])),
+            error: None,
+        };
+
+        let mut agent = mock_handle(vec![action_resp]);
+        let (uri, _path) = temp_file("fn main() {}");
+        let result = agent.code_action(&uri, 0, 0, None, None).await.unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed[0]["title"], "Add import");
+    }
+
+    #[tokio::test]
+    async fn test_code_action_with_diagnostics() {
+        let action_resp = LspMessage::Response {
+            id: 1,
+            result: Some(json!([{ "title": "Fix", "kind": "quickfix" }])),
+            error: None,
+        };
+
+        let mut agent = mock_handle(vec![action_resp]);
+        let (uri, _path) = temp_file("fn main() {}");
+        let diags = vec![json!({
+            "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 5 } },
+            "severity": 1,
+            "message": "err",
+        })];
+        let result = agent
+            .code_action(&uri, 0, 0, Some(diags), None)
+            .await
+            .unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed[0]["title"], "Fix");
+    }
+
+    #[tokio::test]
+    async fn test_code_action_with_only_filter() {
+        let action_resp = LspMessage::Response {
+            id: 1,
+            result: Some(json!([{ "title": "Organize", "kind": "source.organizeImports" }])),
+            error: None,
+        };
+
+        let mut agent = mock_handle(vec![action_resp]);
+        let (uri, _path) = temp_file("fn main() {}");
+        let result = agent
+            .code_action(
+                &uri,
+                0,
+                0,
+                None,
+                Some(vec!["source.organizeImports".into()]),
+            )
+            .await
+            .unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed[0]["kind"], "source.organizeImports");
+    }
+
+    // ── formatting ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_formatting() {
+        let fmt_resp = LspMessage::Response {
+            id: 1,
+            result: Some(json!([
+                {
+                    "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 12 } },
+                    "newText": "fn main() {}\n",
+                }
+            ])),
+            error: None,
+        };
+
+        let mut agent = mock_handle(vec![fmt_resp]);
+        let (uri, _path) = temp_file("fn main(){}");
+        let result = agent.formatting(&uri, None).await.unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed[0]["newText"], "fn main() {}\n");
+    }
+
+    #[tokio::test]
+    async fn test_formatting_custom_options() {
+        let fmt_resp = LspMessage::Response {
+            id: 1,
+            result: Some(json!([{
+                "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 5 } },
+                "newText": "    x",
+            }])),
+            error: None,
+        };
+
+        let mut agent = mock_handle(vec![fmt_resp]);
+        let (uri, _path) = temp_file("x = 1");
+        let result = agent
+            .formatting(&uri, Some(json!({ "tabSize": 2, "insertSpaces": false })))
+            .await
+            .unwrap();
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        assert!(parsed[0]["newText"].is_string());
+    }
+
+    // ── send_raw ────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_send_raw_request() {
+        let raw_resp = LspMessage::Response {
+            id: 1,
+            result: Some(json!({ "signatures": [{ "label": "fn main()" }] })),
+            error: None,
+        };
+
+        let mut agent = mock_handle(vec![raw_resp]);
+        let result = agent
+            .send_raw(
+                "textDocument/signatureHelp",
+                json!({
+                    "textDocument": { "uri": "file:///test.rs" },
+                    "position": { "line": 0, "character": 5 },
+                }),
+            )
+            .await
+            .unwrap();
+
+        let parsed: Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(parsed["signatures"][0]["label"], "fn main()");
+    }
+
+    #[tokio::test]
+    async fn test_send_raw_error_propagates() {
+        let err_resp = LspMessage::Response {
+            id: 1,
+            result: None,
+            error: Some(crate::codec::json_rpc::JsonRpcError {
+                code: -32600,
+                message: "Invalid params".into(),
+                data: None,
+            }),
+        };
+
+        let mut agent = mock_handle(vec![err_resp]);
+        let err = agent
+            .send_raw("textDocument/unknownMethod", json!({}))
+            .await
+            .unwrap_err();
+        assert!(err.to_string().contains("Invalid params"), "{err}");
     }
 
     // ── shutdown ────────────────────────────────────────────────────

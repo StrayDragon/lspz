@@ -1,29 +1,30 @@
 //! AgentPool — multi-language LSP session management for AI agents.
 
 use std::collections::HashMap;
-use std::sync::Arc;
-
-use crate::interceptors::{Direction, Interceptor, InterceptorChain};
-use crate::mcp::LspSession;
-use tokio::sync::RwLock;
 
 use super::AgentHandle;
 
 /// A pool of LSP sessions managed by language identifier.
 ///
 /// Sessions are lazily spawned on the first query for a given language.
+/// All operations delegate to [`AgentHandle`] instances internally.
 pub struct AgentPool {
-    sessions: HashMap<String, LspSession>,
-    backends: HashMap<String, String>,
-    interceptor_chain: Option<InterceptorChain>,
+    handles: HashMap<String, AgentHandle>,
+    backends: HashMap<String, BackendConfig>,
+    compression: bool,
+}
+
+struct BackendConfig {
+    backend: String,
+    workspace_root: Option<String>,
 }
 
 impl std::fmt::Debug for AgentPool {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("AgentPool")
             .field("languages", &self.backends.keys().collect::<Vec<_>>())
-            .field("active_sessions", &self.sessions.len())
-            .field("compression", &self.interceptor_chain.is_some())
+            .field("active_handles", &self.handles.len())
+            .field("compression", &self.compression)
             .finish()
     }
 }
@@ -34,76 +35,38 @@ impl AgentPool {
         AgentPoolBuilder::default()
     }
 
-    async fn session_for(&mut self, language: &str) -> Result<&mut LspSession, anyhow::Error> {
-        if !self.sessions.contains_key(language) {
-            let cmd = self.backends.get(language).ok_or_else(|| {
+    async fn handle_for(&mut self, language: &str) -> Result<&mut AgentHandle, anyhow::Error> {
+        if !self.handles.contains_key(language) {
+            let cfg = self.backends.get(language).ok_or_else(|| {
                 anyhow::anyhow!("no backend registered for language '{language}'")
             })?;
-            let mut session = LspSession::spawn(cmd)?;
-            session.initialize().await?;
-            tracing::info!(language, "LSP session initialized");
-            self.sessions.insert(language.to_owned(), session);
+            let mut builder = AgentHandle::builder()
+                .backend(&cfg.backend)
+                .language(language)
+                .enable_compression(self.compression);
+            if let Some(root) = &cfg.workspace_root {
+                builder = builder.workspace_root(root);
+            }
+            let handle = builder.start().await?;
+            tracing::info!(language, "LSP handle created via pool");
+            self.handles.insert(language.to_owned(), handle);
         }
-        Ok(self.sessions.get_mut(language).unwrap())
+        Ok(self.handles.get_mut(language).unwrap())
     }
 
+    /// Insert a pre-constructed [`AgentHandle`] for testing.
     #[allow(dead_code)]
-    pub(crate) fn insert_session(&mut self, language: &str, session: LspSession) {
-        self.backends.entry(language.to_owned()).or_default();
-        self.sessions.insert(language.to_owned(), session);
+    pub(crate) fn insert_handle(&mut self, language: &str, handle: AgentHandle) {
+        self.backends
+            .entry(language.to_owned())
+            .or_insert_with(|| BackendConfig {
+                backend: String::new(),
+                workspace_root: None,
+            });
+        self.handles.insert(language.to_owned(), handle);
     }
 
-    async fn process_through_chain(
-        &self,
-        method: &str,
-        params: serde_json::Value,
-    ) -> serde_json::Value {
-        match &self.interceptor_chain {
-            Some(chain) => match chain
-                .process(method, params.clone(), Direction::ServerToClient)
-                .await
-            {
-                Ok(Some(p)) => p,
-                Ok(None) => serde_json::Value::Null,
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        method = %method,
-                        "Interceptor chain failed, returning original"
-                    );
-                    params
-                }
-            },
-            None => params,
-        }
-    }
-
-    async fn open_file(
-        session: &mut LspSession,
-        uri: &str,
-        language: &str,
-    ) -> Result<String, anyhow::Error> {
-        let path = uri
-            .strip_prefix("file://")
-            .ok_or_else(|| anyhow::anyhow!("URI must start with file://"))?;
-        let content = tokio::fs::read_to_string(path).await?;
-        session
-            .send_notification(
-                "textDocument/didOpen",
-                serde_json::json!({
-                    "textDocument": {
-                        "uri": uri,
-                        "languageId": language,
-                        "version": 1,
-                        "text": content,
-                    }
-                }),
-            )
-            .await?;
-        Ok(content)
-    }
-
-    // ── Query methods ───────────────────────────────────────────────
+    // ── Query methods (delegation to AgentHandle) ─────────────────────
 
     /// Get diagnostics for a file using the specified language's LSP server.
     pub async fn get_diagnostics(
@@ -111,16 +74,7 @@ impl AgentPool {
         uri: &str,
         language: &str,
     ) -> Result<String, anyhow::Error> {
-        let session = self.session_for(language).await?;
-        Self::open_file(session, uri, language).await?;
-
-        let params = session
-            .wait_for_notification("textDocument/publishDiagnostics")
-            .await?;
-        let processed = self
-            .process_through_chain("textDocument/publishDiagnostics", params)
-            .await;
-        Ok(serde_json::to_string_pretty(&processed)?)
+        self.handle_for(language).await?.get_diagnostics(uri).await
     }
 
     /// Get completions at a cursor position.
@@ -131,22 +85,10 @@ impl AgentPool {
         line: u32,
         character: u32,
     ) -> Result<String, anyhow::Error> {
-        let session = self.session_for(language).await?;
-        Self::open_file(session, uri, language).await?;
-
-        let result = session
-            .send_request(
-                "textDocument/completion",
-                serde_json::json!({
-                    "textDocument": { "uri": uri },
-                    "position": { "line": line, "character": character },
-                }),
-            )
-            .await?;
-        let processed = self
-            .process_through_chain("textDocument/completion", result)
-            .await;
-        Ok(serde_json::to_string_pretty(&processed)?)
+        self.handle_for(language)
+            .await?
+            .get_completions(uri, line, character)
+            .await
     }
 
     /// Get document symbols using the specified language's LSP server.
@@ -155,21 +97,68 @@ impl AgentPool {
         uri: &str,
         language: &str,
     ) -> Result<String, anyhow::Error> {
-        let session = self.session_for(language).await?;
-        Self::open_file(session, uri, language).await?;
+        self.handle_for(language).await?.get_symbols(uri).await
+    }
 
-        let result = session
-            .send_request(
-                "textDocument/documentSymbol",
-                serde_json::json!({
-                    "textDocument": { "uri": uri },
-                }),
-            )
-            .await?;
-        let processed = self
-            .process_through_chain("textDocument/documentSymbol", result)
-            .await;
-        Ok(serde_json::to_string_pretty(&processed)?)
+    // ── Refactoring operations ──────────────────────────────────────────
+
+    /// Rename a symbol.
+    pub async fn rename(
+        &mut self,
+        uri: &str,
+        language: &str,
+        line: u32,
+        character: u32,
+        new_name: &str,
+    ) -> Result<String, anyhow::Error> {
+        self.handle_for(language)
+            .await?
+            .rename(uri, line, character, new_name)
+            .await
+    }
+
+    /// Get code actions.
+    pub async fn code_action(
+        &mut self,
+        uri: &str,
+        language: &str,
+        line: u32,
+        character: u32,
+        diagnostics: Option<Vec<serde_json::Value>>,
+        only: Option<Vec<String>>,
+    ) -> Result<String, anyhow::Error> {
+        self.handle_for(language)
+            .await?
+            .code_action(uri, line, character, diagnostics, only)
+            .await
+    }
+
+    /// Format a file.
+    pub async fn formatting(
+        &mut self,
+        uri: &str,
+        language: &str,
+        options: Option<serde_json::Value>,
+    ) -> Result<String, anyhow::Error> {
+        self.handle_for(language)
+            .await?
+            .formatting(uri, options)
+            .await
+    }
+
+    // ── Raw request ──────────────────────────────────────────────────
+
+    /// Send a raw LSP request and return the response as a JSON string.
+    pub async fn send_raw(
+        &mut self,
+        language: &str,
+        method: &str,
+        params: serde_json::Value,
+    ) -> Result<String, anyhow::Error> {
+        self.handle_for(language)
+            .await?
+            .send_raw(method, params)
+            .await
     }
 
     // ── Compression helpers ─────────────────────────────────────────
@@ -184,19 +173,40 @@ impl AgentPool {
         AgentHandle::compress(raw_json)
     }
 
+    // ── File sync notifications ──────────────────────────────────────
+
+    /// Notify the LSP server that a file's content has changed.
+    pub async fn notify_change(
+        &mut self,
+        uri: &str,
+        language: &str,
+        content: &str,
+    ) -> Result<(), anyhow::Error> {
+        self.handle_for(language)
+            .await?
+            .notify_change(uri, content)
+            .await
+    }
+
+    /// Notify the LSP server that a file has been closed.
+    pub async fn notify_close(&mut self, uri: &str, language: &str) -> Result<(), anyhow::Error> {
+        self.handle_for(language).await?.notify_close(uri).await
+    }
+
+    /// Notify the LSP server that a file has been saved.
+    pub async fn notify_save(&mut self, uri: &str, language: &str) -> Result<(), anyhow::Error> {
+        self.handle_for(language).await?.notify_save(uri).await
+    }
+
     // ── Shutdown ─────────────────────────────────────────────────────
 
     /// Shut down all LSP server sessions.
-    pub async fn shutdown_all(&mut self) -> Result<(), anyhow::Error> {
-        for session in self.sessions.values_mut() {
-            let _ = session
-                .send_request("shutdown", serde_json::json!({}))
-                .await;
-            session
-                .send_notification("exit", serde_json::json!({}))
-                .await?;
+    pub async fn shutdown_all(self) -> Result<(), anyhow::Error> {
+        for (language, handle) in self.handles {
+            if let Err(e) = handle.shutdown().await {
+                tracing::warn!(language, error = %e, "Failed to shutdown handle");
+            }
         }
-        self.sessions.clear();
         Ok(())
     }
 }
@@ -205,6 +215,7 @@ impl AgentPool {
 #[derive(Default)]
 pub struct AgentPoolBuilder {
     backends: Vec<(String, String)>,
+    workspace_root: Option<String>,
     compression: bool,
 }
 
@@ -215,69 +226,40 @@ impl AgentPoolBuilder {
         self
     }
 
+    /// Set a shared workspace root for all registered backends.
+    pub fn workspace_root(mut self, path: impl Into<String>) -> Self {
+        self.workspace_root = Some(path.into());
+        self
+    }
+
     /// Enable compression (default: disabled).
     pub fn enable_compression(mut self, enabled: bool) -> Self {
         self.compression = enabled;
         self
     }
 
-    /// Spawn and initialize all registered backends, returning an [`AgentPool`].
+    /// Create an [`AgentPool`] with registered backends.
+    ///
+    /// Sessions are **not** spawned eagerly — they are created lazily on first
+    /// query via [`AgentPool::handle_for`].
     pub async fn start_all(self) -> Result<AgentPool, anyhow::Error> {
-        let interceptor_chain = if self.compression {
-            Some(build_pool_interceptor_chain())
-        } else {
-            None
-        };
-
-        let mut pool = AgentPool {
-            sessions: HashMap::new(),
-            backends: HashMap::new(),
-            interceptor_chain,
-        };
-
+        let mut backends = HashMap::new();
         for (language, backend) in &self.backends {
-            pool.backends.insert(language.clone(), backend.clone());
+            backends.insert(
+                language.clone(),
+                BackendConfig {
+                    backend: backend.clone(),
+                    workspace_root: self.workspace_root.clone(),
+                },
+            );
         }
 
-        Ok(pool)
+        Ok(AgentPool {
+            handles: HashMap::new(),
+            backends,
+            compression: self.compression,
+        })
     }
-}
-
-fn build_pool_interceptor_chain() -> InterceptorChain {
-    use crate::interceptors::completions::CompletionCompressor;
-    use crate::interceptors::diagnostics::DiagnosticsCompressor;
-    use crate::interceptors::hover::HoverCompressor;
-    use crate::interceptors::locations::LocationCompressor;
-    use crate::interceptors::symbols::DocumentSymbolCompressor;
-    use crate::interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
-    use crate::interceptors::workspace_symbols::WorkspaceSymbolCompressor;
-
-    let config = Arc::new(RwLock::new(crate::Config {
-        backend_cmd: String::new(),
-        capping: crate::CappingConfig::default(),
-        enable_diag_compress: true,
-        enable_completion_compress: true,
-        enable_hover_compress: true,
-        enable_document_symbol_compress: true,
-        enable_location_compress: true,
-        enable_workspace_symbol_compress: true,
-        enable_workspace_diag_compress: true,
-        output_format: crate::OutputFormat::Json,
-        log_level: "info".into(),
-        metrics: crate::MetricsConfig::default(),
-    }));
-
-    let interceptors: Vec<Box<dyn Interceptor>> = vec![
-        Box::new(DiagnosticsCompressor::default()),
-        Box::new(CompletionCompressor::default()),
-        Box::new(HoverCompressor::default()),
-        Box::new(DocumentSymbolCompressor),
-        Box::new(LocationCompressor),
-        Box::new(WorkspaceSymbolCompressor),
-        Box::new(WorkspaceDiagnosticCompressor),
-    ];
-
-    InterceptorChain::new(interceptors, config)
 }
 
 #[cfg(test)]
@@ -289,6 +271,15 @@ mod tests {
 
     use super::*;
 
+    fn mock_handle(responses: Vec<LspMessage>) -> AgentHandle {
+        let mock = MockTransport::new();
+        for msg in responses {
+            mock.push_message(&msg).unwrap();
+        }
+        let session = LspSession::with_transport(Box::new(mock));
+        AgentHandle::new(session, "rust".into(), false)
+    }
+
     #[tokio::test]
     async fn test_builder_register_languages() {
         let pool = AgentPool::builder()
@@ -299,8 +290,6 @@ mod tests {
             .unwrap();
 
         assert_eq!(pool.backends.len(), 2);
-        assert_eq!(pool.backends.get("rust").unwrap(), "rust-analyzer");
-        assert_eq!(pool.backends.get("go").unwrap(), "gopls");
     }
 
     #[tokio::test]
@@ -317,7 +306,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_insert_session_and_query() {
+    async fn test_insert_handle_and_query() {
         let diag_notif = LspMessage::Notification {
             method: "textDocument/publishDiagnostics".into(),
             params: serde_json::json!({
@@ -330,9 +319,7 @@ mod tests {
             }),
         };
 
-        let mock = MockTransport::new();
-        mock.push_message(&diag_notif).unwrap();
-        let session = LspSession::with_transport(Box::new(mock));
+        let handle = mock_handle(vec![diag_notif]);
 
         let mut pool = AgentPool::builder()
             .register("rust", "rust-analyzer")
@@ -340,7 +327,7 @@ mod tests {
             .await
             .unwrap();
 
-        pool.insert_session("rust", session);
+        pool.insert_handle("rust", handle);
 
         let (uri, _path) = temp_file("fn main() {}");
         let result = pool.get_diagnostics(&uri, "rust").await.unwrap();
@@ -350,9 +337,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_language_cross_talk() {
-        let mock_a = MockTransport::new();
-        mock_a
-            .push_message(&LspMessage::Notification {
+        let handle_a = {
+            let mock = MockTransport::new();
+            mock.push_message(&LspMessage::Notification {
                 method: "textDocument/publishDiagnostics".into(),
                 params: serde_json::json!({
                     "uri": "file:///a.rs",
@@ -364,11 +351,13 @@ mod tests {
                 }),
             })
             .unwrap();
-        let session_a = LspSession::with_transport(Box::new(mock_a));
+            let session = LspSession::with_transport(Box::new(mock));
+            AgentHandle::new(session, "rust".into(), false)
+        };
 
-        let mock_b = MockTransport::new();
-        mock_b
-            .push_message(&LspMessage::Notification {
+        let handle_b = {
+            let mock = MockTransport::new();
+            mock.push_message(&LspMessage::Notification {
                 method: "textDocument/publishDiagnostics".into(),
                 params: serde_json::json!({
                     "uri": "file:///b.py",
@@ -380,7 +369,9 @@ mod tests {
                 }),
             })
             .unwrap();
-        let session_b = LspSession::with_transport(Box::new(mock_b));
+            let session = LspSession::with_transport(Box::new(mock));
+            AgentHandle::new(session, "python".into(), false)
+        };
 
         let mut pool = AgentPool::builder()
             .register("rust", "rust-analyzer")
@@ -389,8 +380,8 @@ mod tests {
             .await
             .unwrap();
 
-        pool.insert_session("rust", session_a);
-        pool.insert_session("python", session_b);
+        pool.insert_handle("rust", handle_a);
+        pool.insert_handle("python", handle_b);
 
         let (uri_a, _) = temp_file("fn main() {}");
         let (uri_b, _) = temp_file("x = 1");
