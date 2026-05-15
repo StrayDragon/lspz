@@ -409,7 +409,7 @@ pub trait Interceptor: Send + Sync {
 ## 参考文档
 
 - [AGENTS.md](https://github.com/straydragon/lspz/blob/main/AGENTS.md) - 项目通用规范（SSOT）
-- [specs/001-tri-modal-architecture.md](../architecture.md) - 三模态架构
-- [specs/002-compression-format.md](../specs/compression-format.md) - 压缩格式规范
-- [specs/003-lsp-compatibility.md](../specs/lsp-compatibility.md) - LSP 兼容性规范
-- [guides/testing-guide.md](testing-guide.md) - 测试指南
+- [架构设计](../architecture.md) - 三模态架构
+- [压缩格式](../specs/compression-format.md) - 压缩格式规范
+- [LSP 兼容性](../specs/lsp-compatibility.md) - LSP 兼容性规范
+- [测试指南](testing.md) - 测试指南

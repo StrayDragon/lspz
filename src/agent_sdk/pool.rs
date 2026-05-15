@@ -241,7 +241,7 @@ impl AgentPoolBuilder {
     /// Create an [`AgentPool`] with registered backends.
     ///
     /// Sessions are **not** spawned eagerly — they are created lazily on first
-    /// query via [`AgentPool::handle_for`].
+    /// query via the internal language dispatcher.
     pub async fn start_all(self) -> Result<AgentPool, anyhow::Error> {
         let mut backends = HashMap::new();
         for (language, backend) in &self.backends {
