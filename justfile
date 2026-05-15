@@ -63,6 +63,10 @@ bench:
 bench-report:
     cargo run --example bench-report
 
+# Regenerate benchmark report into docs/src/benchmarks.md.
+gen-bench:
+    bash scripts/run-bench.sh
+
 # Run compression demo with sample data (quick verification).
 compress-demo:
     cargo run --example compress-demo
