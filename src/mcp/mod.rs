@@ -9,4 +9,4 @@ mod session;
 
 pub use pool::LspPool;
 pub use server::McpServer;
-pub use session::LspSession;
+pub use session::{InitializeParams, LspSession};

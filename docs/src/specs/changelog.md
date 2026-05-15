@@ -140,3 +140,15 @@ Location compression, TCP/WebSocket transport, runtime metrics, config hot-reloa
 - Config hot-reload: `ConfigWatcher` using `notify` crate + `Arc<RwLock<Config>>`
 - Agent SDK 统一到 InterceptorChain (所有 7 个压缩器)
 - 176+ tests passing
+
+## v0.9.2 (2026-05-15)
+
+Agent SDK 完善 — 文件同步、workspace root、重构操作、Pool 委托重构。
+
+- `AgentPool` 重构为委托模式：内部持有 `HashMap<String, AgentHandle>`，消除与 `AgentHandle` 的重复代码
+- 文件同步：`notify_change(uri, content)` / `notify_close(uri)` / `notify_save(uri)`，全量文档同步 + 自动版本追踪
+- Workspace root：`AgentBuilder::workspace_root(path)` / `AgentPoolBuilder::workspace_root(path)`，`LspSession::initialize` 接受 `InitializeParams`
+- 通用请求逃生舱口：`AgentHandle::send_raw(method, params)`
+- 重构操作：`rename` / `code_action` / `formatting`（含 interceptor chain 支持）
+- `Transport` trait 新增 `as_any_mut()` 用于测试时的 downcast
+- 210+ tests passing

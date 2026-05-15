@@ -46,4 +46,9 @@ pub trait Transport: Send + Sync {
     fn try_wait(&mut self) -> Result<Option<ExitStatus>, LspzError> {
         Ok(None)
     }
+
+    /// Downcast to `Any` for testing inspection.
+    fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+        None
+    }
 }

@@ -99,6 +99,13 @@
 | `get_type_definition` | `textDocument/typeDefinition` | ✅ |
 | `get_workspace_symbols` | `workspace/symbol` | ✅ |
 | `get_workspace_diagnostics` | `workspace/diagnostic` | ✅ |
+| `rename` | `textDocument/rename` | ✅ |
+| `code_action` | `textDocument/codeAction` | ✅ |
+| `formatting` | `textDocument/formatting` | ✅ |
+| `notify_change` | `textDocument/didChange` | — |
+| `notify_close` | `textDocument/didClose` | — |
+| `notify_save` | `textDocument/didSave` | — |
+| `send_raw` | 任意方法 | — |
 | `compress` / `inflate` | — | 手动压缩/解压 |
 
 ### MCP Tools (lspz mcp)

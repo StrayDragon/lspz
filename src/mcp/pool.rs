@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use super::session::LspSession;
+use super::session::{InitializeParams, LspSession};
 
 /// A pool of LSP sessions, keyed by a user-defined name (typically a language
 /// identifier like `"go"` or `"rust"`).
@@ -26,7 +26,7 @@ impl LspPool {
     ) -> Result<&mut LspSession, anyhow::Error> {
         if !self.sessions.contains_key(key) {
             let mut session = LspSession::spawn(cmd)?;
-            session.initialize().await?;
+            session.initialize(InitializeParams::default()).await?;
             tracing::info!(key, "LSP session initialized");
             self.sessions.insert(key.into(), session);
         }
