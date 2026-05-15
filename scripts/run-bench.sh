@@ -1,15 +1,10 @@
 #!/usr/bin/env bash
-# One-click compression benchmark: build + report + save
+# Regenerate benchmark report from fixtures.
+# Output: docs/src/benchmarks.md (auto-generated, do not edit manually)
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-echo "=== lspz Compression Benchmark Report ==="
-echo ""
+cargo run --example bench-report 2>/dev/null > docs/src/benchmarks.md
 
-mkdir -p docs/reports
-
-cargo run --example bench-report 2>/dev/null | tee docs/reports/latest.md
-
-echo ""
-echo "Report saved to docs/reports/latest.md"
+echo "Generated docs/src/benchmarks.md"
