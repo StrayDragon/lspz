@@ -1,8 +1,8 @@
 # lspz 三模态架构规格
 
-**版本**: v0.9.0
+**版本**: v0.9.2
 **状态**: 定稿
-**最后更新**: 2026-05-12
+**最后更新**: 2026-05-15
 
 ## 概述
 
@@ -507,11 +507,9 @@ graph TD
         ERROR["error.rs<br/>LspzError enum<br/>thiserror derive"]
     end
 
-    subgraph SSOT["SSOT Output (.gen files)"]
-        APIDOC["docs/api/*.gen.md<br/>from code comments"]
-        CONFIGDOC["docs/reference/config.gen.md<br/>from Config struct"]
-        ERRDOC["docs/reference/error-types.gen.md<br/>from LspzError enum"]
-        INTERCEPTORDOC["docs/specs/interceptors.gen.md<br/>from Interceptor + impls"]
+    subgraph SSOT["SSOT Output (cargo doc + mdbook)"]
+        APIDOC["target/doc/lspz/<br/>from /// code comments"]
+        BOOK["docs/book/<br/>from docs/src/**/*.md"]
     end
 
     CLI -.-> LIB
@@ -533,9 +531,7 @@ graph TD
     CODEC --> ERROR
 
     LIB -.-> APIDOC
-    CONFIG -.-> CONFIGDOC
-    ERROR -.-> ERRDOC
-    INTERCEPTOR -.-> INTERCEPTORDOC
+    LIB -.-> BOOK
 
     classDef crate fill:#7ED321,stroke:#5BA01A,stroke-width:2px,color:#fff
     classDef module fill:#4A90E2,stroke:#2E5C8A,stroke-width:2px,color:#fff
@@ -545,7 +541,7 @@ graph TD
     class LIB,CLI crate
     class PROXY,INTERCEPTOR,CODEC,TRANSPORT,CONFIG,METRICS,ERROR module
     class MCPMOD,AGENT optional
-    class APIDOC,CONFIGDOC,ERRDOC,INTERCEPTORDOC ssot
+    class APIDOC,BOOK ssot
 ```
 
 ---
@@ -571,6 +567,7 @@ graph TD
 ## 参考文档
 
 - [ROADMAP.md](https://github.com/straydragon/lspz/blob/main/ROADMAP.md) - 项目路线图
-- [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范
-- [specs/003-lsp-compatibility.md](003-lsp-compatibility.md) - LSP 兼容性
-- [specs/004-ssot-rules.md](004-ssot-rules.md) - 文档生成和 SSOT 规则
+- [压缩格式规范](./specs/compression-format.md)
+- [LSP 兼容性](./specs/lsp-compatibility.md)
+- [SSOT 规则](./specs/ssot-rules.md)
+- [TOON 格式](./specs/toon-format.md)

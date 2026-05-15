@@ -47,6 +47,16 @@ require_serial = true
 stages = ["pre-push"]
 
 [[repos.hooks]]
+id = "gen-bench"
+name = "regenerate benchmark report"
+language = "system"
+entry = "bash scripts/run-bench.sh"
+types = ["rust"]
+pass_filenames = false
+require_serial = true
+stages = ["pre-push"]
+
+[[repos.hooks]]
 id = "conventional-commits"
 name = "conventional commits"
 language = "system"

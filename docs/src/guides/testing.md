@@ -498,3 +498,5 @@ cargo test -- --test-threads=1 -- -nocapture --exact
 - [rstest 文档](https://docs.rs/rstest/)
 - [tarpaulin 文档](https://github.com/xd009642/tarpaulin)
 - [ROADMAP.md](https://github.com/straydragon/lspz/blob/main/ROADMAP.md) - 项目路线图
+- [架构设计](../architecture.md) - 三模态架构
+- [编码规范](coding-conventions.md) - 编码规范

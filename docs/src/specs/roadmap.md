@@ -122,7 +122,8 @@
 
 | 版本 | 里程碑 |
 |------|--------|
-| **v0.9.0** *(当前)* | Location 压缩, Agent SDK 统一到 InterceptorChain |
+| **v0.9.2** *(当前)* | 文件同步、workspace root、重构操作、Pool 委托重构 |
+| v0.9.0 | Location 压缩, TCP/WebSocket, 运行指标, 配置热重载 |
 | v0.8.0 | Response Capping, Proxy 响应拦截 |
 | v0.7.0 | TOON 输出格式, Benchmark 报告系统 |
 | v0.6.0 | DocumentSymbol 压缩 |

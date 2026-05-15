@@ -2,31 +2,27 @@
 
 > **lsp** **z**ip — AI-friendly LSP compression proxy
 
-lspz 是一个 LSP 压缩代理，专为 AI Coding Agent 设计。通过压缩 LSP 消息中的冗余数据（诊断、补全、符号等），显著减少 token 消耗。
+lspz 压缩 LSP 服务器返回的冗余数据，减少 AI Coding Agent 的 token 开销。它坐在 Agent 和 LSP 服务器之间，拦截并压缩诊断、补全、符号等消息。
 
-## 三模态架构
+## 三种运行方式
 
-lspz 支持三种运行模式：
+1. **Library** — 作为 Rust crate 嵌入你的 Agent 项目
+2. **CLI Proxy** — 独立进程，透明压缩 LSP 消息
+3. **MCP Server** — MCP 工具服务器，供 Claude Desktop 等客户端调用
 
-1. **Library** — 嵌入式 Rust 库，直接在你的项目中使用
-2. **CLI Proxy** — 独立的命令行代理，透明压缩 LSP 消息
-3. **MCP Server** — 作为 MCP 工具服务器，供 Claude Desktop 等客户端调用
+## 压缩效果
 
-## 核心特性
-
-- **8 个压缩拦截器**：诊断、补全、Hover、符号、位置等 LSP 消息类型
-- **3 种输出格式**：Raw JSON、紧凑 JSON、TOON 表格格式
-- **3 种传输层**：stdio、TCP、WebSocket
-- **零侵入**：Fail-open 设计，压缩失败自动降级到透明转发
+| 消息类型 | Token 节省（紧凑） | Token 节省（TOON） |
+|---------|-------------------|-------------------|
+| 诊断 | 73.5% | 76.6% |
+| 补全 | — | 16.9% |
+| Hover | 1.6% | 23.8% |
+| 符号 | 33.0% | 72.1% |
 
 ## 快速开始
 
 ```bash
-# 作为 CLI 代理运行
 cargo run -- proxy --backend rust-analyzer
-
-# 查看帮助
-cargo run -- --help
 ```
 
-更多信息请阅读 [Getting Started](./getting-started.md) 和 [Architecture](./architecture.md)。
+详细用法见 [快速开始](./getting-started.md) 和 [架构设计](./architecture.md)。
