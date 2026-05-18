@@ -56,7 +56,7 @@ impl AgentPool {
 
     /// Insert a pre-constructed [`AgentHandle`] for testing.
     #[allow(dead_code)]
-    pub(crate) fn insert_handle(&mut self, language: &str, handle: AgentHandle) {
+    pub fn insert_handle(&mut self, language: &str, handle: AgentHandle) {
         self.backends
             .entry(language.to_owned())
             .or_insert_with(|| BackendConfig {
