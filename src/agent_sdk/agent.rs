@@ -41,7 +41,7 @@ impl AgentHandle {
     }
 
     #[allow(dead_code)]
-    pub(crate) fn new(session: LspSession, language: String, compression: bool) -> Self {
+    pub fn new(session: LspSession, language: String, compression: bool) -> Self {
         let interceptor_chain = if compression {
             Some(build_interceptor_chain())
         } else {
