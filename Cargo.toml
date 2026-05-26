@@ -1,6 +1,6 @@
 [package]
 name = "lspz"
-version = "0.9.3"
+version = "0.10.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/straydragon/lspz"
@@ -32,6 +32,8 @@ notify = "7"
 clap = { version = "4", optional = true, features = ["derive", "env"] }
 tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
 shell-words = "1.1"
+dirs = "5"
+tempfile = "3"
 
 # MCP / Agent SDK (optional)
 rmcp = { version = "0.16", optional = true, features = ["server", "transport-io"] }
@@ -49,7 +51,6 @@ required-features = ["cli"]
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
 tiktoken-rs = "0.11"
-tempfile = "3"
 
 [package.metadata.docs.rs]
 all-features = true

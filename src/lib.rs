@@ -27,6 +27,9 @@ pub mod metrics;
 pub mod proxy;
 pub mod transport;
 
+#[cfg(feature = "cli")]
+pub mod init;
+
 #[cfg(feature = "mcp")]
 pub mod mcp;
 

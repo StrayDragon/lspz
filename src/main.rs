@@ -190,6 +190,34 @@ enum Cli {
         #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
         log_level: String,
     },
+
+    /// Initialize Claude Code integration (MCP server registration, context injection)
+    #[command(name = "init")]
+    Init {
+        /// Add to global config (~/.claude/settings.json) instead of project-local
+        #[arg(short, long)]
+        global: bool,
+
+        /// Auto-patch settings.json without prompting
+        #[arg(long = "auto-patch")]
+        auto_patch: bool,
+
+        /// Skip settings.json patching (print manual instructions)
+        #[arg(long = "no-patch")]
+        no_patch: bool,
+
+        /// Show current lspz configuration
+        #[arg(long)]
+        show: bool,
+
+        /// Remove lspz artifacts from Claude Code settings
+        #[arg(long)]
+        uninstall: bool,
+
+        /// Preview changes without writing any files
+        #[arg(long = "dry-run")]
+        dry_run: bool,
+    },
 }
 
 #[tokio::main]
@@ -239,6 +267,14 @@ async fn main() -> ExitCode {
         }
         #[cfg(feature = "mcp")]
         Cli::Mcp { log_level } => run_mcp(log_level).await,
+        Cli::Init {
+            global,
+            auto_patch,
+            no_patch,
+            show,
+            uninstall,
+            dry_run,
+        } => lspz::init::run(global, auto_patch, no_patch, show, uninstall, dry_run),
     }
 }
 

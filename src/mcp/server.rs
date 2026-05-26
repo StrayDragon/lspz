@@ -1,6 +1,8 @@
 use std::sync::Arc;
 
-use crate::codec::compact;
+use crate::codec::{compact, toon};
+use crate::interceptors::completions::compress_completions;
+use crate::interceptors::symbols::compress_symbols;
 use rmcp::{
     ErrorData, ServerHandler,
     model::{
@@ -20,19 +22,20 @@ fn tool_definitions() -> Vec<Tool> {
     vec![
         Tool::new(
             "get_diagnostics",
-            "Get LSP diagnostics for a file. Returns compressed diagnostics (compact format) \
-             with dedup and delta range encoding for token-efficient AI consumption.",
+            "Get LSP diagnostics for a file. Returns TOON format (token-optimized tabular) \
+             with severity, message, code, range, count.",
             rmcp::model::object(GetDiagnosticsInput::json_schema()),
         ),
         Tool::new(
             "get_completions",
-            "Request LSP completions at a specific cursor position. Returns completion items \
-             with labels, kinds, and optional detail text.",
+            "Request LSP completions at a cursor position. Returns TOON format \
+             with label, kind, detail, documentation.",
             rmcp::model::object(GetCompletionsInput::json_schema()),
         ),
         Tool::new(
             "get_symbols",
-            "Retrieve document symbols (functions, classes, variables, etc.) from an LSP server.",
+            "Retrieve document symbols. Returns TOON format \
+             with name, kind, range, detail, container.",
             rmcp::model::object(GetSymbolsInput::json_schema()),
         ),
     ]
@@ -117,8 +120,10 @@ impl McpServer {
         let compressed = compact::compress(&params)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-        serde_json::to_string_pretty(&compressed)
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))
+        let diags: compact::CompactDiagnostics = serde_json::from_value(compressed)
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
+        Ok(toon::diagnostics_to_toon(&diags))
     }
 
     async fn handle_completions(&self, input: GetCompletionsInput) -> Result<String, ErrorData> {
@@ -162,7 +167,10 @@ impl McpServer {
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-        serde_json::to_string_pretty(&result)
+        let compressed = compress_completions(&result, 50, true)
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
+        toon::completions_to_toon(&compressed)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))
     }
 
@@ -206,7 +214,10 @@ impl McpServer {
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-        serde_json::to_string_pretty(&result)
+        let compressed = compress_symbols(&result)
+            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
+        toon::symbols_to_toon(&compressed)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))
     }
 }
