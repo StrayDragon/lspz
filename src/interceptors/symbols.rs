@@ -50,7 +50,7 @@ impl Interceptor for DocumentSymbolCompressor {
 ///
 /// Handles both `DocumentSymbol[]` (hierarchical, has `range`) and
 /// `SymbolInformation[]` (flat, has `location`) on a per-element basis.
-fn compress_symbols(params: &Value) -> Result<Value, LspzError> {
+pub fn compress_symbols(params: &Value) -> Result<Value, LspzError> {
     let arr = params
         .as_array()
         .ok_or_else(|| LspzError::Protocol("documentSymbol params not an array".into()))?;

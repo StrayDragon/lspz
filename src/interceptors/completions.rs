@@ -57,7 +57,7 @@ impl Interceptor for CompletionCompressor {
 }
 
 /// Compress a completion response value.
-fn compress_completions(
+pub fn compress_completions(
     params: &Value,
     max_items: usize,
     doc_dedup: bool,
