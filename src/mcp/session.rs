@@ -48,15 +48,24 @@ impl LspSession {
                 format!("file://{p}")
             }
         });
-        let workspace_folders: Option<Vec<Value>> = root_uri
-            .as_ref()
-            .map(|uri| vec![serde_json::json!({ "uri": uri })]);
+        let workspace_folders: Option<Vec<Value>> = root_uri.as_ref().map(|uri| {
+            let name = uri
+                .rsplit('/')
+                .next()
+                .filter(|s| !s.is_empty())
+                .unwrap_or("workspace");
+            vec![serde_json::json!({ "uri": uri, "name": name })]
+        });
 
         let init_params = serde_json::json!({
             "processId": null,
             "capabilities": {},
             "rootUri": root_uri,
             "workspaceFolders": workspace_folders,
+            "clientInfo": {
+                "name": "lspz",
+                "version": env!("CARGO_PKG_VERSION"),
+            },
         });
         let result = self.send_request("initialize", init_params).await?;
         self.send_notification("initialized", serde_json::json!({}))

@@ -2,7 +2,7 @@
 
 use std::path::Path;
 
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use serde_json::Value;
 
 use lspz::interceptors::{Direction, Interceptor};
@@ -37,7 +37,7 @@ fn bench_diagnostics(c: &mut Criterion) {
             b.iter(|| {
                 rt.block_on(compressor.intercept(
                     method,
-                    black_box(params.clone()),
+                    std::hint::black_box(params.clone()),
                     Direction::ServerToClient,
                 ))
             })
@@ -56,7 +56,7 @@ fn bench_completions(c: &mut Criterion) {
             b.iter(|| {
                 rt.block_on(compressor.intercept(
                     method,
-                    black_box(params.clone()),
+                    std::hint::black_box(params.clone()),
                     Direction::ServerToClient,
                 ))
             })
@@ -75,7 +75,7 @@ fn bench_hover(c: &mut Criterion) {
             b.iter(|| {
                 rt.block_on(compressor.intercept(
                     method,
-                    black_box(params.clone()),
+                    std::hint::black_box(params.clone()),
                     Direction::ServerToClient,
                 ))
             })
@@ -94,7 +94,7 @@ fn bench_symbols(c: &mut Criterion) {
             b.iter(|| {
                 rt.block_on(compressor.intercept(
                     method,
-                    black_box(params.clone()),
+                    std::hint::black_box(params.clone()),
                     Direction::ServerToClient,
                 ))
             })
