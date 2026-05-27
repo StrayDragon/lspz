@@ -4,6 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::constants::{CLAUDE_DIR_ENV, CLAUDE_MD, LSPZ_MD, LSPZ_MD_REF, LSPZ_SLIM};
+use super::languages::generate_language_table;
 use crate::error::LspzError;
 
 /// Resolve the target directory for awareness files.
@@ -20,17 +21,24 @@ fn target_dir(global: bool) -> Result<PathBuf, LspzError> {
     }
 }
 
+/// Build the full LSPZ.md content (static template + dynamic language table).
+fn build_lspz_md_content() -> String {
+    let lang_table = generate_language_table();
+    format!("{LSPZ_SLIM}\n## Language Mappings (auto-detected)\n\n{lang_table}")
+}
+
 /// Write LSPZ.md to the target directory.
 ///
 /// Returns `true` if the file was written, `false` if it already exists with the same content.
 pub fn write_lspz_md(global: bool, dry_run: bool) -> Result<bool, LspzError> {
     let dir = target_dir(global)?;
     let path = dir.join(LSPZ_MD);
+    let content = build_lspz_md_content();
 
     if path.exists() {
         let existing = fs::read_to_string(&path)
             .map_err(|e| LspzError::Config(format!("Failed to read {}: {e}", path.display())))?;
-        if existing == LSPZ_SLIM {
+        if existing == content {
             return Ok(false);
         }
     }
@@ -42,7 +50,7 @@ pub fn write_lspz_md(global: bool, dry_run: bool) -> Result<bool, LspzError> {
     fs::create_dir_all(&dir)
         .map_err(|e| LspzError::Config(format!("Failed to create {}: {e}", dir.display())))?;
 
-    fs::write(&path, LSPZ_SLIM)
+    fs::write(&path, &content)
         .map_err(|e| LspzError::Config(format!("Failed to write {}: {e}", path.display())))?;
 
     Ok(true)
@@ -200,7 +208,9 @@ mod tests {
 
             let path = dir.join(LSPZ_MD);
             assert!(path.exists());
-            assert_eq!(fs::read_to_string(&path).unwrap(), LSPZ_SLIM);
+            let content = fs::read_to_string(&path).unwrap();
+            assert!(content.starts_with(LSPZ_SLIM));
+            assert!(content.contains("Language Mappings"));
         });
     }
 
