@@ -4,6 +4,7 @@
 
 pub mod awareness;
 pub mod constants;
+pub mod languages;
 pub mod settings;
 
 use std::process::ExitCode;
