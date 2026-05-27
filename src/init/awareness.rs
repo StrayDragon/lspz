@@ -4,8 +4,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use super::constants::{CLAUDE_DIR_ENV, CLAUDE_MD, LSPZ_MD, LSPZ_MD_REF, LSPZ_SLIM};
-use crate::languages::generate_language_table;
 use crate::error::LspzError;
+use crate::languages::generate_language_table;
 
 /// Resolve the target directory for awareness files.
 fn target_dir(global: bool) -> Result<PathBuf, LspzError> {

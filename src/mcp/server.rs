@@ -4,7 +4,6 @@ use crate::codec::{compact, toon};
 use crate::interceptors::completions::compress_completions;
 use crate::interceptors::symbols::compress_symbols;
 use crate::languages::lookup_by_extension;
-use serde_json::Value;
 use rmcp::{
     ErrorData, ServerHandler,
     model::{
@@ -13,6 +12,7 @@ use rmcp::{
     },
     service::{RequestContext, RoleServer},
 };
+use serde_json::Value;
 use tokio::sync::Mutex;
 use tracing::info;
 
@@ -479,12 +479,9 @@ mod tests {
 
     #[test]
     fn resolve_both_explicit() {
-        let (lang, be) = resolve_language_backend(
-            "file:///test.py",
-            Some("python"),
-            Some("basedpyright"),
-        )
-        .unwrap();
+        let (lang, be) =
+            resolve_language_backend("file:///test.py", Some("python"), Some("basedpyright"))
+                .unwrap();
         assert_eq!(lang, "python");
         assert_eq!(be, "basedpyright");
     }
@@ -517,15 +514,11 @@ mod tests {
 
     #[test]
     fn resolve_unknown_ext_lang_only() {
-        assert!(
-            resolve_language_backend("file:///data.xyz", Some("custom"), None).is_err()
-        );
+        assert!(resolve_language_backend("file:///data.xyz", Some("custom"), None).is_err());
     }
 
     #[test]
     fn resolve_unknown_ext_backend_only() {
-        assert!(
-            resolve_language_backend("file:///data.xyz", None, Some("myserver")).is_err()
-        );
+        assert!(resolve_language_backend("file:///data.xyz", None, Some("myserver")).is_err());
     }
 }

@@ -8,8 +8,14 @@ pub mod settings;
 
 use std::process::ExitCode;
 
-use self::awareness::{claude_md_has_ref, lspz_md_exists, patch_claude_md_ref, remove_claude_md_ref, remove_lspz_md, write_lspz_md};
-use self::settings::{patch_mcp_server, remove_mcp_server, resolve_binary_path, settings_path, is_mcp_registered, PatchResult};
+use self::awareness::{
+    claude_md_has_ref, lspz_md_exists, patch_claude_md_ref, remove_claude_md_ref, remove_lspz_md,
+    write_lspz_md,
+};
+use self::settings::{
+    PatchResult, is_mcp_registered, patch_mcp_server, remove_mcp_server, resolve_binary_path,
+    settings_path,
+};
 
 /// Run the `lspz init` command.
 pub fn run(
@@ -77,7 +83,9 @@ fn run_init(global: bool, _auto_patch: bool, no_patch: bool, dry_run: bool) -> E
         };
 
         match patch_mcp_server(&sp, &binary_path, dry_run) {
-            Ok(PatchResult::Patched) => println!("{prefix}Registered MCP server in {}", sp.display()),
+            Ok(PatchResult::Patched) => {
+                println!("{prefix}Registered MCP server in {}", sp.display())
+            }
             Ok(PatchResult::AlreadyPresent) => println!("MCP server already registered"),
             Ok(PatchResult::WouldPatch) => {
                 println!("[dry-run] Would register MCP server in {}", sp.display())
@@ -168,19 +176,9 @@ fn show_config(global: bool) -> ExitCode {
 
     println!("lspz Configuration ({scope}):\n");
     println!("  Binary:    {}", binary_path.display());
-    println!(
-        "  MCP:       {} {}",
-        status_icon(mcp_ok),
-        sp.display()
-    );
-    println!(
-        "  LSPZ.md:   {}",
-        status_icon(lspz_ok)
-    );
-    println!(
-        "  CLAUDE.md: {}",
-        status_icon(ref_ok)
-    );
+    println!("  MCP:       {} {}", status_icon(mcp_ok), sp.display());
+    println!("  LSPZ.md:   {}", status_icon(lspz_ok));
+    println!("  CLAUDE.md: {}", status_icon(ref_ok));
 
     if !mcp_ok {
         println!(
@@ -194,11 +192,7 @@ fn show_config(global: bool) -> ExitCode {
 }
 
 fn status_icon(ok: bool) -> &'static str {
-    if ok {
-        "[ok]"
-    } else {
-        "[missing]"
-    }
+    if ok { "[ok]" } else { "[missing]" }
 }
 
 fn format_mcp_entry(binary_path: &std::path::Path) -> String {
