@@ -10,6 +10,12 @@
 | `get_completions` | LSP completions at a cursor position |
 | `get_symbols` | Document symbols (functions, classes, etc.) |
 
+**Auto-detection**: `language` and `backend` parameters are optional.
+When omitted, they are auto-detected from the file extension (e.g. `.rs` → rust/rust-analyzer, `.go` → go/gopls, `.py` → python/basedpyright).
+
+Known mappings:
+`.rs` → rust-analyzer, `.go` → gopls, `.ts`/`.tsx` → typescript-language-server, `.js`/`.jsx` → typescript-language-server, `.py` → basedpyright, `.c`/`.h` → clangd, `.cpp`/`.cc`/`.cxx`/`.hpp`/`.hxx` → clangd
+
 ## Proxy Mode
 
 ```bash

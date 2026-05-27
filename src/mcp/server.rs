@@ -3,6 +3,7 @@ use std::sync::Arc;
 use crate::codec::{compact, toon};
 use crate::interceptors::completions::compress_completions;
 use crate::interceptors::symbols::compress_symbols;
+use crate::languages::lookup_by_extension;
 use rmcp::{
     ErrorData, ServerHandler,
     model::{
@@ -23,19 +24,22 @@ fn tool_definitions() -> Vec<Tool> {
         Tool::new(
             "get_diagnostics",
             "Get LSP diagnostics for a file. Returns TOON format (token-optimized tabular) \
-             with severity, message, code, range, count.",
+             with severity, message, code, range, count. \
+             Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetDiagnosticsInput::json_schema()),
         ),
         Tool::new(
             "get_completions",
             "Request LSP completions at a cursor position. Returns TOON format \
-             with label, kind, detail, documentation.",
+             with label, kind, detail, documentation. \
+             Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetCompletionsInput::json_schema()),
         ),
         Tool::new(
             "get_symbols",
             "Retrieve document symbols. Returns TOON format \
-             with name, kind, range, detail, container.",
+             with name, kind, range, detail, container. \
+             Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetSymbolsInput::json_schema()),
         ),
     ]
@@ -46,15 +50,15 @@ fn tool_definitions() -> Vec<Tool> {
 #[derive(Debug, serde::Deserialize)]
 struct GetDiagnosticsInput {
     uri: String,
-    backend: String,
-    language: String,
+    backend: Option<String>,
+    language: Option<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
 struct GetCompletionsInput {
     uri: String,
-    backend: String,
-    language: String,
+    backend: Option<String>,
+    language: Option<String>,
     line: u32,
     character: u32,
 }
@@ -62,8 +66,70 @@ struct GetCompletionsInput {
 #[derive(Debug, serde::Deserialize)]
 struct GetSymbolsInput {
     uri: String,
-    backend: String,
-    language: String,
+    backend: Option<String>,
+    language: Option<String>,
+}
+
+/// Extract file extension from a `file://` URI.
+fn extension_from_uri(uri: &str) -> Option<&str> {
+    let path = uri.strip_prefix("file://")?;
+    let name = path.rsplit('/').next()?;
+    let (before, after) = name.rsplit_once('.')?;
+    if before.is_empty() || after.is_empty() {
+        return None;
+    }
+    Some(after)
+}
+
+/// Resolve backend and language from explicit values or URI extension auto-detection.
+///
+/// Returns `(language, backend)` on success, or an error if neither explicit values
+/// nor auto-detection can determine them.
+fn resolve_language_backend(
+    uri: &str,
+    language: Option<&str>,
+    backend: Option<&str>,
+) -> Result<(String, String), ErrorData> {
+    // Both explicitly provided — use as-is.
+    if let (Some(lang), Some(be)) = (language, backend) {
+        return Ok((lang.to_string(), be.to_string()));
+    }
+
+    // Try auto-detection from file extension.
+    if let Some(ext) = extension_from_uri(uri)
+        && let Some((detected_lang, detected_be)) = lookup_by_extension(ext)
+    {
+        let lang = language.unwrap_or(detected_lang).to_string();
+        let be = backend.unwrap_or(detected_be).to_string();
+        return Ok((lang, be));
+    }
+
+    // Fallback: use whatever was explicitly provided.
+    // At this point, at most one of language/backend is Some (both-Some was handled above).
+    if let Some(lang) = language {
+        return Err(ErrorData::invalid_request(
+            format!(
+                "Cannot auto-detect backend for '{lang}'. \
+                 Please provide the `backend` parameter (e.g. \"rust-analyzer\")."
+            ),
+            None,
+        ));
+    }
+    if let Some(be) = backend {
+        return Err(ErrorData::invalid_request(
+            format!(
+                "Cannot auto-detect language for backend '{be}'. \
+                 Please provide the `language` parameter (e.g. \"rust\")."
+            ),
+            None,
+        ));
+    }
+    Err(ErrorData::invalid_request(
+        "Cannot auto-detect language/backend from URI. \
+         Please provide `language` and `backend` parameters."
+            .to_string(),
+        None,
+    ))
 }
 
 // ─── MCP Server ────────────────────────────────────────────────────────────
@@ -83,9 +149,15 @@ impl McpServer {
     }
 
     async fn handle_diagnostics(&self, input: GetDiagnosticsInput) -> Result<String, ErrorData> {
+        let (language, backend) = resolve_language_backend(
+            &input.uri,
+            input.language.as_deref(),
+            input.backend.as_deref(),
+        )?;
+
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&input.language, &input.backend)
+            .get_or_spawn(&language, &backend)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -127,9 +199,15 @@ impl McpServer {
     }
 
     async fn handle_completions(&self, input: GetCompletionsInput) -> Result<String, ErrorData> {
+        let (language, backend) = resolve_language_backend(
+            &input.uri,
+            input.language.as_deref(),
+            input.backend.as_deref(),
+        )?;
+
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&input.language, &input.backend)
+            .get_or_spawn(&language, &backend)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -147,7 +225,7 @@ impl McpServer {
                 serde_json::json!({
                     "textDocument": {
                         "uri": input.uri,
-                        "languageId": input.language,
+                        "languageId": language,
                         "version": 1,
                         "text": content,
                     }
@@ -175,9 +253,15 @@ impl McpServer {
     }
 
     async fn handle_symbols(&self, input: GetSymbolsInput) -> Result<String, ErrorData> {
+        let (language, backend) = resolve_language_backend(
+            &input.uri,
+            input.language.as_deref(),
+            input.backend.as_deref(),
+        )?;
+
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&input.language, &input.backend)
+            .get_or_spawn(&language, &backend)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -195,7 +279,7 @@ impl McpServer {
                 serde_json::json!({
                     "textDocument": {
                         "uri": input.uri,
-                        "languageId": input.language,
+                        "languageId": language,
                         "version": 1,
                         "text": content,
                     }
@@ -308,10 +392,10 @@ impl JsonSchema for GetDiagnosticsInput {
             "type": "object",
             "properties": {
                 "uri": { "type": "string", "description": "File URI (e.g. file:///path/to/file.go)" },
-                "backend": { "type": "string", "description": "Backend LSP server command (e.g. gopls, rust-analyzer)" },
-                "language": { "type": "string", "description": "Language identifier for pool key (e.g. go, rust)" }
+                "backend": { "type": "string", "description": "Backend LSP server command (e.g. gopls, rust-analyzer). Auto-detected from file extension if omitted." },
+                "language": { "type": "string", "description": "Language identifier (e.g. go, rust). Auto-detected from file extension if omitted." }
             },
-            "required": ["uri", "backend", "language"]
+            "required": ["uri"]
         })
     }
 }
@@ -322,12 +406,12 @@ impl JsonSchema for GetCompletionsInput {
             "type": "object",
             "properties": {
                 "uri": { "type": "string", "description": "File URI" },
-                "backend": { "type": "string", "description": "Backend LSP server command" },
-                "language": { "type": "string", "description": "Language identifier" },
+                "backend": { "type": "string", "description": "Backend LSP server command. Auto-detected from file extension if omitted." },
+                "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." },
                 "line": { "type": "integer", "description": "Line number (0-based)" },
                 "character": { "type": "integer", "description": "Character offset (0-based)" }
             },
-            "required": ["uri", "backend", "language", "line", "character"]
+            "required": ["uri", "line", "character"]
         })
     }
 }
@@ -338,10 +422,85 @@ impl JsonSchema for GetSymbolsInput {
             "type": "object",
             "properties": {
                 "uri": { "type": "string", "description": "File URI" },
-                "backend": { "type": "string", "description": "Backend LSP server command" },
-                "language": { "type": "string", "description": "Language identifier" }
+                "backend": { "type": "string", "description": "Backend LSP server command. Auto-detected from file extension if omitted." },
+                "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." }
             },
-            "required": ["uri", "backend", "language"]
+            "required": ["uri"]
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn extension_from_uri_basic() {
+        assert_eq!(extension_from_uri("file:///home/user/main.rs"), Some("rs"));
+        assert_eq!(extension_from_uri("file:///tmp/test.go"), Some("go"));
+        assert_eq!(extension_from_uri("file:///src/app.tsx"), Some("tsx"));
+    }
+
+    #[test]
+    fn extension_from_uri_no_ext() {
+        assert_eq!(extension_from_uri("file:///Makefile"), None);
+        assert_eq!(extension_from_uri("file:///path/to/file."), None);
+    }
+
+    #[test]
+    fn extension_from_uri_no_prefix() {
+        assert_eq!(extension_from_uri("/home/user/main.rs"), None);
+    }
+
+    #[test]
+    fn resolve_both_explicit() {
+        let (lang, be) = resolve_language_backend(
+            "file:///test.py",
+            Some("python"),
+            Some("basedpyright"),
+        )
+        .unwrap();
+        assert_eq!(lang, "python");
+        assert_eq!(be, "basedpyright");
+    }
+
+    #[test]
+    fn resolve_auto_detect() {
+        let (lang, be) = resolve_language_backend("file:///main.rs", None, None).unwrap();
+        assert_eq!(lang, "rust");
+        assert_eq!(be, "rust-analyzer");
+    }
+
+    #[test]
+    fn resolve_partial_override() {
+        // Only language provided, backend auto-detected.
+        let (lang, be) = resolve_language_backend("file:///main.rs", Some("myrust"), None).unwrap();
+        assert_eq!(lang, "myrust");
+        assert_eq!(be, "rust-analyzer");
+
+        // Only backend provided, language auto-detected.
+        let (lang, be) =
+            resolve_language_backend("file:///main.go", None, Some("mygopls")).unwrap();
+        assert_eq!(lang, "go");
+        assert_eq!(be, "mygopls");
+    }
+
+    #[test]
+    fn resolve_unknown_ext_no_params() {
+        assert!(resolve_language_backend("file:///data.xyz", None, None).is_err());
+    }
+
+    #[test]
+    fn resolve_unknown_ext_lang_only() {
+        assert!(
+            resolve_language_backend("file:///data.xyz", Some("custom"), None).is_err()
+        );
+    }
+
+    #[test]
+    fn resolve_unknown_ext_backend_only() {
+        assert!(
+            resolve_language_backend("file:///data.xyz", None, Some("myserver")).is_err()
+        );
     }
 }
