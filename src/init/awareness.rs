@@ -24,7 +24,7 @@ fn target_dir(global: bool) -> Result<PathBuf, LspzError> {
 /// Build the full LSPZ.md content (static template + dynamic language table).
 fn build_lspz_md_content() -> String {
     let lang_table = generate_language_table();
-    format!("{LSPZ_SLIM}\n## Language Mappings (auto-detected)\n\n{lang_table}")
+    format!("{LSPZ_SLIM}\n## Mappings\n\n{lang_table}\n")
 }
 
 /// Write LSPZ.md to the target directory.
@@ -210,7 +210,7 @@ mod tests {
             assert!(path.exists());
             let content = fs::read_to_string(&path).unwrap();
             assert!(content.starts_with(LSPZ_SLIM));
-            assert!(content.contains("Language Mappings"));
+            assert!(content.contains("Mappings"));
         });
     }
 
