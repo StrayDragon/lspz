@@ -52,6 +52,18 @@ pub const DEFAULT_LANGUAGES: &[LanguageMapping] = &[
     },
 ];
 
+/// Look up a language mapping by file extension.
+///
+/// Returns `(language, backend)` if the extension is recognized.
+pub fn lookup_by_extension(ext: &str) -> Option<(&'static str, &'static str)> {
+    for mapping in DEFAULT_LANGUAGES {
+        if mapping.extensions.contains(&ext) {
+            return Some((mapping.language, mapping.backend));
+        }
+    }
+    None
+}
+
 /// Generate the language mapping table for LSPZ.md.
 ///
 /// Only includes languages whose LSP backend is found in PATH.

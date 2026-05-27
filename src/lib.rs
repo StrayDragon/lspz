@@ -23,6 +23,7 @@ pub mod config;
 pub mod config_watcher;
 pub mod error;
 pub mod interceptors;
+pub mod languages;
 pub mod metrics;
 pub mod proxy;
 pub mod transport;
