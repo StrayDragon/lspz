@@ -34,7 +34,8 @@ pub fn resolve_claude_dir() -> Result<PathBuf, LspzError> {
 
 /// Resolve the absolute path of the running binary.
 pub fn resolve_binary_path() -> Result<PathBuf, LspzError> {
-    std::env::current_exe().map_err(|e| LspzError::Config(format!("Cannot determine binary path: {e}")))
+    std::env::current_exe()
+        .map_err(|e| LspzError::Config(format!("Cannot determine binary path: {e}")))
 }
 
 /// Atomic write: write to a tempfile in the same directory, then rename.
@@ -225,10 +226,7 @@ mod tests {
 
         let content = fs::read_to_string(&path).unwrap();
         let settings: Value = serde_json::from_str(&content).unwrap();
-        assert_eq!(
-            settings["mcpServers"]["lspz"]["command"],
-            "/usr/bin/lspz"
-        );
+        assert_eq!(settings["mcpServers"]["lspz"]["command"], "/usr/bin/lspz");
         assert_eq!(
             settings["mcpServers"]["lspz"]["args"],
             serde_json::json!(["mcp"])
