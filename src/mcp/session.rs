@@ -132,13 +132,27 @@ impl LspSession {
 
     /// Read frames until a notification with the given method arrives.
     pub async fn wait_for_notification(&mut self, method: &str) -> Result<Value, anyhow::Error> {
+        self.wait_for_notification_where(method, |_| true).await
+    }
+
+    /// Read frames until a notification with the given method arrives and the
+    /// predicate returns `true` for its params.
+    pub async fn wait_for_notification_where(
+        &mut self,
+        method: &str,
+        predicate: impl Fn(&Value) -> bool,
+    ) -> Result<Value, anyhow::Error> {
         loop {
             let raw = tokio::time::timeout(Duration::from_secs(30), self.transport.receive())
                 .await
                 .map_err(|_| anyhow::anyhow!("timeout waiting for '{method}' notification"))??;
             let parsed = LspMessage::from_frame_bytes(&raw)?;
             match parsed {
-                LspMessage::Notification { method: m, params } if m == method => return Ok(params),
+                LspMessage::Notification { method: m, params }
+                    if m == method && predicate(&params) =>
+                {
+                    return Ok(params);
+                }
                 LspMessage::Notification { method: m, .. } => {
                     tracing::trace!("Skipping notification: {}", m);
                 }

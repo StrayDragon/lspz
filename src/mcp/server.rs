@@ -4,6 +4,7 @@ use crate::codec::{compact, toon};
 use crate::interceptors::completions::compress_completions;
 use crate::interceptors::symbols::compress_symbols;
 use crate::languages::lookup_by_extension;
+use serde_json::Value;
 use rmcp::{
     ErrorData, ServerHandler,
     model::{
@@ -175,7 +176,7 @@ impl McpServer {
                 serde_json::json!({
                     "textDocument": {
                         "uri": input.uri,
-                        "languageId": "",
+                        "languageId": language,
                         "version": 1,
                         "text": content,
                     }
@@ -184,10 +185,34 @@ impl McpServer {
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-        let params = session
-            .wait_for_notification("textDocument/publishDiagnostics")
+        // Send didChange to trigger re-analysis (full document sync).
+        session
+            .send_notification(
+                "textDocument/didChange",
+                serde_json::json!({
+                    "textDocument": { "uri": input.uri, "version": 2 },
+                    "contentChanges": [{ "text": content }],
+                }),
+            )
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
+        let target_uri = input.uri.clone();
+        // Retry up to 3 times — skip initial empty diagnostic notifications.
+        let mut params = serde_json::Value::Null;
+        for _ in 0..3 {
+            params = session
+                .wait_for_notification_where("textDocument/publishDiagnostics", |p| {
+                    p.get("uri").and_then(Value::as_str) == Some(&target_uri)
+                })
+                .await
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+
+            let diags = params.get("diagnostics").and_then(Value::as_array);
+            if diags.is_some_and(|a| !a.is_empty()) {
+                break;
+            }
+        }
 
         let compressed = compact::compress(&params)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;

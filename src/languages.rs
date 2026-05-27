@@ -64,33 +64,27 @@ pub fn lookup_by_extension(ext: &str) -> Option<(&'static str, &'static str)> {
     None
 }
 
-/// Generate the language mapping table for LSPZ.md.
+/// Generate a compact language mapping line for LSPZ.md.
 ///
+/// Format: `.ext` → `backend` (comma-separated, one per language).
 /// Only includes languages whose LSP backend is found in PATH.
 pub fn generate_language_table() -> String {
-    let mut out = String::from(
-        "| Extensions | Language | Backend (auto-detected) |\n\
-         |------------|----------|------------------------|\n",
-    );
-
+    let mut entries = Vec::new();
     for mapping in DEFAULT_LANGUAGES {
         let available = which(mapping.backend);
-        let status = if available { "" } else { " (not installed)" };
         let exts: Vec<String> = mapping
             .extensions
             .iter()
             .map(|e| format!("`.{e}`"))
             .collect();
-        out.push_str(&format!(
-            "| {} | {} | `{}{}` |\n",
+        let status = if available { "" } else { " (not installed)" };
+        entries.push(format!(
+            "{} → `{}`{status}",
             exts.join(" "),
-            mapping.language,
             mapping.backend,
-            status,
         ));
     }
-
-    out
+    entries.join(" | ")
 }
 
 /// Check if a command exists in PATH.
