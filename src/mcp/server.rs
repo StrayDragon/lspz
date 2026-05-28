@@ -82,6 +82,46 @@ fn extension_from_uri(uri: &str) -> Option<&str> {
     Some(after)
 }
 
+/// Project root marker files to look for when detecting workspace root.
+const ROOT_MARKERS: &[&str] = &[
+    "pyproject.toml",
+    "pyrightconfig.json",
+    "Cargo.toml",
+    "go.mod",
+    "tsconfig.json",
+    "package.json",
+    "compile_commands.json",
+    ".clangd",
+];
+
+/// Detect workspace root by walking up from a file path looking for project markers.
+fn detect_workspace_root(uri: &str) -> Option<String> {
+    let path = uri.strip_prefix("file://")?;
+    let mut dir = std::path::Path::new(path);
+    if dir.is_file() {
+        dir = dir.parent()?;
+    }
+    loop {
+        for marker in ROOT_MARKERS {
+            if dir.join(marker).exists() {
+                return Some(dir.to_string_lossy().to_string());
+            }
+        }
+        dir = dir.parent()?;
+    }
+}
+
+/// Extract workspace root from URI for use as LSP rootUri.
+fn root_uri_from_file(uri: &str) -> Option<String> {
+    detect_workspace_root(uri).map(|p| {
+        if p.starts_with("file://") {
+            p
+        } else {
+            format!("file://{p}")
+        }
+    })
+}
+
 /// Resolve backend and language from explicit values or URI extension auto-detection.
 ///
 /// Returns `(language, backend)` on success, or an error if neither explicit values
@@ -155,10 +195,11 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
+        let root = root_uri_from_file(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&language, &backend)
+            .get_or_spawn(&language, &backend, root.as_deref())
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -229,10 +270,11 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
+        let root = root_uri_from_file(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&language, &backend)
+            .get_or_spawn(&language, &backend, root.as_deref())
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -283,10 +325,11 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
+        let root = root_uri_from_file(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&language, &backend)
+            .get_or_spawn(&language, &backend, root.as_deref())
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
