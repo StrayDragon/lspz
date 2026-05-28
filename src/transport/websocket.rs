@@ -38,7 +38,7 @@ impl Transport for WsTransport {
     async fn receive(&mut self) -> Result<Vec<u8>, LspzError> {
         loop {
             match self.ws_stream.next().await {
-                Some(Ok(Message::Binary(data))) => return Ok(data),
+                Some(Ok(Message::Binary(data))) => return Ok(data.to_vec()),
                 Some(Ok(Message::Close(_))) => return Err(LspzError::ServerExited),
                 Some(Ok(Message::Ping(_))) => continue, // auto-pong handled by tungstenite
                 Some(Ok(Message::Pong(_))) => continue,
@@ -57,7 +57,7 @@ impl Transport for WsTransport {
 
     async fn send(&mut self, data: &[u8]) -> Result<(), LspzError> {
         self.ws_stream
-            .send(Message::Binary(data.to_vec()))
+            .send(Message::Binary(data.to_vec().into()))
             .await
             .map_err(|e| {
                 LspzError::Io(std::io::Error::new(
