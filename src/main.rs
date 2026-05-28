@@ -505,9 +505,17 @@ fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorCh
 
 #[cfg(feature = "mcp")]
 async fn run_mcp(log_level: String) -> ExitCode {
+    // Write tracing to a file to avoid polluting MCP's stdio JSON-RPC stream.
+    // Some MCP clients (e.g. Cursor) merge stderr into stdout, breaking the protocol.
+    let log_file = std::fs::File::create("/tmp/lspz-mcp.log").unwrap_or_else(|e| {
+        eprintln!("lspz: cannot create /tmp/lspz-mcp.log: {e}");
+        std::process::exit(1)
+    });
     tracing_subscriber::fmt()
         .with_env_filter(EnvFilter::builder().parse_lossy(&log_level))
         .with_target(false)
+        .with_ansi(false)
+        .with_writer(std::sync::Mutex::new(log_file))
         .init();
 
     tracing::info!("Starting lspz MCP server");
