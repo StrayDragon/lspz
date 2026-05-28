@@ -199,3 +199,4 @@ yarn-debug.log*
 
 dist/
 coverage/
+.synode/
