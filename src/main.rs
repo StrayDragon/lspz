@@ -183,7 +183,6 @@ enum Cli {
     },
 
     /// Run as MCP server — exposes LSP tools via Model Context Protocol
-    #[cfg(feature = "mcp")]
     #[command(name = "mcp")]
     Mcp {
         /// Log level (trace, debug, info, warn, error)
@@ -267,6 +266,14 @@ async fn main() -> ExitCode {
         }
         #[cfg(feature = "mcp")]
         Cli::Mcp { log_level } => run_mcp(log_level).await,
+        #[cfg(not(feature = "mcp"))]
+        Cli::Mcp { .. } => {
+            eprintln!(
+                "Error: MCP server is not enabled in this build.\n  \
+                 Rebuild with `--features mcp` to enable MCP support."
+            );
+            ExitCode::FAILURE
+        }
         Cli::Init {
             global,
             auto_patch,

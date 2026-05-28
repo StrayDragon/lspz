@@ -18,6 +18,7 @@ use self::settings::{
 };
 
 /// Run the `lspz init` command.
+#[allow(clippy::fn_params_excessive_bools)]
 pub fn run(
     global: bool,
     auto_patch: bool,
@@ -36,7 +37,16 @@ pub fn run(
     run_init(global, auto_patch, no_patch, dry_run)
 }
 
+#[allow(clippy::fn_params_excessive_bools)]
 fn run_init(global: bool, _auto_patch: bool, no_patch: bool, dry_run: bool) -> ExitCode {
+    if !cfg!(feature = "mcp") {
+        eprintln!(
+            "Error: This binary was built without `mcp` feature.\n  \
+             `lspz init` requires MCP support. Rebuild with `--features mcp`."
+        );
+        return ExitCode::FAILURE;
+    }
+
     let binary_path = match resolve_binary_path() {
         Ok(p) => p,
         Err(e) => {
@@ -179,6 +189,10 @@ fn show_config(global: bool) -> ExitCode {
     println!("  MCP:       {} {}", status_icon(mcp_ok), sp.display());
     println!("  LSPZ.md:   {}", status_icon(lspz_ok));
     println!("  CLAUDE.md: {}", status_icon(ref_ok));
+    println!(
+        "  Features:  mcp={}",
+        if cfg!(feature = "mcp") { "yes" } else { "no" }
+    );
 
     if !mcp_ok {
         println!(
