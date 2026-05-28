@@ -101,7 +101,7 @@ fn resolve_language_backend(
         && let Some((detected_lang, detected_be)) = lookup_by_extension(ext)
     {
         let lang = language.unwrap_or(detected_lang).to_string();
-        let be = backend.unwrap_or(detected_be).to_string();
+        let be = backend.map(|s| s.to_string()).unwrap_or(detected_be);
         return Ok((lang, be));
     }
 
