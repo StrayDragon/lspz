@@ -112,6 +112,14 @@ pub fn diagnostics_to_toon(diags: &CompactDiagnostics) -> String {
 ///   pop,function,fn pop(&mut self) -> Option<T>,Removes last element,false
 /// ```
 pub fn completions_to_toon(value: &Value) -> Result<String, LspzError> {
+    // Handle null/empty responses (no completions available)
+    if value.is_null() {
+        return Ok(
+            "incomplete: false\ncompletions[0]{label,kind,detail,documentation,deprecated}:\n"
+                .into(),
+        );
+    }
+
     let items = value
         .get("items")
         .and_then(|v| v.as_array())
