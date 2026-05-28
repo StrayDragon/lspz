@@ -20,23 +20,22 @@ impl LspPool {
 
     /// Get or create a session for the given language and workspace root.
     ///
-    /// `root_uri` is used as the LSP `rootUri` during initialization so the
-    /// server knows which project to analyze. Sessions are keyed by
-    /// `"{language}:{root_uri}"` to isolate different projects.
+    /// `root_path` is a canonicalized absolute path (no `file://` prefix) used
+    /// both as part of the cache key and as the LSP `rootUri` during initialization.
     pub async fn get_or_spawn(
         &mut self,
         language: &str,
         cmd: &str,
-        root_uri: Option<&str>,
+        root_path: Option<&str>,
     ) -> Result<&mut LspSession, anyhow::Error> {
-        let key = match root_uri {
+        let key = match root_path {
             Some(root) => format!("{language}:{root}"),
             None => language.to_string(),
         };
         if !self.sessions.contains_key(&key) {
             let mut session = LspSession::spawn(cmd)?;
             let init_params = InitializeParams {
-                root_uri: root_uri.map(|s| s.to_string()),
+                root_uri: root_path.map(|s| s.to_string()),
             };
             session.initialize(init_params).await?;
             tracing::info!(key, "LSP session initialized");

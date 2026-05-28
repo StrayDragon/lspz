@@ -95,6 +95,9 @@ const ROOT_MARKERS: &[&str] = &[
 ];
 
 /// Detect workspace root by walking up from a file path looking for project markers.
+///
+/// Returns a canonicalized absolute path (resolves symlinks) so that different
+/// paths pointing to the same directory produce the same cache key.
 fn detect_workspace_root(uri: &str) -> Option<String> {
     let path = uri.strip_prefix("file://")?;
     let mut dir = std::path::Path::new(path);
@@ -104,22 +107,13 @@ fn detect_workspace_root(uri: &str) -> Option<String> {
     loop {
         for marker in ROOT_MARKERS {
             if dir.join(marker).exists() {
-                return Some(dir.to_string_lossy().to_string());
+                return std::fs::canonicalize(dir)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .ok();
             }
         }
         dir = dir.parent()?;
     }
-}
-
-/// Extract workspace root from URI for use as LSP rootUri.
-fn root_uri_from_file(uri: &str) -> Option<String> {
-    detect_workspace_root(uri).map(|p| {
-        if p.starts_with("file://") {
-            p
-        } else {
-            format!("file://{p}")
-        }
-    })
 }
 
 /// Resolve backend and language from explicit values or URI extension auto-detection.
@@ -195,7 +189,7 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = root_uri_from_file(&input.uri);
+        let root = detect_workspace_root(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
@@ -270,7 +264,7 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = root_uri_from_file(&input.uri);
+        let root = detect_workspace_root(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
@@ -325,7 +319,7 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = root_uri_from_file(&input.uri);
+        let root = detect_workspace_root(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
