@@ -9,7 +9,7 @@
 //! | `cli` | CLI 二进制程序（clap, tracing-subscriber） | 是 |
 //! | `mcp` | MCP 服务器（rmcp） | 否 |
 //! | `agent-sdk` | Agent SDK API | 否 |
-//! | `transport-tcp` | TCP 传输层 | 否（始终启用） |
+//! | `transport-tcp` | TCP 传输层 | 否 |
 //! | `transport-websocket` | WebSocket 传输层 | 否 |
 //!
 //! ## Architecture（架构）

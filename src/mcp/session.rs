@@ -1,6 +1,5 @@
 //! LSP session — manages a single LSP server connection.
 
-use std::sync::atomic::{AtomicI64, Ordering};
 use std::time::Duration;
 
 use crate::StdioTransport;
@@ -18,7 +17,7 @@ pub struct InitializeParams {
 /// A connected LSP server session.
 pub struct LspSession {
     transport: Box<dyn Transport>,
-    next_id: AtomicI64,
+    next_id: i64,
 }
 
 impl LspSession {
@@ -27,7 +26,7 @@ impl LspSession {
         let transport = StdioTransport::spawn(cmd, &[])?;
         Ok(Self {
             transport: Box::new(transport),
-            next_id: AtomicI64::new(1),
+            next_id: 1,
         })
     }
 
@@ -35,7 +34,7 @@ impl LspSession {
     pub fn with_transport(transport: Box<dyn Transport>) -> Self {
         Self {
             transport,
-            next_id: AtomicI64::new(1),
+            next_id: 1,
         }
     }
 
@@ -79,7 +78,8 @@ impl LspSession {
         method: &str,
         params: Value,
     ) -> Result<Value, anyhow::Error> {
-        let id = self.next_id.fetch_add(1, Ordering::SeqCst);
+        let id = self.next_id;
+        self.next_id += 1;
         let msg = LspMessage::Request {
             id,
             method: method.into(),

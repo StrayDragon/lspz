@@ -17,6 +17,13 @@ use tokio::sync::RwLock;
 
 use crate::config::Config;
 use crate::error::LspzError;
+use crate::interceptors::completions::CompletionCompressor;
+use crate::interceptors::diagnostics::DiagnosticsCompressor;
+use crate::interceptors::hover::HoverCompressor;
+use crate::interceptors::locations::LocationCompressor;
+use crate::interceptors::symbols::DocumentSymbolCompressor;
+use crate::interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
+use crate::interceptors::workspace_symbols::WorkspaceSymbolCompressor;
 
 /// LSP 消息的方向。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +106,19 @@ impl InterceptorChain {
         }
         Ok(params)
     }
+}
+
+/// Build the standard interceptor list (compression only, no capping/metrics).
+pub fn default_interceptors() -> Vec<Box<dyn Interceptor>> {
+    vec![
+        Box::new(DiagnosticsCompressor::default()),
+        Box::new(CompletionCompressor::default()),
+        Box::new(HoverCompressor::default()),
+        Box::new(DocumentSymbolCompressor),
+        Box::new(LocationCompressor),
+        Box::new(WorkspaceSymbolCompressor),
+        Box::new(WorkspaceDiagnosticCompressor),
+    ]
 }
 
 #[cfg(test)]

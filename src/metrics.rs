@@ -33,16 +33,11 @@ pub struct MetricsConfig {
 /// 单个拦截器的原子指标快照。
 #[derive(Debug)]
 pub struct MetricsSnapshot {
-    /// 处理前的输入参数总字节数。
-    pub total_input_bytes: AtomicU64,
-    /// 处理后的输出参数总字节数。
-    pub total_output_bytes: AtomicU64,
-    /// 总延迟（微秒）。
-    pub total_latency_us: AtomicU64,
-    /// 处理的消息数量。
-    pub messages_processed: AtomicU64,
-    /// 失败次数（失败开放事件）。
-    pub failures: AtomicU64,
+    total_input_bytes: AtomicU64,
+    total_output_bytes: AtomicU64,
+    total_latency_us: AtomicU64,
+    messages_processed: AtomicU64,
+    failures: AtomicU64,
 }
 
 impl MetricsSnapshot {
@@ -55,6 +50,26 @@ impl MetricsSnapshot {
             messages_processed: AtomicU64::new(0),
             failures: AtomicU64::new(0),
         }
+    }
+
+    /// Total input bytes processed.
+    pub fn total_input_bytes(&self) -> u64 {
+        self.total_input_bytes.load(Ordering::Relaxed)
+    }
+
+    /// Total output bytes produced.
+    pub fn total_output_bytes(&self) -> u64 {
+        self.total_output_bytes.load(Ordering::Relaxed)
+    }
+
+    /// Total messages processed.
+    pub fn messages_processed(&self) -> u64 {
+        self.messages_processed.load(Ordering::Relaxed)
+    }
+
+    /// Total failures recorded.
+    pub fn failures(&self) -> u64 {
+        self.failures.load(Ordering::Relaxed)
     }
 
     /// 计算压缩率（1.0 - 输出/输入）。

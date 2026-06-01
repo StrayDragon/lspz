@@ -300,7 +300,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
         let err = pool.get_diagnostics(&uri, "python").await.unwrap_err();
         assert!(err.to_string().contains("no backend registered"), "{err}");
     }
@@ -329,7 +329,7 @@ mod tests {
 
         pool.insert_handle("rust", handle);
 
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
         let result = pool.get_diagnostics(&uri, "rust").await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["diagnostics"][0]["message"], "pool test");
@@ -407,11 +407,11 @@ mod tests {
         assert_eq!(parsed["uri"], "file:///test.rs");
     }
 
-    fn temp_file(content: &str) -> (String, String) {
-        static COUNTER: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
-        let id = COUNTER.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-        let path = format!("/tmp/lspz-pool-test-{id}.rs");
-        std::fs::write(&path, content).unwrap();
-        (format!("file://{path}"), path)
+    fn temp_file(content: &str) -> (String, tempfile::NamedTempFile) {
+        let mut f = tempfile::Builder::new().suffix(".rs").tempfile().unwrap();
+        use std::io::Write;
+        f.write_all(content.as_bytes()).unwrap();
+        let path = f.path().to_string_lossy().to_string();
+        (format!("file://{path}"), f)
     }
 }

@@ -205,7 +205,7 @@ pub fn parse_frame(buf: &[u8]) -> Result<Option<(Frame, usize)>, LspzError> {
     let header = std::str::from_utf8(&buf[..header_end])
         .map_err(|_| LspzError::Protocol("header is not valid UTF-8".into()))?;
 
-    let content_length = parse_content_length(header)?;
+    let content_length = crate::transport::framing::parse_content_length(header)?;
 
     if content_length as usize > MAX_BODY_SIZE {
         return Err(LspzError::Protocol(format!(
@@ -223,20 +223,6 @@ pub fn parse_frame(buf: &[u8]) -> Result<Option<(Frame, usize)>, LspzError> {
     let consumed = total_len;
 
     Ok(Some((Frame { body }, consumed)))
-}
-
-/// Parse the Content-Length value from the header string.
-fn parse_content_length(header: &str) -> Result<u64, LspzError> {
-    for line in header.lines() {
-        let line = line.trim();
-        if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
-            let value = value.trim();
-            return value
-                .parse::<u64>()
-                .map_err(|_| LspzError::Protocol(format!("invalid Content-Length: {value}")));
-        }
-    }
-    Err(LspzError::Protocol("missing Content-Length header".into()))
 }
 
 // ─── Stream Parser ──────────────────────────────────────────────────────────

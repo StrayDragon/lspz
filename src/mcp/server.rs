@@ -173,6 +173,7 @@ fn resolve_language_backend(
 #[derive(Clone)]
 pub struct McpServer {
     pool: Arc<Mutex<LspPool>>,
+    root_cache: Arc<std::sync::Mutex<std::collections::HashMap<String, Option<String>>>>,
 }
 
 impl McpServer {
@@ -180,16 +181,29 @@ impl McpServer {
     pub fn new() -> Self {
         Self {
             pool: Arc::new(Mutex::new(LspPool::new())),
+            root_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
         }
     }
 
+    fn cached_workspace_root(&self, uri: &str) -> Option<String> {
+        if let Ok(cache) = self.root_cache.lock() {
+            if let Some(cached) = cache.get(uri) {
+                return cached.clone();
+            }
+        }
+        let result = detect_workspace_root(uri);
+        if let Ok(mut cache) = self.root_cache.lock() {
+            cache.insert(uri.to_string(), result.clone());
+        }
+        result
+    }
     async fn handle_diagnostics(&self, input: GetDiagnosticsInput) -> Result<String, ErrorData> {
         let (language, backend) = resolve_language_backend(
             &input.uri,
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = detect_workspace_root(&input.uri);
+        let root = self.cached_workspace_root(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
@@ -233,19 +247,40 @@ impl McpServer {
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
         let target_uri = input.uri.clone();
-        // Retry up to 3 times — skip initial empty diagnostic notifications.
+        // Wait for the first non-empty diagnostic notification, with a 10s budget.
+        // Some LSP servers send initial empty notifications before analysis completes.
         let mut params = serde_json::Value::Null;
-        for _ in 0..3 {
-            params = session
-                .wait_for_notification_where("textDocument/publishDiagnostics", |p| {
-                    p.get("uri").and_then(Value::as_str) == Some(&target_uri)
-                })
-                .await
-                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-
-            let diags = params.get("diagnostics").and_then(Value::as_array);
-            if diags.is_some_and(|a| !a.is_empty()) {
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
+        loop {
+            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+            if remaining.is_zero() {
                 break;
+            }
+
+            let wait_result = tokio::time::timeout(
+                remaining,
+                session.wait_for_notification_where("textDocument/publishDiagnostics", |p| {
+                    p.get("uri").and_then(Value::as_str) == Some(&target_uri)
+                }),
+            )
+            .await;
+
+            match wait_result {
+                Ok(Ok(p)) => {
+                    params = p;
+                    let diags = params.get("diagnostics").and_then(Value::as_array);
+                    if diags.is_some_and(|a| !a.is_empty()) {
+                        break;
+                    }
+                    // Empty diagnostics — keep waiting within budget
+                }
+                Ok(Err(e)) => {
+                    return Err(ErrorData::internal_error(e.to_string(), None));
+                }
+                Err(_) => {
+                    // Timeout — return whatever we have (may be empty)
+                    break;
+                }
             }
         }
 
@@ -264,7 +299,7 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = detect_workspace_root(&input.uri);
+        let root = self.cached_workspace_root(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
@@ -319,7 +354,7 @@ impl McpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = detect_workspace_root(&input.uri);
+        let root = self.cached_workspace_root(&input.uri);
 
         let mut pool = self.pool.lock().await;
         let session = pool
