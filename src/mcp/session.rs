@@ -23,7 +23,12 @@ pub struct LspSession {
 impl LspSession {
     /// Spawn an LSP server and return an uninitialized session.
     pub fn spawn(cmd: &str) -> Result<Self, anyhow::Error> {
-        let transport = StdioTransport::spawn(cmd, &[])?;
+        Self::spawn_with_args(cmd, &[])
+    }
+
+    /// Spawn an LSP server with extra CLI arguments.
+    pub fn spawn_with_args(cmd: &str, extra_args: &[String]) -> Result<Self, anyhow::Error> {
+        let transport = StdioTransport::spawn(cmd, extra_args)?;
         Ok(Self {
             transport: Box::new(transport),
             next_id: 1,

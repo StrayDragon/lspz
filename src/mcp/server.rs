@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::codec::{compact, toon};
 use crate::interceptors::completions::compress_completions;
 use crate::interceptors::symbols::compress_symbols;
-use crate::languages::lookup_by_extension;
+use crate::languages::{default_args_by_extension, lookup_by_extension};
 use rmcp::{
     ErrorData, ServerHandler,
     model::{
@@ -53,6 +53,7 @@ struct GetDiagnosticsInput {
     uri: String,
     backend: Option<String>,
     language: Option<String>,
+    backend_args: Option<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -62,6 +63,7 @@ struct GetCompletionsInput {
     language: Option<String>,
     line: u32,
     character: u32,
+    backend_args: Option<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -69,6 +71,7 @@ struct GetSymbolsInput {
     uri: String,
     backend: Option<String>,
     language: Option<String>,
+    backend_args: Option<Vec<String>>,
 }
 
 /// Extract file extension from a `file://` URI.
@@ -80,6 +83,17 @@ fn extension_from_uri(uri: &str) -> Option<&str> {
         return None;
     }
     Some(after)
+}
+
+/// Merge default backend args (from language mapping) with user-provided args.
+fn merge_backend_args(uri: &str, user_args: Option<&[String]>) -> Vec<String> {
+    let ext = extension_from_uri(uri).unwrap_or("");
+    let defaults = default_args_by_extension(ext);
+    let mut merged: Vec<String> = defaults.iter().map(|s| s.to_string()).collect();
+    if let Some(args) = user_args {
+        merged.extend_from_slice(args);
+    }
+    merged
 }
 
 /// Project root marker files to look for when detecting workspace root.
@@ -186,10 +200,10 @@ impl McpServer {
     }
 
     fn cached_workspace_root(&self, uri: &str) -> Option<String> {
-        if let Ok(cache) = self.root_cache.lock() {
-            if let Some(cached) = cache.get(uri) {
-                return cached.clone();
-            }
+        if let Ok(cache) = self.root_cache.lock()
+            && let Some(cached) = cache.get(uri)
+        {
+            return cached.clone();
         }
         let result = detect_workspace_root(uri);
         if let Ok(mut cache) = self.root_cache.lock() {
@@ -204,10 +218,11 @@ impl McpServer {
             input.backend.as_deref(),
         )?;
         let root = self.cached_workspace_root(&input.uri);
+        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&language, &backend, root.as_deref())
+            .get_or_spawn(&language, &backend, root.as_deref(), &extra)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -300,10 +315,11 @@ impl McpServer {
             input.backend.as_deref(),
         )?;
         let root = self.cached_workspace_root(&input.uri);
+        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&language, &backend, root.as_deref())
+            .get_or_spawn(&language, &backend, root.as_deref(), &extra)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -355,10 +371,11 @@ impl McpServer {
             input.backend.as_deref(),
         )?;
         let root = self.cached_workspace_root(&input.uri);
+        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
         let mut pool = self.pool.lock().await;
         let session = pool
-            .get_or_spawn(&language, &backend, root.as_deref())
+            .get_or_spawn(&language, &backend, root.as_deref(), &extra)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -485,7 +502,8 @@ impl JsonSchema for GetDiagnosticsInput {
             "properties": {
                 "uri": { "type": "string", "description": "File URI (e.g. file:///path/to/file.go)" },
                 "backend": { "type": "string", "description": "Backend LSP server command (e.g. gopls, rust-analyzer). Auto-detected from file extension if omitted." },
-                "language": { "type": "string", "description": "Language identifier (e.g. go, rust). Auto-detected from file extension if omitted." }
+                "language": { "type": "string", "description": "Language identifier (e.g. go, rust). Auto-detected from file extension if omitted." },
+                "backend_args": { "type": "array", "items": { "type": "string" }, "description": "Extra CLI arguments passed to the backend LSP server (appended to defaults)." }
             },
             "required": ["uri"]
         })
@@ -501,7 +519,8 @@ impl JsonSchema for GetCompletionsInput {
                 "backend": { "type": "string", "description": "Backend LSP server command. Auto-detected from file extension if omitted." },
                 "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." },
                 "line": { "type": "integer", "description": "Line number (0-based)" },
-                "character": { "type": "integer", "description": "Character offset (0-based)" }
+                "character": { "type": "integer", "description": "Character offset (0-based)" },
+                "backend_args": { "type": "array", "items": { "type": "string" }, "description": "Extra CLI arguments passed to the backend LSP server (appended to defaults)." }
             },
             "required": ["uri", "line", "character"]
         })
@@ -515,7 +534,8 @@ impl JsonSchema for GetSymbolsInput {
             "properties": {
                 "uri": { "type": "string", "description": "File URI" },
                 "backend": { "type": "string", "description": "Backend LSP server command. Auto-detected from file extension if omitted." },
-                "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." }
+                "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." },
+                "backend_args": { "type": "array", "items": { "type": "string" }, "description": "Extra CLI arguments passed to the backend LSP server (appended to defaults)." }
             },
             "required": ["uri"]
         })
