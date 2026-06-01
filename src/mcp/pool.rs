@@ -29,8 +29,8 @@ impl LspPool {
         root_path: Option<&str>,
     ) -> Result<&mut LspSession, anyhow::Error> {
         let key = match root_path {
-            Some(root) => format!("{language}:{root}"),
-            None => language.to_string(),
+            Some(root) => format!("{language}:{cmd}:{root}"),
+            None => format!("{language}:{cmd}"),
         };
         if !self.sessions.contains_key(&key) {
             let mut session = LspSession::spawn(cmd)?;

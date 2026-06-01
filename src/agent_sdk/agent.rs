@@ -4,14 +4,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::Config;
-use crate::interceptors::completions::CompletionCompressor;
-use crate::interceptors::diagnostics::DiagnosticsCompressor;
-use crate::interceptors::hover::HoverCompressor;
-use crate::interceptors::locations::LocationCompressor;
-use crate::interceptors::symbols::DocumentSymbolCompressor;
-use crate::interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
-use crate::interceptors::workspace_symbols::WorkspaceSymbolCompressor;
-use crate::interceptors::{Direction, Interceptor, InterceptorChain};
+use crate::interceptors::{Direction, InterceptorChain, default_interceptors};
 use crate::mcp::{InitializeParams, LspSession};
 use serde_json::Value;
 use tokio::sync::RwLock;
@@ -583,23 +576,11 @@ fn build_interceptor_chain() -> InterceptorChain {
         metrics: crate::MetricsConfig::default(),
     }));
 
-    let interceptors: Vec<Box<dyn Interceptor>> = vec![
-        Box::new(DiagnosticsCompressor::default()),
-        Box::new(CompletionCompressor::default()),
-        Box::new(HoverCompressor::default()),
-        Box::new(DocumentSymbolCompressor),
-        Box::new(LocationCompressor),
-        Box::new(WorkspaceSymbolCompressor),
-        Box::new(WorkspaceDiagnosticCompressor),
-    ];
-
-    InterceptorChain::new(interceptors, config)
+    InterceptorChain::new(default_interceptors(), config)
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::atomic::{AtomicU16, Ordering};
-
     use crate::codec::json_rpc::LspMessage;
     use crate::mcp::LspSession;
     use crate::transport::mock::MockTransport;
@@ -607,13 +588,12 @@ mod tests {
 
     use super::*;
 
-    static TEST_COUNTER: AtomicU16 = AtomicU16::new(0);
-
-    fn temp_file(content: &str) -> (String, String) {
-        let id = TEST_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let path = format!("/tmp/lspz-test-{id}.rs");
-        std::fs::write(&path, content).unwrap();
-        (format!("file://{path}"), path)
+    fn temp_file(content: &str) -> (String, tempfile::NamedTempFile) {
+        let mut f = tempfile::Builder::new().suffix(".rs").tempfile().unwrap();
+        use std::io::Write;
+        f.write_all(content.as_bytes()).unwrap();
+        let path = f.path().to_string_lossy().to_string();
+        (format!("file://{path}"), f)
     }
 
     fn mock_handle(responses: Vec<LspMessage>) -> AgentHandle {
@@ -673,7 +653,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![diag_notif]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_diagnostics(&uri).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -695,7 +675,7 @@ mod tests {
         };
 
         let mut agent = mock_handle_compressed(vec![diag_notif]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_diagnostics(&uri).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -731,7 +711,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![comp_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_completions(&uri, 0, 0).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -751,7 +731,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![sym_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_symbols(&uri).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -774,7 +754,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![hover_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_hover(&uri, 0, 0).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -797,7 +777,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![ref_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_references(&uri, 0, 0).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -818,7 +798,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![def_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_definition(&uri, 0, 0).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -841,7 +821,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![impl_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_implementation(&uri, 0, 0).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -862,7 +842,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![td_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_type_definition(&uri, 0, 0).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -912,7 +892,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![wd_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_workspace_diagnostics(&uri).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -1034,7 +1014,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![rename_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
         let result = agent.rename(&uri, 0, 3, "new_name").await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
         assert!(parsed["changes"].is_object());
@@ -1057,7 +1037,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![action_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
         let result = agent.code_action(&uri, 0, 0, None, None).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed[0]["title"], "Add import");
@@ -1072,7 +1052,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![action_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
         let diags = vec![json!({
             "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 0, "character": 5 } },
             "severity": 1,
@@ -1095,7 +1075,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![action_resp]);
-        let (uri, _path) = temp_file("fn main() {}");
+        let (uri, _tmp) = temp_file("fn main() {}");
         let result = agent
             .code_action(
                 &uri,
@@ -1126,7 +1106,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![fmt_resp]);
-        let (uri, _path) = temp_file("fn main(){}");
+        let (uri, _tmp) = temp_file("fn main(){}");
         let result = agent.formatting(&uri, None).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed[0]["newText"], "fn main() {}\n");
@@ -1144,7 +1124,7 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![fmt_resp]);
-        let (uri, _path) = temp_file("x = 1");
+        let (uri, _tmp) = temp_file("x = 1");
         let result = agent
             .formatting(&uri, Some(json!({ "tabSize": 2, "insertSpaces": false })))
             .await

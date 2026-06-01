@@ -45,6 +45,8 @@ pub struct Proxy {
     interceptor_chain: InterceptorChain,
     /// Tracks in-flight request IDs to their method for response interception.
     pending_requests: HashMap<u64, String>,
+    /// Holds the config watcher alive so hot-reload keeps working.
+    _config_watcher: Option<crate::config_watcher::ConfigWatcher>,
 }
 
 impl Proxy {
@@ -60,12 +62,23 @@ impl Proxy {
             transport,
             interceptor_chain,
             pending_requests: HashMap::new(),
+            _config_watcher: None,
         }
     }
 
     /// 返回当前 [`State`]。
     pub fn state(&self) -> State {
         self.state
+    }
+
+    /// Set the config watcher for hot-reload support.
+    pub fn set_config_watcher(&mut self, watcher: crate::config_watcher::ConfigWatcher) {
+        self._config_watcher = Some(watcher);
+    }
+
+    /// Get a reference to the shared config.
+    pub fn shared_config(&self) -> Arc<RwLock<Config>> {
+        self.config.clone()
     }
 
     /// 启动代理：握手 → 消息循环。
@@ -407,7 +420,7 @@ async fn read_stdin_frame(reader: &mut BufReader<tokio::io::Stdin>) -> Result<Ve
         }
     }
 
-    let content_length = parse_content_length(&header)?;
+    let content_length = crate::transport::framing::parse_content_length(&header)?;
 
     let mut body = vec![0u8; content_length as usize];
     reader.read_exact(&mut body).await.map_err(|e| {
@@ -419,20 +432,6 @@ async fn read_stdin_frame(reader: &mut BufReader<tokio::io::Stdin>) -> Result<Ve
     })?;
 
     Ok([header.as_bytes(), &body].concat())
-}
-
-/// Parse Content-Length from an LSP header.
-fn parse_content_length(header: &str) -> Result<u64, LspzError> {
-    for line in header.lines() {
-        let line = line.trim();
-        if let Some(value) = line.to_lowercase().strip_prefix("content-length:") {
-            let value = value.trim();
-            return value
-                .parse::<u64>()
-                .map_err(|_| LspzError::Protocol(format!("invalid Content-Length: {value}")));
-        }
-    }
-    Err(LspzError::Protocol("missing Content-Length header".into()))
 }
 
 /// Extract the LSP method name from a raw framed message.
@@ -463,6 +462,7 @@ fn ensure_method(raw: &[u8], expected: &str) -> Result<(), LspzError> {
 mod tests {
     use super::*;
     use crate::codec::json_rpc::LspMessage;
+    use crate::transport::framing::parse_content_length;
 
     #[test]
     fn test_extract_method() {

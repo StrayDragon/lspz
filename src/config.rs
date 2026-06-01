@@ -119,7 +119,7 @@ impl Default for Config {
             enable_location_compress: true,
             enable_workspace_symbol_compress: true,
             enable_workspace_diag_compress: true,
-            output_format: OutputFormat::Json,
+            output_format: default_output_format(),
             log_level: "info".into(),
             metrics: MetricsConfig::default(),
         }
@@ -257,68 +257,38 @@ impl ConfigBuilder {
             .or_else(|| std::env::var("LSPZ_BACKEND_CMD").ok())
             .ok_or_else(|| LspzError::Config("backend_cmd is required".into()))?;
 
-        let enable_diag_compress = self
-            .enable_diag_compress
-            .or_else(|| {
-                std::env::var("LSPZ_ENABLE_DIAG_COMPRESS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-            })
-            .unwrap_or(true);
-
-        let enable_completion_compress = self
-            .enable_completion_compress
-            .or_else(|| {
-                std::env::var("LSPZ_ENABLE_COMPLETION_COMPRESS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-            })
-            .unwrap_or(true);
-
-        let enable_hover_compress = self
-            .enable_hover_compress
-            .or_else(|| {
-                std::env::var("LSPZ_ENABLE_HOVER_COMPRESS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-            })
-            .unwrap_or(true);
-
-        let enable_document_symbol_compress = self
-            .enable_document_symbol_compress
-            .or_else(|| {
-                std::env::var("LSPZ_ENABLE_DOCUMENT_SYMBOL_COMPRESS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-            })
-            .unwrap_or(true);
-
-        let enable_location_compress = self
-            .enable_location_compress
-            .or_else(|| {
-                std::env::var("LSPZ_ENABLE_LOCATION_COMPRESS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-            })
-            .unwrap_or(true);
-
-        let enable_workspace_symbol_compress = self
-            .enable_workspace_symbol_compress
-            .or_else(|| {
-                std::env::var("LSPZ_ENABLE_WORKSPACE_SYMBOL_COMPRESS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-            })
-            .unwrap_or(true);
-
-        let enable_workspace_diag_compress = self
-            .enable_workspace_diag_compress
-            .or_else(|| {
-                std::env::var("LSPZ_ENABLE_WORKSPACE_DIAG_COMPRESS")
-                    .ok()
-                    .and_then(|v| v.parse().ok())
-            })
-            .unwrap_or(true);
+        let enable_diag_compress =
+            resolve_bool_flag(self.enable_diag_compress, "LSPZ_ENABLE_DIAG_COMPRESS", true);
+        let enable_completion_compress = resolve_bool_flag(
+            self.enable_completion_compress,
+            "LSPZ_ENABLE_COMPLETION_COMPRESS",
+            true,
+        );
+        let enable_hover_compress = resolve_bool_flag(
+            self.enable_hover_compress,
+            "LSPZ_ENABLE_HOVER_COMPRESS",
+            true,
+        );
+        let enable_document_symbol_compress = resolve_bool_flag(
+            self.enable_document_symbol_compress,
+            "LSPZ_ENABLE_DOCUMENT_SYMBOL_COMPRESS",
+            true,
+        );
+        let enable_location_compress = resolve_bool_flag(
+            self.enable_location_compress,
+            "LSPZ_ENABLE_LOCATION_COMPRESS",
+            true,
+        );
+        let enable_workspace_symbol_compress = resolve_bool_flag(
+            self.enable_workspace_symbol_compress,
+            "LSPZ_ENABLE_WORKSPACE_SYMBOL_COMPRESS",
+            true,
+        );
+        let enable_workspace_diag_compress = resolve_bool_flag(
+            self.enable_workspace_diag_compress,
+            "LSPZ_ENABLE_WORKSPACE_DIAG_COMPRESS",
+            true,
+        );
 
         let log_level = self
             .log_level
@@ -377,4 +347,11 @@ impl ConfigBuilder {
             metrics,
         })
     }
+}
+
+/// Resolve a boolean flag from builder value, env var, or default.
+fn resolve_bool_flag(builder_val: Option<bool>, env_var: &str, default: bool) -> bool {
+    builder_val
+        .or_else(|| std::env::var(env_var).ok().and_then(|v| v.parse().ok()))
+        .unwrap_or(default)
 }

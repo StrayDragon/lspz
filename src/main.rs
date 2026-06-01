@@ -15,13 +15,7 @@ use lspz::config_watcher::ConfigWatcher;
 use lspz::interceptors::Interceptor;
 use lspz::interceptors::InterceptorChain;
 use lspz::interceptors::capping::CappingInterceptor;
-use lspz::interceptors::completions::CompletionCompressor;
-use lspz::interceptors::diagnostics::DiagnosticsCompressor;
-use lspz::interceptors::hover::HoverCompressor;
-use lspz::interceptors::locations::LocationCompressor;
-use lspz::interceptors::symbols::DocumentSymbolCompressor;
-use lspz::interceptors::workspace_diagnostics::WorkspaceDiagnosticCompressor;
-use lspz::interceptors::workspace_symbols::WorkspaceSymbolCompressor;
+use lspz::interceptors::default_interceptors;
 use lspz::metrics::MetredInterceptor;
 use lspz::{
     CappingConfig, Config, MetricsConfig, OutputFormat, Proxy, StdioTransport, TcpTransport,
@@ -295,9 +289,16 @@ async fn run_proxy(args: ProxyArgs) -> ExitCode {
         .with_target(false)
         .init();
 
-    let output_format = OutputFormat::from_str(&args.output)
-        .ok()
-        .unwrap_or(OutputFormat::Json);
+    let output_format = match OutputFormat::from_str(&args.output) {
+        Ok(fmt) => fmt,
+        Err(_) => {
+            eprintln!(
+                "Unknown output format '{}'. Use 'toon', 'json', or 'passthrough'.",
+                args.output
+            );
+            return ExitCode::FAILURE;
+        }
+    };
 
     let base_config = match build_config(&args, output_format) {
         Ok(c) => c,
@@ -332,16 +333,19 @@ async fn run_proxy(args: ProxyArgs) -> ExitCode {
 
     let interceptor_chain = build_interceptor_chain(&shared_config);
 
+    let mut proxy = Proxy::new(shared_config, transport, interceptor_chain);
+
     if let Some(ref path) = args.config_file {
-        match ConfigWatcher::spawn(path, shared_config.clone()) {
-            Ok(_) => tracing::info!(path = %path, "Config hot-reload enabled"),
+        match ConfigWatcher::spawn(path, proxy.shared_config()) {
+            Ok(watcher) => {
+                proxy.set_config_watcher(watcher);
+                tracing::info!(path = %path, "Config hot-reload enabled");
+            }
             Err(e) => {
                 tracing::warn!(error = %e, "Config watcher failed, running without hot-reload");
             }
         }
     }
-
-    let mut proxy = Proxy::new(shared_config, transport, interceptor_chain);
 
     if let Err(e) = proxy.start().await {
         tracing::error!(error = %e, "Proxy exited with error");
@@ -462,20 +466,12 @@ fn build_config(args: &ProxyArgs, output_format: OutputFormat) -> Result<Config,
 fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorChain {
     let config = shared_config.blocking_read();
 
-    let interceptors: Vec<Box<dyn Interceptor>> = vec![
-        Box::new(CappingInterceptor::new(
-            config.capping.max_diags,
-            config.capping.max_completions,
-            config.capping.max_symbols,
-        )),
-        Box::new(DiagnosticsCompressor::default()),
-        Box::new(CompletionCompressor::default()),
-        Box::new(HoverCompressor::default()),
-        Box::new(DocumentSymbolCompressor),
-        Box::new(LocationCompressor),
-        Box::new(WorkspaceSymbolCompressor),
-        Box::new(WorkspaceDiagnosticCompressor),
-    ];
+    let mut interceptors: Vec<Box<dyn Interceptor>> = vec![Box::new(CappingInterceptor::new(
+        config.capping.max_diags,
+        config.capping.max_completions,
+        config.capping.max_symbols,
+    ))];
+    interceptors.extend(default_interceptors());
 
     tracing::info!(
         capping = %config.capping.any_enabled(),
@@ -489,9 +485,10 @@ fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorCh
         "Interceptor chain built (all interceptors, gated by runtime config)"
     );
 
+    let metrics_enabled = config.metrics.enabled;
     drop(config);
 
-    if shared_config.blocking_read().metrics.enabled {
+    if metrics_enabled {
         tracing::info!("Metrics collection enabled");
         let wrapped: Vec<Box<dyn Interceptor>> = interceptors
             .into_iter()
@@ -507,8 +504,10 @@ fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorCh
 async fn run_mcp(log_level: String) -> ExitCode {
     // Write tracing to a file to avoid polluting MCP's stdio JSON-RPC stream.
     // Some MCP clients (e.g. Cursor) merge stderr into stdout, breaking the protocol.
-    let log_file = std::fs::File::create("/tmp/lspz-mcp.log").unwrap_or_else(|e| {
-        eprintln!("lspz: cannot create /tmp/lspz-mcp.log: {e}");
+    let log_dir = dirs::cache_dir().unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
+    let log_path = log_dir.join("lspz-mcp.log");
+    let log_file = std::fs::File::create(&log_path).unwrap_or_else(|e| {
+        eprintln!("lspz: cannot create {}: {e}", log_path.display());
         std::process::exit(1)
     });
     tracing_subscriber::fmt()
