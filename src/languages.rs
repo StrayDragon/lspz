@@ -8,8 +8,10 @@ pub struct LanguageMapping {
     pub extensions: &'static [&'static str],
     /// LSP server binary name (used for `which` checks and display).
     pub backend: &'static str,
-    /// Arguments to pass when spawning the LSP server (e.g. `--stdio`).
+    /// Arguments required to start the server in stdio mode (e.g. `--stdio`).
     pub spawn_args: &'static [&'static str],
+    /// Default extra arguments users can override (e.g. config flags).
+    pub default_args: &'static [&'static str],
 }
 
 /// Built-in default language mappings.
@@ -22,42 +24,49 @@ pub const DEFAULT_LANGUAGES: &[LanguageMapping] = &[
         extensions: &["rs"],
         backend: "rust-analyzer",
         spawn_args: &[],
+        default_args: &[],
     },
     LanguageMapping {
         language: "go",
         extensions: &["go"],
         backend: "gopls",
         spawn_args: &[],
+        default_args: &[],
     },
     LanguageMapping {
         language: "typescript",
         extensions: &["ts", "tsx"],
         backend: "typescript-language-server",
         spawn_args: &["--stdio"],
+        default_args: &[],
     },
     LanguageMapping {
         language: "javascript",
         extensions: &["js", "jsx"],
         backend: "typescript-language-server",
         spawn_args: &["--stdio"],
+        default_args: &[],
     },
     LanguageMapping {
         language: "python",
         extensions: &["py"],
         backend: "basedpyright-langserver",
         spawn_args: &["--stdio"],
+        default_args: &[],
     },
     LanguageMapping {
         language: "c",
         extensions: &["c", "h"],
         backend: "clangd",
         spawn_args: &[],
+        default_args: &[],
     },
     LanguageMapping {
         language: "cpp",
         extensions: &["cpp", "cc", "cxx", "hpp", "hxx"],
         backend: "clangd",
         spawn_args: &[],
+        default_args: &[],
     },
 ];
 
@@ -75,6 +84,16 @@ pub fn lookup_by_extension(ext: &str) -> Option<(&'static str, String)> {
     None
 }
 
+/// Look up default extra args for a file extension.
+pub fn default_args_by_extension(ext: &str) -> &'static [&'static str] {
+    for mapping in DEFAULT_LANGUAGES {
+        if mapping.extensions.contains(&ext) {
+            return mapping.default_args;
+        }
+    }
+    &[]
+}
+
 /// Build the full spawn command string for a mapping.
 fn spawn_cmd(mapping: &LanguageMapping) -> String {
     if mapping.spawn_args.is_empty() {
@@ -84,27 +103,26 @@ fn spawn_cmd(mapping: &LanguageMapping) -> String {
     }
 }
 
-/// Generate a compact language mapping line for LSPZ.md.
+/// Generate a language mapping table for LSPZ.md.
 ///
-/// Format: `.ext` → `backend` (comma-separated, one per language).
-/// Only includes languages whose LSP backend is found in PATH.
+/// Format: markdown table with extensions, language, and backend.
+/// Shows availability status based on PATH check.
 pub fn generate_language_table() -> String {
-    let mut entries = Vec::new();
+    let mut rows = vec!["| Extensions | Language | Backend | Status |".to_string()];
+    rows.push("|---|---|---|---|".to_string());
     for mapping in DEFAULT_LANGUAGES {
         let available = which(mapping.backend);
-        let exts: Vec<String> = mapping
-            .extensions
-            .iter()
-            .map(|e| format!("`.{e}`"))
-            .collect();
-        let status = if available { "" } else { " (not installed)" };
-        entries.push(format!(
-            "{} → `{}`{status}",
-            exts.join(" "),
+        let exts: Vec<String> = mapping.extensions.iter().map(|e| format!(".{e}")).collect();
+        let status = if available { "ok" } else { "not installed" };
+        rows.push(format!(
+            "| {} | `{}` | `{}` | {} |",
+            exts.join(", "),
+            mapping.language,
             mapping.backend,
+            status,
         ));
     }
-    entries.join(" | ")
+    rows.join("\n")
 }
 
 /// Check if a command exists in PATH.

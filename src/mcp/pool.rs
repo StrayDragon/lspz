@@ -22,18 +22,20 @@ impl LspPool {
     ///
     /// `root_path` is a canonicalized absolute path (no `file://` prefix) used
     /// both as part of the cache key and as the LSP `rootUri` during initialization.
+    /// `extra_args` are additional CLI arguments passed when spawning a new session.
     pub async fn get_or_spawn(
         &mut self,
         language: &str,
         cmd: &str,
         root_path: Option<&str>,
+        extra_args: &[String],
     ) -> Result<&mut LspSession, anyhow::Error> {
         let key = match root_path {
             Some(root) => format!("{language}:{cmd}:{root}"),
             None => format!("{language}:{cmd}"),
         };
         if !self.sessions.contains_key(&key) {
-            let mut session = LspSession::spawn(cmd)?;
+            let mut session = LspSession::spawn_with_args(cmd, extra_args)?;
             let init_params = InitializeParams {
                 root_uri: root_path.map(|s| s.to_string()),
             };
