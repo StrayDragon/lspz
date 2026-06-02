@@ -26,6 +26,7 @@ pub fn run(
     show: bool,
     uninstall: bool,
     dry_run: bool,
+    force: bool,
 ) -> ExitCode {
     if show {
         return show_config(global);
@@ -34,11 +35,17 @@ pub fn run(
         return run_uninstall(global, dry_run);
     }
 
-    run_init(global, auto_patch, no_patch, dry_run)
+    run_init(global, auto_patch, no_patch, dry_run, force)
 }
 
 #[allow(clippy::fn_params_excessive_bools)]
-fn run_init(global: bool, _auto_patch: bool, no_patch: bool, dry_run: bool) -> ExitCode {
+fn run_init(
+    global: bool,
+    _auto_patch: bool,
+    no_patch: bool,
+    dry_run: bool,
+    force: bool,
+) -> ExitCode {
     if !cfg!(feature = "mcp") {
         eprintln!(
             "Error: This binary was built without `mcp` feature.\n  \
@@ -58,7 +65,7 @@ fn run_init(global: bool, _auto_patch: bool, no_patch: bool, dry_run: bool) -> E
     let prefix = if dry_run { "[dry-run] " } else { "" };
 
     // 1. Write LSPZ.md
-    match write_lspz_md(global, dry_run) {
+    match write_lspz_md(global, dry_run, force) {
         Ok(true) => println!("{prefix}Wrote LSPZ.md"),
         Ok(false) => println!("LSPZ.md already up to date"),
         Err(e) => {
@@ -68,7 +75,7 @@ fn run_init(global: bool, _auto_patch: bool, no_patch: bool, dry_run: bool) -> E
     }
 
     // 2. Patch CLAUDE.md with @LSPZ.md reference
-    match patch_claude_md_ref(global, dry_run) {
+    match patch_claude_md_ref(global, dry_run, force) {
         Ok(true) => println!("{prefix}Added @LSPZ.md to CLAUDE.md"),
         Ok(false) => println!("CLAUDE.md already contains @LSPZ.md"),
         Err(e) => {
@@ -92,7 +99,7 @@ fn run_init(global: bool, _auto_patch: bool, no_patch: bool, dry_run: bool) -> E
             }
         };
 
-        match patch_mcp_server(&sp, &binary_path, dry_run) {
+        match patch_mcp_server(&sp, &binary_path, dry_run, force) {
             Ok(PatchResult::Patched) => {
                 println!("{prefix}Registered MCP server in {}", sp.display())
             }

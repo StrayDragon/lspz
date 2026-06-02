@@ -88,10 +88,11 @@ pub fn patch_mcp_server(
     settings_path: &Path,
     binary_path: &Path,
     dry_run: bool,
+    force: bool,
 ) -> Result<PatchResult, LspzError> {
     let mut root = read_settings(settings_path)?;
 
-    if mcp_server_already_present(&root, binary_path) {
+    if !force && mcp_server_already_present(&root, binary_path) {
         return Ok(PatchResult::AlreadyPresent);
     }
 
@@ -221,7 +222,7 @@ mod tests {
         let path = dir.path().join("settings.json");
         let binary = PathBuf::from("/usr/bin/lspz");
 
-        let result = patch_mcp_server(&path, &binary, false).unwrap();
+        let result = patch_mcp_server(&path, &binary, false, false).unwrap();
         assert_eq!(result, PatchResult::Patched);
 
         let content = fs::read_to_string(&path).unwrap();
@@ -239,8 +240,8 @@ mod tests {
         let path = dir.path().join("settings.json");
         let binary = PathBuf::from("/usr/bin/lspz");
 
-        patch_mcp_server(&path, &binary, false).unwrap();
-        let result = patch_mcp_server(&path, &binary, false).unwrap();
+        patch_mcp_server(&path, &binary, false, false).unwrap();
+        let result = patch_mcp_server(&path, &binary, false, false).unwrap();
         assert_eq!(result, PatchResult::AlreadyPresent);
     }
 
@@ -255,7 +256,7 @@ mod tests {
         .unwrap();
 
         let binary = PathBuf::from("/usr/bin/lspz");
-        patch_mcp_server(&path, &binary, false).unwrap();
+        patch_mcp_server(&path, &binary, false, false).unwrap();
 
         let content = fs::read_to_string(&path).unwrap();
         let settings: Value = serde_json::from_str(&content).unwrap();
@@ -269,7 +270,7 @@ mod tests {
         let path = dir.path().join("settings.json");
         let binary = PathBuf::from("/usr/bin/lspz");
 
-        let result = patch_mcp_server(&path, &binary, true).unwrap();
+        let result = patch_mcp_server(&path, &binary, true, false).unwrap();
         assert_eq!(result, PatchResult::WouldPatch);
         assert!(!path.exists());
     }
@@ -357,12 +358,28 @@ mod tests {
         fs::write(&path, r#"{"existing": true}"#).unwrap();
 
         let binary = PathBuf::from("/usr/bin/lspz");
-        patch_mcp_server(&path, &binary, false).unwrap();
+        patch_mcp_server(&path, &binary, false, false).unwrap();
 
         let backup = path.with_extension("json.bak");
         assert!(backup.exists());
         let backup_content = fs::read_to_string(&backup).unwrap();
         let backup_settings: Value = serde_json::from_str(&backup_content).unwrap();
         assert_eq!(backup_settings["existing"], true);
+    }
+
+    #[test]
+    fn patch_mcp_server_force_overwrites() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("settings.json");
+        let binary = PathBuf::from("/usr/bin/lspz");
+
+        // First patch
+        patch_mcp_server(&path, &binary, false, false).unwrap();
+        let result1 = patch_mcp_server(&path, &binary, false, false).unwrap();
+        assert_eq!(result1, PatchResult::AlreadyPresent);
+
+        // Force patch - should return Patched even though already present
+        let result2 = patch_mcp_server(&path, &binary, false, true).unwrap();
+        assert_eq!(result2, PatchResult::Patched);
     }
 }
