@@ -30,12 +30,12 @@ fn build_lspz_md_content() -> String {
 /// Write LSPZ.md to the target directory.
 ///
 /// Returns `true` if the file was written, `false` if it already exists with the same content.
-pub fn write_lspz_md(global: bool, dry_run: bool) -> Result<bool, LspzError> {
+pub fn write_lspz_md(global: bool, dry_run: bool, force: bool) -> Result<bool, LspzError> {
     let dir = target_dir(global)?;
     let path = dir.join(LSPZ_MD);
     let content = build_lspz_md_content();
 
-    if path.exists() {
+    if !force && path.exists() {
         let existing = fs::read_to_string(&path)
             .map_err(|e| LspzError::Config(format!("Failed to read {}: {e}", path.display())))?;
         if existing == content {
@@ -80,7 +80,7 @@ pub fn remove_lspz_md(global: bool, dry_run: bool) -> Result<bool, LspzError> {
 /// Add `@LSPZ.md` reference to CLAUDE.md if not already present.
 ///
 /// Returns `true` if CLAUDE.md was modified, `false` if the reference already exists.
-pub fn patch_claude_md_ref(global: bool, dry_run: bool) -> Result<bool, LspzError> {
+pub fn patch_claude_md_ref(global: bool, dry_run: bool, force: bool) -> Result<bool, LspzError> {
     let dir = target_dir(global)?;
     let path = dir.join(CLAUDE_MD);
 
@@ -88,7 +88,7 @@ pub fn patch_claude_md_ref(global: bool, dry_run: bool) -> Result<bool, LspzErro
         let content = fs::read_to_string(&path)
             .map_err(|e| LspzError::Config(format!("Failed to read {}: {e}", path.display())))?;
 
-        if content.contains(LSPZ_MD_REF) {
+        if !force && content.contains(LSPZ_MD_REF) {
             return Ok(false);
         }
 
@@ -203,7 +203,7 @@ mod tests {
     #[test]
     fn write_lspz_md_creates_file() {
         with_temp_claude_dir(|dir| {
-            let changed = write_lspz_md(true, false).unwrap();
+            let changed = write_lspz_md(true, false, false).unwrap();
             assert!(changed);
 
             let path = dir.join(LSPZ_MD);
@@ -217,8 +217,8 @@ mod tests {
     #[test]
     fn write_lspz_md_idempotent() {
         with_temp_claude_dir(|_| {
-            write_lspz_md(true, false).unwrap();
-            let changed = write_lspz_md(true, false).unwrap();
+            write_lspz_md(true, false, false).unwrap();
+            let changed = write_lspz_md(true, false, false).unwrap();
             assert!(!changed);
         });
     }
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn write_lspz_md_dry_run() {
         with_temp_claude_dir(|dir| {
-            let changed = write_lspz_md(true, true).unwrap();
+            let changed = write_lspz_md(true, true, false).unwrap();
             assert!(changed);
             assert!(!dir.join(LSPZ_MD).exists());
         });
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn remove_lspz_md_removes_file() {
         with_temp_claude_dir(|dir| {
-            write_lspz_md(true, false).unwrap();
+            write_lspz_md(true, false, false).unwrap();
             let removed = remove_lspz_md(true, false).unwrap();
             assert!(removed);
             assert!(!dir.join(LSPZ_MD).exists());
@@ -253,7 +253,7 @@ mod tests {
     #[test]
     fn patch_claude_md_ref_creates_file() {
         with_temp_claude_dir(|dir| {
-            let changed = patch_claude_md_ref(true, false).unwrap();
+            let changed = patch_claude_md_ref(true, false, false).unwrap();
             assert!(changed);
 
             let content = fs::read_to_string(dir.join(CLAUDE_MD)).unwrap();
@@ -265,7 +265,7 @@ mod tests {
     fn patch_claude_md_ref_appends_to_existing() {
         with_temp_claude_dir(|dir| {
             fs::write(dir.join(CLAUDE_MD), "# Existing content\n").unwrap();
-            let changed = patch_claude_md_ref(true, false).unwrap();
+            let changed = patch_claude_md_ref(true, false, false).unwrap();
             assert!(changed);
 
             let content = fs::read_to_string(dir.join(CLAUDE_MD)).unwrap();
@@ -277,8 +277,8 @@ mod tests {
     #[test]
     fn patch_claude_md_ref_idempotent() {
         with_temp_claude_dir(|_| {
-            patch_claude_md_ref(true, false).unwrap();
-            let changed = patch_claude_md_ref(true, false).unwrap();
+            patch_claude_md_ref(true, false, false).unwrap();
+            let changed = patch_claude_md_ref(true, false, false).unwrap();
             assert!(!changed);
         });
     }
@@ -286,7 +286,7 @@ mod tests {
     #[test]
     fn patch_claude_md_ref_dry_run() {
         with_temp_claude_dir(|dir| {
-            let changed = patch_claude_md_ref(true, true).unwrap();
+            let changed = patch_claude_md_ref(true, true, false).unwrap();
             assert!(changed);
             assert!(!dir.join(CLAUDE_MD).exists());
         });
@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn remove_claude_md_ref_removes_line() {
         with_temp_claude_dir(|dir| {
-            patch_claude_md_ref(true, false).unwrap();
+            patch_claude_md_ref(true, false, false).unwrap();
             let removed = remove_claude_md_ref(true, false).unwrap();
             assert!(removed);
 
@@ -308,7 +308,7 @@ mod tests {
     fn remove_claude_md_ref_preserves_other_content() {
         with_temp_claude_dir(|dir| {
             fs::write(dir.join(CLAUDE_MD), "# Title\n@AGENTS.md\n").unwrap();
-            patch_claude_md_ref(true, false).unwrap();
+            patch_claude_md_ref(true, false, false).unwrap();
             remove_claude_md_ref(true, false).unwrap();
 
             let content = fs::read_to_string(dir.join(CLAUDE_MD)).unwrap();
@@ -338,7 +338,7 @@ mod tests {
     #[test]
     fn lspz_md_exists_true() {
         with_temp_claude_dir(|_| {
-            write_lspz_md(true, false).unwrap();
+            write_lspz_md(true, false, false).unwrap();
             assert!(lspz_md_exists(true));
         });
     }
@@ -353,7 +353,7 @@ mod tests {
     #[test]
     fn claude_md_has_ref_true() {
         with_temp_claude_dir(|_| {
-            patch_claude_md_ref(true, false).unwrap();
+            patch_claude_md_ref(true, false, false).unwrap();
             assert!(claude_md_has_ref(true));
         });
     }
@@ -362,6 +362,42 @@ mod tests {
     fn claude_md_has_ref_false() {
         with_temp_claude_dir(|_| {
             assert!(!claude_md_has_ref(true));
+        });
+    }
+
+    #[test]
+    fn write_lspz_md_force_overwrites() {
+        with_temp_claude_dir(|dir| {
+            // First write
+            write_lspz_md(true, false, false).unwrap();
+            let path = dir.join(LSPZ_MD);
+            let original_content = fs::read_to_string(&path).unwrap();
+
+            // Force write - should return true even though content is the same
+            let changed = write_lspz_md(true, false, true).unwrap();
+            assert!(changed);
+
+            // Content should still be valid
+            let new_content = fs::read_to_string(&path).unwrap();
+            assert_eq!(original_content, new_content);
+        });
+    }
+
+    #[test]
+    fn patch_claude_md_ref_force_overwrites() {
+        with_temp_claude_dir(|dir| {
+            // First patch
+            patch_claude_md_ref(true, false, false).unwrap();
+            let content1 = fs::read_to_string(dir.join(CLAUDE_MD)).unwrap();
+            assert!(content1.contains(LSPZ_MD_REF));
+
+            // Force patch - should return true even though ref already exists
+            let changed = patch_claude_md_ref(true, false, true).unwrap();
+            assert!(changed);
+
+            // Content should still contain the ref
+            let content2 = fs::read_to_string(dir.join(CLAUDE_MD)).unwrap();
+            assert!(content2.contains(LSPZ_MD_REF));
         });
     }
 }

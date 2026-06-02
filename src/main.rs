@@ -210,6 +210,10 @@ enum Cli {
         /// Preview changes without writing any files
         #[arg(long = "dry-run")]
         dry_run: bool,
+
+        /// Force overwrite even if files are already up to date
+        #[arg(short, long)]
+        force: bool,
     },
 }
 
@@ -275,7 +279,10 @@ async fn main() -> ExitCode {
             show,
             uninstall,
             dry_run,
-        } => lspz::init::run(global, auto_patch, no_patch, show, uninstall, dry_run),
+            force,
+        } => lspz::init::run(
+            global, auto_patch, no_patch, show, uninstall, dry_run, force,
+        ),
     }
 }
 
