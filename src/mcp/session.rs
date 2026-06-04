@@ -1,5 +1,6 @@
 //! LSP session — manages a single LSP server connection.
 
+use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::StdioTransport;
@@ -18,6 +19,8 @@ pub struct InitializeParams {
 pub struct LspSession {
     transport: Box<dyn Transport>,
     next_id: i64,
+    /// Tracks which document URIs are currently open and their latest version.
+    open_documents: HashMap<String, i32>,
 }
 
 impl LspSession {
@@ -32,6 +35,7 @@ impl LspSession {
         Ok(Self {
             transport: Box::new(transport),
             next_id: 1,
+            open_documents: HashMap::new(),
         })
     }
 
@@ -40,6 +44,7 @@ impl LspSession {
         Self {
             transport,
             next_id: 1,
+            open_documents: HashMap::new(),
         }
     }
 
@@ -141,6 +146,54 @@ impl LspSession {
         };
         let frame = msg.to_bytes()?;
         self.transport.send(&frame).await?;
+        Ok(())
+    }
+
+    /// Ensure a document is open in the LSP server, sending `didOpen` on the
+    /// first call and `didChange` (full document sync) on subsequent calls.
+    ///
+    /// This avoids re-sending `didOpen` for already-open documents, which can
+    /// cause the LSP server to reset its internal state and return stale
+    /// diagnostics.
+    pub async fn open_or_update_document(
+        &mut self,
+        uri: &str,
+        language_id: &str,
+        content: &str,
+    ) -> Result<(), anyhow::Error> {
+        let new_version = if let Some(version) = self.open_documents.get_mut(uri) {
+            *version += 1;
+            Some(*version)
+        } else {
+            None
+        };
+
+        if let Some(version) = new_version {
+            // Document already open — send didChange with incremented version.
+            self.send_notification(
+                "textDocument/didChange",
+                serde_json::json!({
+                    "textDocument": { "uri": uri, "version": version },
+                    "contentChanges": [{ "text": content }],
+                }),
+            )
+            .await?;
+        } else {
+            // First time — send didOpen.
+            self.send_notification(
+                "textDocument/didOpen",
+                serde_json::json!({
+                    "textDocument": {
+                        "uri": uri,
+                        "languageId": language_id,
+                        "version": 1,
+                        "text": content,
+                    }
+                }),
+            )
+            .await?;
+            self.open_documents.insert(uri.to_string(), 1);
+        }
         Ok(())
     }
 
@@ -282,6 +335,153 @@ mod tests {
             assert_eq!(params["rootUri"], "file:///home/user/project");
         } else {
             panic!("Expected request, got {init_msg:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_open_or_update_first_call_sends_did_open() {
+        let mock = MockTransport::new();
+        let mut session = LspSession::with_transport(Box::new(mock));
+
+        session
+            .open_or_update_document("file:///test.py", "python", "print('hi')")
+            .await
+            .unwrap();
+
+        let sent = session.mock_sent_messages();
+        assert_eq!(sent.len(), 1);
+        let msg = LspMessage::from_frame_bytes(&sent[0]).unwrap();
+        if let LspMessage::Notification { method, params } = msg {
+            assert_eq!(method, "textDocument/didOpen");
+            assert_eq!(params["textDocument"]["uri"], "file:///test.py");
+            assert_eq!(params["textDocument"]["version"], 1);
+            assert_eq!(params["textDocument"]["languageId"], "python");
+        } else {
+            panic!("Expected notification, got {msg:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_open_or_update_second_call_sends_did_change() {
+        let mock = MockTransport::new();
+        let mut session = LspSession::with_transport(Box::new(mock));
+
+        // First call — didOpen
+        session
+            .open_or_update_document("file:///test.py", "python", "v1")
+            .await
+            .unwrap();
+
+        // Second call — didChange with version 2
+        session
+            .open_or_update_document("file:///test.py", "python", "v2")
+            .await
+            .unwrap();
+
+        let sent = session.mock_sent_messages();
+        assert_eq!(sent.len(), 2);
+
+        let msg1 = LspMessage::from_frame_bytes(&sent[0]).unwrap();
+        if let LspMessage::Notification { method, .. } = msg1 {
+            assert_eq!(method, "textDocument/didOpen");
+        } else {
+            panic!("Expected notification, got {msg1:?}");
+        }
+
+        let msg2 = LspMessage::from_frame_bytes(&sent[1]).unwrap();
+        if let LspMessage::Notification { method, params } = msg2 {
+            assert_eq!(method, "textDocument/didChange");
+            assert_eq!(params["textDocument"]["version"], 2);
+            assert_eq!(params["contentChanges"][0]["text"], "v2");
+        } else {
+            panic!("Expected notification, got {msg2:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn test_open_or_update_increments_version() {
+        let mock = MockTransport::new();
+        let mut session = LspSession::with_transport(Box::new(mock));
+
+        session
+            .open_or_update_document("file:///a.rs", "rust", "1")
+            .await
+            .unwrap();
+        session
+            .open_or_update_document("file:///a.rs", "rust", "2")
+            .await
+            .unwrap();
+        session
+            .open_or_update_document("file:///a.rs", "rust", "3")
+            .await
+            .unwrap();
+
+        let sent = session.mock_sent_messages();
+        assert_eq!(sent.len(), 3);
+
+        // First is didOpen (version 1)
+        let msg0 = LspMessage::from_frame_bytes(&sent[0]).unwrap();
+        if let LspMessage::Notification { method, params } = msg0 {
+            assert_eq!(method, "textDocument/didOpen");
+            assert_eq!(params["textDocument"]["version"], 1);
+        }
+
+        // Second is didChange (version 2)
+        let msg1 = LspMessage::from_frame_bytes(&sent[1]).unwrap();
+        if let LspMessage::Notification { method, params } = msg1 {
+            assert_eq!(method, "textDocument/didChange");
+            assert_eq!(params["textDocument"]["version"], 2);
+        }
+
+        // Third is didChange (version 3)
+        let msg2 = LspMessage::from_frame_bytes(&sent[2]).unwrap();
+        if let LspMessage::Notification { method, params } = msg2 {
+            assert_eq!(method, "textDocument/didChange");
+            assert_eq!(params["textDocument"]["version"], 3);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_open_or_update_independent_documents() {
+        let mock = MockTransport::new();
+        let mut session = LspSession::with_transport(Box::new(mock));
+
+        session
+            .open_or_update_document("file:///a.py", "python", "a")
+            .await
+            .unwrap();
+        session
+            .open_or_update_document("file:///b.py", "python", "b")
+            .await
+            .unwrap();
+        session
+            .open_or_update_document("file:///a.py", "python", "a2")
+            .await
+            .unwrap();
+
+        let sent = session.mock_sent_messages();
+        assert_eq!(sent.len(), 3);
+
+        // a.py — didOpen
+        let msg0 = LspMessage::from_frame_bytes(&sent[0]).unwrap();
+        if let LspMessage::Notification { method, params } = msg0 {
+            assert_eq!(method, "textDocument/didOpen");
+            assert_eq!(params["textDocument"]["uri"], "file:///a.py");
+        }
+
+        // b.py — didOpen (independent)
+        let msg1 = LspMessage::from_frame_bytes(&sent[1]).unwrap();
+        if let LspMessage::Notification { method, params } = msg1 {
+            assert_eq!(method, "textDocument/didOpen");
+            assert_eq!(params["textDocument"]["uri"], "file:///b.py");
+        }
+
+        // a.py — didChange (version 2, b.py didn't affect it)
+        let msg2 = LspMessage::from_frame_bytes(&sent[2]).unwrap();
+        if let LspMessage::Notification { method, params } = msg2 {
+            assert_eq!(method, "textDocument/didChange");
+            assert_eq!(params["textDocument"]["uri"], "file:///a.py");
+            assert_eq!(params["textDocument"]["version"], 2);
         }
     }
 }

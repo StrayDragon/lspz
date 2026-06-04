@@ -234,30 +234,11 @@ impl McpServer {
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
+        // Open the document on first call, or send didChange on subsequent calls.
+        // This avoids re-sending didOpen for already-open documents, which can
+        // cause the LSP server to reset its state and return stale diagnostics.
         session
-            .send_notification(
-                "textDocument/didOpen",
-                serde_json::json!({
-                    "textDocument": {
-                        "uri": input.uri,
-                        "languageId": language,
-                        "version": 1,
-                        "text": content,
-                    }
-                }),
-            )
-            .await
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
-
-        // Send didChange to trigger re-analysis (full document sync).
-        session
-            .send_notification(
-                "textDocument/didChange",
-                serde_json::json!({
-                    "textDocument": { "uri": input.uri, "version": 2 },
-                    "contentChanges": [{ "text": content }],
-                }),
-            )
+            .open_or_update_document(&input.uri, &language, &content)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -331,18 +312,9 @@ impl McpServer {
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
+        // Open the document on first call, or send didChange on subsequent calls.
         session
-            .send_notification(
-                "textDocument/didOpen",
-                serde_json::json!({
-                    "textDocument": {
-                        "uri": input.uri,
-                        "languageId": language,
-                        "version": 1,
-                        "text": content,
-                    }
-                }),
-            )
+            .open_or_update_document(&input.uri, &language, &content)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -387,18 +359,9 @@ impl McpServer {
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
+        // Open the document on first call, or send didChange on subsequent calls.
         session
-            .send_notification(
-                "textDocument/didOpen",
-                serde_json::json!({
-                    "textDocument": {
-                        "uri": input.uri,
-                        "languageId": language,
-                        "version": 1,
-                        "text": content,
-                    }
-                }),
-            )
+            .open_or_update_document(&input.uri, &language, &content)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
