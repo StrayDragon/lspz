@@ -280,6 +280,17 @@ impl McpServer {
             }
         }
 
+        // If no matching notification arrived (timeout), return empty diagnostics
+        // instead of passing Value::Null to compress(), which would produce a
+        // misleading "missing 'uri'" error.
+        if params.is_null() {
+            return Ok(toon::diagnostics_to_toon(&compact::CompactDiagnostics {
+                version: 1,
+                uri: target_uri,
+                diagnostics: vec![],
+            }));
+        }
+
         let compressed = compact::compress(&params)
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 

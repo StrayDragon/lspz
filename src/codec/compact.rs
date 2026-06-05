@@ -194,6 +194,12 @@ pub struct CompressedEntry {
 /// `params` is the value of a `textDocument/publishDiagnostics` notification:
 /// `{"uri": "...", "diagnostics": [...]}`.
 pub fn compress(params: &Value) -> Result<Value, LspzError> {
+    if params.is_null() {
+        return Err(LspzError::Protocol(
+            "publishDiagnostics notification not received (timeout)".into(),
+        ));
+    }
+
     let uri = params
         .get("uri")
         .and_then(|v| v.as_str())
