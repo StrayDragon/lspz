@@ -92,11 +92,22 @@ pub fn patch_claude_md_ref(global: bool, dry_run: bool, force: bool) -> Result<b
             return Ok(false);
         }
 
+        // When force=true, deduplicate: strip any existing ref lines before appending.
+        let base = if force && content.contains(LSPZ_MD_REF) {
+            content
+                .lines()
+                .filter(|line| line.trim() != LSPZ_MD_REF.trim())
+                .collect::<Vec<_>>()
+                .join("\n")
+        } else {
+            content
+        };
+
         if dry_run {
             return Ok(true);
         }
 
-        let new_content = format!("{content}\n{LSPZ_MD_REF}\n");
+        let new_content = format!("{}\n{LSPZ_MD_REF}\n", base.trim_end());
         fs::write(&path, &new_content)
             .map_err(|e| LspzError::Config(format!("Failed to write {}: {e}", path.display())))?;
     } else {
@@ -384,20 +395,23 @@ mod tests {
     }
 
     #[test]
-    fn patch_claude_md_ref_force_overwrites() {
+    fn patch_claude_md_ref_force_deduplicates() {
         with_temp_claude_dir(|dir| {
             // First patch
             patch_claude_md_ref(true, false, false).unwrap();
             let content1 = fs::read_to_string(dir.join(CLAUDE_MD)).unwrap();
             assert!(content1.contains(LSPZ_MD_REF));
 
-            // Force patch - should return true even though ref already exists
-            let changed = patch_claude_md_ref(true, false, true).unwrap();
-            assert!(changed);
+            // Force patch twice - must NOT produce duplicate lines
+            patch_claude_md_ref(true, false, true).unwrap();
+            patch_claude_md_ref(true, false, true).unwrap();
 
-            // Content should still contain the ref
             let content2 = fs::read_to_string(dir.join(CLAUDE_MD)).unwrap();
-            assert!(content2.contains(LSPZ_MD_REF));
+            let ref_count = content2
+                .lines()
+                .filter(|line| line.trim() == LSPZ_MD_REF.trim())
+                .count();
+            assert_eq!(ref_count, 1, "force must not duplicate @LSPZ.md ref");
         });
     }
 }
