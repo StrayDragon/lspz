@@ -1,6 +1,6 @@
 [package]
 name = "lspz"
-version = "0.10.8"
+version = "0.10.9"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/straydragon/lspz"
