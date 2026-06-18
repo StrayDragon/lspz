@@ -30,10 +30,7 @@ impl LspPool {
         root_path: Option<&str>,
         extra_args: &[String],
     ) -> Result<&mut LspSession, anyhow::Error> {
-        let key = match root_path {
-            Some(root) => format!("{language}:{cmd}:{root}"),
-            None => format!("{language}:{cmd}"),
-        };
+        let key = pool_key(language, cmd, root_path);
         if !self.sessions.contains_key(&key) {
             let mut session = LspSession::spawn_with_args(cmd, extra_args)?;
             let init_params = InitializeParams {
@@ -45,10 +42,38 @@ impl LspPool {
         }
         Ok(self.sessions.get_mut(&key).unwrap())
     }
+
+    /// Look up an existing session by its pool key.
+    ///
+    /// Returns an error if the session hasn't been spawned yet.
+    /// The key format is `{language}:{backend}:{root_path}` or `{language}:{backend}`.
+    pub fn get_mut_by_key(&mut self, key: &str) -> Result<&mut LspSession, anyhow::Error> {
+        self.sessions
+            .get_mut(key)
+            .ok_or_else(|| anyhow::anyhow!("no session for key: {key}"))
+    }
+
+    /// Check whether a session exists for the given key.
+    pub fn contains_key(&self, key: &str) -> bool {
+        self.sessions.contains_key(key)
+    }
+
+    /// Snapshot current session keys for status reporting.
+    pub fn session_keys(&self) -> Vec<String> {
+        self.sessions.keys().cloned().collect()
+    }
 }
 
 impl Default for LspPool {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Build a pool key from language, backend command, and optional workspace root.
+pub fn pool_key(language: &str, cmd: &str, root_path: Option<&str>) -> String {
+    match root_path {
+        Some(root) => format!("{language}:{cmd}:{root}"),
+        None => format!("{language}:{cmd}"),
     }
 }

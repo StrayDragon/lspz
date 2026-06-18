@@ -56,6 +56,21 @@ struct ProxyArgs {
 #[derive(Parser, Debug)]
 #[command(version, about)]
 enum Cli {
+    /// Run daemon — long-lived background LSP session manager
+    #[command(name = "daemon", alias = "d")]
+    Daemon {
+        /// Path to the Unix domain socket
+        #[arg(long)]
+        socket: Option<String>,
+
+        /// Log level (trace, debug, info, warn, error)
+        #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
+        log_level: String,
+
+        #[command(subcommand)]
+        command: Option<DaemonCommand>,
+    },
+
     /// Run in proxy mode — transparent LSP proxy with diagnostic compression
     #[command(name = "proxy", alias = "p")]
     Proxy {
@@ -182,6 +197,10 @@ enum Cli {
         /// Log level (trace, debug, info, warn, error)
         #[arg(short, long, env = "LSPZ_LOG_LEVEL", default_value = "info")]
         log_level: String,
+
+        /// Disable daemon auto-connect (use in-process LSP pool instead)
+        #[arg(long)]
+        no_daemon: bool,
     },
 
     /// Initialize Claude Code integration (MCP server registration, context injection)
@@ -217,9 +236,40 @@ enum Cli {
     },
 }
 
+/// Subcommands for `lspz daemon`.
+#[derive(clap::Subcommand, Debug)]
+enum DaemonCommand {
+    /// List active LSP server sessions managed by the daemon
+    List {
+        /// Workspace root path (auto-detected from current directory if omitted)
+        #[arg(short, long)]
+        workspace: Option<String>,
+
+        /// Output as JSON
+        #[arg(long)]
+        json: bool,
+
+        /// Output as TOON (token-optimized tabular)
+        #[arg(long)]
+        toon: bool,
+    },
+}
+
 #[tokio::main]
 async fn main() -> ExitCode {
     match Cli::parse() {
+        Cli::Daemon {
+            socket,
+            log_level,
+            command,
+        } => match command {
+            Some(DaemonCommand::List {
+                workspace,
+                json,
+                toon,
+            }) => run_daemon_list(workspace, json, toon).await,
+            None => run_daemon(socket, log_level).await,
+        },
         Cli::Proxy {
             backend,
             backend_args,
@@ -263,7 +313,10 @@ async fn main() -> ExitCode {
             run_proxy(args).await
         }
         #[cfg(feature = "mcp")]
-        Cli::Mcp { log_level } => run_mcp(log_level).await,
+        Cli::Mcp {
+            log_level,
+            no_daemon,
+        } => run_mcp(log_level, no_daemon).await,
         #[cfg(not(feature = "mcp"))]
         Cli::Mcp { .. } => {
             eprintln!(
@@ -507,10 +560,187 @@ fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorCh
     }
 }
 
+/// Start lspz daemon in the background.
+#[cfg(not(feature = "mcp"))]
+async fn run_daemon(_socket: Option<String>, _log_level: String) -> ExitCode {
+    eprintln!(
+        "Error: Daemon mode is not enabled in this build.\n  \
+         Rebuild with `--features mcp` to enable daemon support."
+    );
+    ExitCode::FAILURE
+}
+
+/// Query daemon status (stub when mcp is disabled).
+#[cfg(not(feature = "mcp"))]
+async fn run_daemon_list(_workspace: Option<String>, _json: bool, _toon: bool) -> ExitCode {
+    eprintln!(
+        "Error: daemon list is not enabled in this build.\n  \
+         Rebuild with `--features mcp` to enable daemon support."
+    );
+    ExitCode::FAILURE
+}
+
+/// Start lspz daemon in the background.
 #[cfg(feature = "mcp")]
-async fn run_mcp(log_level: String) -> ExitCode {
+async fn run_daemon(socket: Option<String>, log_level: String) -> ExitCode {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::builder().parse_lossy(&log_level))
+        .with_target(false)
+        .init();
+
+    let workspace_root = std::env::var("LSPZ_DAEMON_WORKSPACE").unwrap_or_else(|_| {
+        std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".into())
+    });
+
+    let socket_path = match socket {
+        Some(p) => std::path::PathBuf::from(p),
+        None => lspz::daemon::socket_path_for_workspace(&workspace_root),
+    };
+
+    use lspz::daemon::DaemonServer;
+    let server = DaemonServer::new(socket_path);
+    if let Err(e) = server.start().await {
+        eprintln!("Daemon failed: {e}");
+        return ExitCode::FAILURE;
+    }
+    ExitCode::SUCCESS
+}
+
+/// Query daemon status.
+#[cfg(feature = "mcp")]
+async fn run_daemon_list(workspace: Option<String>, json: bool, toon: bool) -> ExitCode {
+    let workspace_root = match workspace {
+        Some(w) => w,
+        None => std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".into()),
+    };
+
+    use lspz::daemon::DaemonClient;
+    match DaemonClient::try_connect(&workspace_root).await {
+        Ok(Some(mut client)) => {
+            match client.get_status().await {
+                Ok(status) => {
+                    // Parse into DaemonStatus for structured access
+                    let ds: lspz::daemon::DaemonStatus =
+                        match serde_json::from_value(status.clone()) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("Error parsing daemon status: {e}");
+                                println!(
+                                    "{}",
+                                    serde_json::to_string_pretty(&status).unwrap_or_default()
+                                );
+                                return ExitCode::FAILURE;
+                            }
+                        };
+
+                    if toon {
+                        println!("{}", format_status_toon(&ds));
+                    } else if json {
+                        println!("{}", serde_json::to_string_pretty(&ds).unwrap_or_default());
+                    } else {
+                        println!("{}", format_status_human(&ds));
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(e) => {
+                    eprintln!("Error querying daemon status: {e}");
+                    ExitCode::FAILURE
+                }
+            }
+        }
+        Ok(None) => {
+            println!("No lspz daemon running for workspace: {workspace_root}");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Connection error: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Format daemon status as human-friendly text.
+#[cfg(feature = "mcp")]
+fn format_status_human(ds: &lspz::daemon::DaemonStatus) -> String {
+    let mut out = String::new();
+    let uptime_m = ds.uptime_secs / 60;
+    let uptime_s = ds.uptime_secs % 60;
+
+    out.push_str(&format!("  Uptime: {uptime_m}m {uptime_s}s\n"));
+    out.push_str(&format!("  Requests: {}\n", ds.total_requests));
+    out.push_str(&format!("  Connections: {}\n", ds.total_connections));
+    out.push_str(&format!("  Sessions: {}\n", ds.sessions.len()));
+
+    if ds.sessions.is_empty() {
+        out.push_str("\n  (no active sessions)\n");
+    } else {
+        for s in &ds.sessions {
+            let age_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .saturating_sub(s.created_at);
+            let idle_secs = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs()
+                .saturating_sub(s.last_used_at);
+            let age_m = age_secs / 60;
+            let idle_s = idle_secs % 60;
+
+            out.push('\n');
+            out.push_str(&format!("  {} ({})\n", s.language, s.backend));
+            if let Some(root) = &s.workspace_root {
+                out.push_str(&format!("    workspace: {root}\n"));
+            }
+            out.push_str(&format!("    key: {}\n", s.key));
+            out.push_str(&format!("    requests: {}\n", s.request_count));
+            out.push_str(&format!("    age: {age_m}m\n"));
+            out.push_str(&format!("    idle: {idle_s}s\n"));
+        }
+    }
+    out
+}
+
+/// Format daemon status as TOON text.
+#[cfg(feature = "mcp")]
+fn format_status_toon(ds: &lspz::daemon::DaemonStatus) -> String {
+    let mut out = String::from("# daemon status\n");
+    out.push_str(&format!("# uptime_secs={}\n", ds.uptime_secs));
+    out.push_str(&format!("# total_requests={}\n", ds.total_requests));
+    out.push_str(&format!("# total_connections={}\n", ds.total_connections));
+    out.push_str(&format!("# sessions={}\n", ds.sessions.len()));
+
+    if !ds.sessions.is_empty() {
+        out.push_str("#\n");
+        out.push_str("# key | language | backend | workspace | requests | age_s | idle_s\n");
+        out.push_str("# --- | -------- | ------- | --------- | -------- | ----- | ------\n");
+
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+
+        for s in &ds.sessions {
+            let age = now.saturating_sub(s.created_at);
+            let idle = now.saturating_sub(s.last_used_at);
+            let root = s.workspace_root.as_deref().unwrap_or("-");
+            out.push_str(&format!(
+                "{} | {} | {} | {} | {} | {} | {}\n",
+                s.key, s.language, s.backend, root, s.request_count, age, idle
+            ));
+        }
+    }
+    out
+}
+
+#[cfg(feature = "mcp")]
+async fn run_mcp(log_level: String, no_daemon: bool) -> ExitCode {
     // Write tracing to a file to avoid polluting MCP's stdio JSON-RPC stream.
-    // Some MCP clients (e.g. Cursor) merge stderr into stdout, breaking the protocol.
     let log_dir = dirs::cache_dir().unwrap_or_else(|| std::path::PathBuf::from("/tmp"));
     let log_path = log_dir.join("lspz-mcp.log");
     let log_file = std::fs::File::create(&log_path).unwrap_or_else(|e| {
@@ -524,21 +754,40 @@ async fn run_mcp(log_level: String) -> ExitCode {
         .with_writer(std::sync::Mutex::new(log_file))
         .init();
 
-    tracing::info!("Starting lspz MCP server");
-
-    let server = lspz::mcp::McpServer::new();
-
-    match server.serve(stdio()).await {
-        Ok(service) => {
-            tracing::info!("MCP server ready (stdio)");
-            if let Err(e) = service.waiting().await {
-                tracing::error!(error = %e, "MCP server exited with error");
+    if no_daemon {
+        tracing::info!("Starting lspz MCP server (in-process)");
+        let server = lspz::mcp::McpServer::new();
+        match server.serve(stdio()).await {
+            Ok(service) => {
+                tracing::info!("MCP server ready (stdio)");
+                if let Err(e) = service.waiting().await {
+                    tracing::error!(error = %e, "MCP server exited with error");
+                    return ExitCode::FAILURE;
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to start MCP server");
                 return ExitCode::FAILURE;
             }
         }
-        Err(e) => {
-            tracing::error!(error = %e, "Failed to start MCP server");
-            return ExitCode::FAILURE;
+    } else {
+        tracing::info!("Starting lspz MCP server (daemon mode)");
+        let workspace = std::env::current_dir()
+            .map(|p| p.to_string_lossy().to_string())
+            .unwrap_or_else(|_| ".".into());
+        let server = lspz::mcp::DaemonMcpServer::new(workspace);
+        match server.serve(stdio()).await {
+            Ok(service) => {
+                tracing::info!("MCP server ready (stdio, daemon-backed)");
+                if let Err(e) = service.waiting().await {
+                    tracing::error!(error = %e, "MCP server exited with error");
+                    return ExitCode::FAILURE;
+                }
+            }
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to start MCP server");
+                return ExitCode::FAILURE;
+            }
         }
     }
 

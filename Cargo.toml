@@ -28,6 +28,10 @@ tracing = "0.1"
 toml = "1"
 notify = "8"
 
+# Unix-only dependencies
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
 # CLI (optional)
 clap = { version = "4", optional = true, features = ["derive", "env"] }
 tracing-subscriber = { version = "0.3", optional = true, features = ["env-filter"] }
