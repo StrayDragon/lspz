@@ -863,6 +863,7 @@ dependencies = [
  "criterion",
  "dirs",
  "futures-util",
+ "libc",
  "notify",
  "rmcp",
  "serde",

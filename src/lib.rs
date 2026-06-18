@@ -32,6 +32,9 @@ pub mod transport;
 pub mod init;
 
 #[cfg(feature = "mcp")]
+pub mod daemon;
+
+#[cfg(feature = "mcp")]
 pub mod mcp;
 
 #[cfg(feature = "agent-sdk")]

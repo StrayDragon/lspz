@@ -49,33 +49,33 @@ fn tool_definitions() -> Vec<Tool> {
 // ─── Input Types ───────────────────────────────────────────────────────────
 
 #[derive(Debug, serde::Deserialize)]
-struct GetDiagnosticsInput {
-    uri: String,
-    backend: Option<String>,
-    language: Option<String>,
-    backend_args: Option<Vec<String>>,
+pub struct GetDiagnosticsInput {
+    pub uri: String,
+    pub backend: Option<String>,
+    pub language: Option<String>,
+    pub backend_args: Option<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct GetCompletionsInput {
-    uri: String,
-    backend: Option<String>,
-    language: Option<String>,
-    line: u32,
-    character: u32,
-    backend_args: Option<Vec<String>>,
+pub struct GetCompletionsInput {
+    pub uri: String,
+    pub backend: Option<String>,
+    pub language: Option<String>,
+    pub line: u32,
+    pub character: u32,
+    pub backend_args: Option<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct GetSymbolsInput {
-    uri: String,
-    backend: Option<String>,
-    language: Option<String>,
-    backend_args: Option<Vec<String>>,
+pub struct GetSymbolsInput {
+    pub uri: String,
+    pub backend: Option<String>,
+    pub language: Option<String>,
+    pub backend_args: Option<Vec<String>>,
 }
 
 /// Extract file extension from a `file://` URI.
-fn extension_from_uri(uri: &str) -> Option<&str> {
+pub(crate) fn extension_from_uri(uri: &str) -> Option<&str> {
     let path = uri.strip_prefix("file://")?;
     let name = path.rsplit('/').next()?;
     let (before, after) = name.rsplit_once('.')?;
@@ -86,7 +86,7 @@ fn extension_from_uri(uri: &str) -> Option<&str> {
 }
 
 /// Merge default backend args (from language mapping) with user-provided args.
-fn merge_backend_args(uri: &str, user_args: Option<&[String]>) -> Vec<String> {
+pub(crate) fn merge_backend_args(uri: &str, user_args: Option<&[String]>) -> Vec<String> {
     let ext = extension_from_uri(uri).unwrap_or("");
     let defaults = default_args_by_extension(ext);
     let mut merged: Vec<String> = defaults.iter().map(|s| s.to_string()).collect();
@@ -112,7 +112,7 @@ const ROOT_MARKERS: &[&str] = &[
 ///
 /// Returns a canonicalized absolute path (resolves symlinks) so that different
 /// paths pointing to the same directory produce the same cache key.
-fn detect_workspace_root(uri: &str) -> Option<String> {
+pub(crate) fn detect_workspace_root(uri: &str) -> Option<String> {
     let path = uri.strip_prefix("file://")?;
     let mut dir = std::path::Path::new(path);
     if dir.is_file() {
@@ -134,7 +134,7 @@ fn detect_workspace_root(uri: &str) -> Option<String> {
 ///
 /// Returns `(language, backend)` on success, or an error if neither explicit values
 /// nor auto-detection can determine them.
-fn resolve_language_backend(
+pub(crate) fn resolve_language_backend(
     uri: &str,
     language: Option<&str>,
     backend: Option<&str>,
@@ -465,7 +465,7 @@ impl ServerHandler for McpServer {
 
 // ─── JSON Schema Helpers ───────────────────────────────────────────────────
 
-trait JsonSchema {
+pub(crate) trait JsonSchema {
     fn json_schema() -> serde_json::Value;
 }
 
