@@ -1,5 +1,35 @@
 # Changelog
 
+## v0.11.2 (2026-06-23)
+
+Daemon reuse and lifecycle — fixes the core issue where the MCP-backed
+daemon was effectively never reused across MCP sessions.
+
+- **Reliable reuse** (`daemon/socket.rs`): `socket_path_for_workspace` now
+  canonicalizes the workspace root via `resolve_workspace_root` *before*
+  hashing. The same project reached via a trailing slash, `..`, or a symlink
+  now lands on the same socket. Previously each spelling variant spawned a
+  fresh daemon, each pinning its own language server.
+- **Unified entry points** (`main.rs`, `mcp/daemon_server.rs`): the three CLI
+  commands (`mcp`, `daemon`, `daemon list`) and `DaemonMcpServer` all route
+  their workspace string through the canonicalizer, so they agree on what
+  "the same workspace" means.
+- **Live activity tracking** (`mcp/session.rs`, `daemon/status.rs`):
+  `LspSession` records `last_used_at` on every I/O; the daemon bumps
+  `DaemonStatus` per `lsp/{request,notify,wait_notify}` via the new
+  `touch_by_key`, so `daemon list` idle times reflect real activity instead
+  of just the initial spawn.
+- **Idle session reaping** (`mcp/pool.rs`, `daemon/server.rs`): new
+  `LspPool::reap_idle` drops sessions past a 10 min TTL, killing the child
+  language-server process to free memory.
+- **Daemon self-exit** (`daemon/server.rs`): a background reaper counts
+  active connections (RAII `ConnectionGuard`, panic/abort-safe) and, once the
+  pool is empty **and** no client is connected for 10 min, removes the
+  socket and exits. This is the only safety net for daemons detached via
+  `setsid()` whose MCP client crashed without sending `daemon/shutdown`.
+- Added regression tests for socket canonicalization (trailing slash, `..`,
+  fallback) and `reap_idle` boundary behavior.
+
 ## v0.11.1 (2026-06-23)
 
 Daemon protocol desync fix — eliminates misleading `spawn failed: Wait for
