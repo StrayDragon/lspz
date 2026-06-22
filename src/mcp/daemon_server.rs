@@ -19,7 +19,6 @@ use rmcp::{
     },
     service::{RequestContext, RoleServer},
 };
-use serde_json::Value;
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
@@ -156,40 +155,36 @@ impl DaemonMcpServer {
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         }
 
-        // Wait for diagnostic notification
+        // Wait for the single `publishDiagnostics` notification for this file.
+        //
+        // Per the LSP spec, the first notification for a URI after `didOpen`
+        // carries the *complete* diagnostic set — an empty array is the
+        // legitimate terminal state for a clean file. We must NOT re-issue the
+        // wait hoping for non-empty diagnostics: that second request gets
+        // cancelled by our own deadline, leaving an orphan response line that
+        // desyncs the daemon's newline-delimited protocol (the root cause of
+        // the `spawn failed: Wait for notification failed: ...` and `missing
+        // 'uri' in publishDiagnostics` errors).
+        //
+        // The daemon enforces `timeout_ms` (well below the client read
+        // backstop), so it always writes a response before we could time out —
+        // no client-side cancellation, no orphan. A null result (timeout/slow
+        // server) yields empty diagnostics below.
+        // Budget for the daemon-side wait, in ms. Kept below the client read
+        // timeout so the daemon always replies first.
+        const DIAGNOSTIC_WAIT_MS: u64 = 10_000;
         let params = {
             let mut guard = self.client.lock().await;
             let client = guard.as_mut().unwrap();
-
-            let mut result = serde_json::Value::Null;
-            let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-            loop {
-                let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-                if remaining.is_zero() {
-                    break;
-                }
-
-                match tokio::time::timeout(
-                    remaining,
-                    client.lsp_wait_notify(
-                        &session_key,
-                        "textDocument/publishDiagnostics",
-                        Some(&input.uri),
-                    ),
+            client
+                .lsp_wait_notify(
+                    &session_key,
+                    "textDocument/publishDiagnostics",
+                    Some(&input.uri),
+                    Some(DIAGNOSTIC_WAIT_MS),
                 )
                 .await
-                {
-                    Ok(Ok(p)) => {
-                        result = p;
-                        let diags = result.get("diagnostics").and_then(Value::as_array);
-                        if diags.is_some_and(|a| !a.is_empty()) {
-                            break;
-                        }
-                    }
-                    _ => break,
-                }
-            }
-            result
+                .unwrap_or(serde_json::Value::Null)
         };
 
         if params.is_null() {

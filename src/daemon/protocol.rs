@@ -99,6 +99,19 @@ pub struct WaitNotifyParams {
     /// Optional URI filter for diagnostics.
     #[serde(default)]
     pub filter_uri: Option<String>,
+    /// Maximum time to wait, in milliseconds.
+    ///
+    /// The daemon enforces this deadline and always writes back a response
+    /// (success or timeout error) before it elapses. This lets the client
+    /// `await` the result directly instead of racing its own (longer) read
+    /// timeout and then *cancelling* the future — cancellation would leave the
+    /// already-written request line without a matching read, and the daemon
+    /// would still complete it and write an "orphan" response line that
+    /// desyncs the newline-delimited protocol.
+    ///
+    /// `None` falls back to the daemon/LSP session default wait.
+    #[serde(default)]
+    pub timeout_ms: Option<u64>,
 }
 
 #[cfg(test)]
