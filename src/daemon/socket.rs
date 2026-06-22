@@ -1,19 +1,55 @@
 //! Daemon socket path helpers.
 //!
-//! Centralizes socket path generation so the daemon server and
-//! all clients produce the same path for a given workspace.
+//! Centralizes socket path generation so the daemon server and all clients
+//! produce the same path for a given workspace.
+//!
+//! ## Canonicalization (mandatory)
+//!
+//! [`socket_path_for_workspace`] canonicalizes the workspace path (resolving
+//! symlinks, `..`, redundant separators, trailing slashes) **before** hashing.
+//! This is what makes daemon reuse actually work: the same directory reached
+//! via different strings (`/proj`, `/proj/`, `/home/../proj`, a symlink) must
+//! land on the *same* socket. Without it, every spelling variant spawns a
+//! fresh daemon, each pinning its own language server, and the detached
+//! processes pile up forever.
 
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 
+/// Resolve a workspace root string into a canonicalized absolute path.
+///
+/// This is the single normalization point for workspace identity across the
+/// whole crate: the CLI (`lspz mcp`, `lspz daemon`, `lspz daemon list`), the
+/// MCP server, and the daemon client all derive the daemon socket path from a
+/// workspace root, so they must all agree on what "the same workspace" means.
+///
+/// # Rules
+///
+/// - If the path exists on disk, it is fully canonicalized (resolves symlinks,
+///   `..`, redundant separators, trailing slashes).
+/// - If canonicalization fails (e.g. the path does not exist yet, or the
+///   caller passed a non-path string in tests), the input is returned as-is so
+///   callers still get a deterministic — though possibly non-canonical — key.
+///   This keeps startup working on fresh workspaces and keeps the function
+///   infallible.
+pub fn resolve_workspace_root(workspace_root: &str) -> String {
+    std::fs::canonicalize(workspace_root)
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_else(|_| workspace_root.to_string())
+}
+
 /// Compute the Unix socket path for a given workspace root.
 ///
-/// Hash-based deterministic: same path every time for the same workspace.
+/// The workspace root is first canonicalized via [`resolve_workspace_root`],
+/// then hashed deterministically: the same directory always maps to the same
+/// socket, regardless of how its path was spelled.
+///
 /// Format: `~/.cache/lspz/<slug>-<hash>.sock`
 pub fn socket_path_for_workspace(workspace_root: &str) -> PathBuf {
-    let hash = hash_string(workspace_root);
-    let slug = workspace_slug(workspace_root);
+    let canonical = resolve_workspace_root(workspace_root);
+    let hash = hash_string(&canonical);
+    let slug = workspace_slug(&canonical);
     let lspz_dir = lspz_cache_dir();
     lspz_dir.join(format!("{slug}-{hash:016x}.sock"))
 }
@@ -68,5 +104,39 @@ mod tests {
     #[test]
     fn test_hash_deterministic() {
         assert_eq!(hash_string("hello"), hash_string("hello"));
+    }
+
+    /// A trailing slash must not change the socket — same directory.
+    #[test]
+    fn test_socket_path_ignores_trailing_slash() {
+        let dir = tempfile::tempdir().unwrap();
+        let canonical = dir.path().canonicalize().unwrap();
+        let with_slash = format!("{}/", canonical.display());
+
+        let a = socket_path_for_workspace(canonical.to_str().unwrap());
+        let b = socket_path_for_workspace(&with_slash);
+        assert_eq!(a, b, "trailing slash must not change socket");
+    }
+
+    /// `..` segments must not change the socket — they resolve to the same dir.
+    #[test]
+    fn test_socket_path_resolves_dotdot() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create `sub` so that `<dir>/sub/..` canonicalizes successfully.
+        std::fs::create_dir_all(dir.path().join("sub")).unwrap();
+        let canonical = dir.path().canonicalize().unwrap();
+        let via_dotdot = canonical.join("sub").join("..");
+
+        let a = socket_path_for_workspace(canonical.to_str().unwrap());
+        let b = socket_path_for_workspace(via_dotdot.to_str().unwrap());
+        assert_eq!(a, b, "'..' segments must not change socket");
+    }
+
+    /// `resolve_workspace_root` is infallible: unknown paths fall back as-is.
+    #[test]
+    fn test_resolve_nonexistent_falls_back() {
+        let raw = "/this/path/does/not/exist/lspz-xyz";
+        let resolved = resolve_workspace_root(raw);
+        assert_eq!(resolved, raw);
     }
 }

@@ -4,9 +4,18 @@
 //!
 //! ## Architecture
 //!
-//! The daemon listens on a Unix domain socket at `~/.lspz/<workspace-hash>.sock`.
+//! The daemon listens on a Unix domain socket at
+//! `~/.cache/lspz/<slug>-<hash>.sock`, where `<hash>` is derived from the
+//! **canonicalized** workspace root (see [`socket_path_for_workspace`] /
+//! [`resolve_workspace_root`]). Canonicalization is what makes the daemon
+//! reusable: the same project reached via different path spellings lands on
+//! the same socket.
+//!
 //! Clients (MCP server, CLI) connect to it transparently. When no daemon is
-//! running, the client auto-spawns one in the background.
+//! running, the client auto-spawns one in the background. A background reaper
+//! reclaims idle LSP sessions and, once the daemon has had no sessions and no
+//! connections for a while, shuts the daemon down so detached processes
+//! (spawned via `setsid()`) do not pile up.
 //!
 //! ## Protocol
 //!
@@ -32,5 +41,5 @@ mod status;
 pub use client::DaemonClient;
 pub use protocol::{DaemonRequest, DaemonResponse, SpawnParams};
 pub use server::DaemonServer;
-pub use socket::socket_path_for_workspace;
+pub use socket::{resolve_workspace_root, socket_path_for_workspace};
 pub use status::DaemonStatus;

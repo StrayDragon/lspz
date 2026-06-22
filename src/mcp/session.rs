@@ -1,7 +1,7 @@
 //! LSP session — manages a single LSP server connection.
 
 use std::collections::HashMap;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crate::StdioTransport;
 use crate::Transport;
@@ -21,6 +21,10 @@ pub struct LspSession {
     next_id: i64,
     /// Tracks which document URIs are currently open and their latest version.
     open_documents: HashMap<String, i32>,
+    /// Last time this session performed I/O. Used by the pool's idle reaper
+    /// to reclaim sessions (and the underlying LSP process) that have gone
+    /// quiet. Monotonic clock — process-local, never serialized.
+    last_used_at: Instant,
 }
 
 impl LspSession {
@@ -36,6 +40,7 @@ impl LspSession {
             transport: Box::new(transport),
             next_id: 1,
             open_documents: HashMap::new(),
+            last_used_at: Instant::now(),
         })
     }
 
@@ -45,11 +50,29 @@ impl LspSession {
             transport,
             next_id: 1,
             open_documents: HashMap::new(),
+            last_used_at: Instant::now(),
         }
+    }
+
+    /// Record that this session was just used.
+    ///
+    /// Every public I/O method calls this on entry so the pool's idle reaper
+    /// sees fresh activity and does not reclaim a session mid-conversation.
+    fn touch(&mut self) {
+        self.last_used_at = Instant::now();
+    }
+
+    /// Last time this session performed I/O (monotonic, process-local).
+    ///
+    /// The daemon's idle reaper uses this to drop sessions whose language
+    /// server has been quiet for too long.
+    pub fn last_used_at(&self) -> Instant {
+        self.last_used_at
     }
 
     /// Perform the LSP initialize/initialized handshake.
     pub async fn initialize(&mut self, params: InitializeParams) -> Result<Value, anyhow::Error> {
+        self.touch();
         let root_uri = params.root_uri.map(|p| {
             if p.starts_with("file://") {
                 p
@@ -88,6 +111,7 @@ impl LspSession {
         method: &str,
         params: Value,
     ) -> Result<Value, anyhow::Error> {
+        self.touch();
         let id = self.next_id;
         self.next_id += 1;
         let msg = LspMessage::Request {
@@ -102,6 +126,7 @@ impl LspSession {
             let raw = tokio::time::timeout(Duration::from_secs(30), self.transport.receive())
                 .await
                 .map_err(|_| anyhow::anyhow!("timeout waiting for response to '{method}'"))??;
+            self.touch();
             let parsed = LspMessage::from_frame_bytes(&raw)?;
             match parsed {
                 LspMessage::Response {
@@ -140,6 +165,7 @@ impl LspSession {
         method: &str,
         params: Value,
     ) -> Result<(), anyhow::Error> {
+        self.touch();
         let msg = LspMessage::Notification {
             method: method.into(),
             params,
@@ -161,6 +187,7 @@ impl LspSession {
         language_id: &str,
         content: &str,
     ) -> Result<(), anyhow::Error> {
+        self.touch();
         let new_version = if let Some(version) = self.open_documents.get_mut(uri) {
             *version += 1;
             Some(*version)
@@ -209,10 +236,12 @@ impl LspSession {
         method: &str,
         predicate: impl Fn(&Value) -> bool,
     ) -> Result<Value, anyhow::Error> {
+        self.touch();
         loop {
             let raw = tokio::time::timeout(Duration::from_secs(30), self.transport.receive())
                 .await
                 .map_err(|_| anyhow::anyhow!("timeout waiting for '{method}' notification"))??;
+            self.touch();
             let parsed = LspMessage::from_frame_bytes(&raw)?;
             match parsed {
                 LspMessage::Notification { method: m, params }

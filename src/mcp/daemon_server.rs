@@ -26,6 +26,7 @@ use super::server::{
     GetCompletionsInput, GetDiagnosticsInput, GetSymbolsInput, JsonSchema, detect_workspace_root,
     merge_backend_args, resolve_language_backend,
 };
+use crate::daemon::resolve_workspace_root;
 
 /// MCP server that delegates to a lspz daemon.
 ///
@@ -43,6 +44,7 @@ impl DaemonMcpServer {
     ///
     /// `workspace_root` should be a canonicalized absolute path.
     pub fn new(workspace_root: String) -> Self {
+        let workspace_root = resolve_workspace_root(&workspace_root);
         Self {
             client: Arc::new(Mutex::new(None)),
             root_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
