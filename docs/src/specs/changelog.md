@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.11.1 (2026-06-23)
+
+Daemon protocol desync fix — eliminates misleading `spawn failed: Wait for
+notification failed: ...` and `missing 'uri' in publishDiagnostics` errors on
+clean (0-diagnostic) files.
+
+- **Eliminate trigger** (`mcp/daemon_server.rs`): `get_diagnostics` now waits
+  for a single `publishDiagnostics` per file instead of re-issuing the wait
+  hoping for non-empty results. An empty diagnostic array is a valid terminal
+  state per the LSP spec.
+- **Robust protocol** (`daemon/client.rs`): `request()` drains
+  orphan/out-of-order response lines (logging them) until the id-matching
+  response arrives, instead of returning the first line on the wire.
+- **Prevent orphans** (`daemon/{protocol,server,client}.rs`): new optional
+  `timeout_ms` on `WaitNotifyParams`; the daemon enforces it and always replies
+  before the client could time out, so cancelled waits no longer leave orphan
+  response lines.
+- Added two regression tests that discriminate (fail when their fix is
+  reverted): `test_client_drains_orphan_response`,
+  `test_wait_notify_respects_client_timeout_ms`.
+
 ## v0.1.0 (2026-05-10)
 
 LSP diagnostic compression proxy MVP — Library and Proxy modes.
