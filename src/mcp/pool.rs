@@ -64,6 +64,17 @@ impl LspPool {
     }
 }
 
+#[cfg(test)]
+impl LspPool {
+    /// Insert a pre-built session under a key (testing only).
+    ///
+    /// Allows driving daemon handlers against a session backed by a mock
+    /// transport, without spawning a real LSP server.
+    pub fn insert_session_for_test(&mut self, key: &str, session: LspSession) {
+        self.sessions.insert(key.to_string(), session);
+    }
+}
+
 impl Default for LspPool {
     fn default() -> Self {
         Self::new()

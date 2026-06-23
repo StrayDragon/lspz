@@ -3,8 +3,10 @@
 //! Accepts connections on a Unix domain socket, multiplexes LSP requests
 //! over the internal [`LspPool`], and returns results as JSON-RPC responses.
 
+use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Context;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -270,15 +272,22 @@ async fn handle_wait_notify(
         Err(e) => return DaemonResponse::err(id, e.to_string()),
     };
 
+    // The client may pass a deadline (`timeout_ms`). The daemon enforces it so
+    // it always writes a response *before* the client gives up. Without this,
+    // a client that cancels its `lsp_wait_notify` future at its own (shorter)
+    // deadline would leave an orphan response on the wire and desync the
+    // newline-delimited protocol — see the analysis of the spawn/desync bug.
+    let deadline = req.timeout_ms.map(Duration::from_millis);
+
     let result = if let Some(uri) = &req.filter_uri {
         let uri_clone = uri.clone();
-        session
-            .wait_for_notification_where(&req.method, move |p| {
-                p.get("uri").and_then(serde_json::Value::as_str) == Some(&uri_clone)
-            })
-            .await
+        let fut = session.wait_for_notification_where(&req.method, move |p| {
+            p.get("uri").and_then(serde_json::Value::as_str) == Some(&uri_clone)
+        });
+        apply_wait_deadline(fut, deadline, &req.method).await
     } else {
-        session.wait_for_notification(&req.method).await
+        let fut = session.wait_for_notification(&req.method);
+        apply_wait_deadline(fut, deadline, &req.method).await
     };
 
     match result {
@@ -287,9 +296,92 @@ async fn handle_wait_notify(
     }
 }
 
+/// Run a notification-wait future, optionally bounded by a client-supplied
+/// deadline. When the deadline elapses, return a timeout error instead of
+/// continuing to wait on the LSP transport.
+async fn apply_wait_deadline<F>(
+    fut: F,
+    deadline: Option<Duration>,
+    method: &str,
+) -> Result<serde_json::Value, anyhow::Error>
+where
+    F: Future<Output = Result<serde_json::Value, anyhow::Error>>,
+{
+    match deadline {
+        Some(d) => match tokio::time::timeout(d, fut).await {
+            Ok(inner) => inner,
+            Err(_) => Err(anyhow::anyhow!(
+                "timeout waiting for '{method}' notification"
+            )),
+        },
+        None => fut.await,
+    }
+}
+
 /// Handle `daemon/status` — return current daemon state.
 async fn handle_status(id: u64, status: &Arc<Mutex<DaemonStatus>>) -> DaemonResponse {
     let s = status.lock().await;
     let json = serde_json::to_value(&*s).unwrap_or(serde_json::Value::Null);
     DaemonResponse::ok(id, json)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::Transport;
+    use crate::error::LspzError;
+    use crate::mcp::{LspPool, LspSession};
+
+    /// A transport whose `receive()` never completes, simulating an LSP server
+    /// that never publishes the waited-for notification.
+    struct PendingTransport;
+
+    #[async_trait::async_trait]
+    impl Transport for PendingTransport {
+        async fn receive(&mut self) -> Result<Vec<u8>, LspzError> {
+            std::future::pending().await
+        }
+        async fn send(&mut self, _data: &[u8]) -> Result<(), LspzError> {
+            Ok(())
+        }
+    }
+
+    /// `handle_wait_notify` must honour `timeout_ms` instead of falling back to
+    /// the LSP session's internal ~30s wait. Enforcing the deadline on the
+    /// daemon side is what lets the client await the response directly (no
+    /// cancellation, no orphan response line). A timeout here must therefore
+    /// arrive at ~`timeout_ms`, not 30s.
+    #[tokio::test]
+    async fn test_wait_notify_respects_client_timeout_ms() {
+        let pool = Arc::new(Mutex::new(LspPool::new()));
+        pool.lock().await.insert_session_for_test(
+            "rust:fake:/tmp",
+            LspSession::with_transport(Box::new(PendingTransport)),
+        );
+
+        let params = serde_json::json!({
+            "session_key": "rust:fake:/tmp",
+            "method": "textDocument/publishDiagnostics",
+            "timeout_ms": 200,
+        });
+
+        let start = std::time::Instant::now();
+        let resp = handle_wait_notify(1, &params, &pool).await;
+        let elapsed = start.elapsed();
+
+        assert!(
+            resp.error.is_some(),
+            "expected a timeout error, got success: {:?}",
+            resp.result
+        );
+        assert!(
+            elapsed >= Duration::from_millis(150),
+            "waited only {elapsed:?}, expected ~200ms"
+        );
+        assert!(
+            elapsed < Duration::from_secs(2),
+            "waited {elapsed:?}; the daemon did NOT honour timeout_ms and fell \
+             back to the long default wait (would orphan a cancelled client)"
+        );
+    }
 }

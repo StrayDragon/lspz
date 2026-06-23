@@ -189,16 +189,24 @@ impl DaemonClient {
     }
 
     /// Wait for a notification from the LSP server.
+    ///
+    /// `timeout_ms`, when set, is forwarded to the daemon, which enforces the
+    /// deadline and always writes a response before it elapses. This avoids the
+    /// client cancelling a still-running wait (which would orphan the response
+    /// line). It should be comfortably shorter than the internal read timeout
+    /// used by the request/response loop.
     pub async fn lsp_wait_notify(
         &mut self,
         session_key: &str,
         method: &str,
         filter_uri: Option<&str>,
+        timeout_ms: Option<u64>,
     ) -> Result<Value, anyhow::Error> {
         let req = WaitNotifyParams {
             session_key: session_key.to_string(),
             method: method.to_string(),
             filter_uri: filter_uri.map(|s| s.to_string()),
+            timeout_ms,
         };
         let resp = self
             .request("lsp/wait_notify", &serde_json::to_value(&req)?)
@@ -230,7 +238,21 @@ impl DaemonClient {
 
     // ─── Internal ────────────────────────────────────────────────
 
-    /// Send a JSON-RPC request and read the response.
+    /// Send a JSON-RPC request and read the matching response.
+    ///
+    /// The daemon protocol is newline-delimited JSON with request/response
+    /// correlation by `id`. Responses are **not** guaranteed to arrive in the
+    /// exact order the client expects: an earlier request whose future was
+    /// cancelled (e.g. a tool call dropped by the caller) still gets completed
+    /// by the daemon, whose response line then sits on the wire as an "orphan".
+    ///
+    /// Reading exactly one line and returning it would mistake that orphan for
+    /// *this* request's response, permanently desyncing the stream — every
+    /// later request would read the wrong line (this is the root cause of the
+    /// `spawn failed: Wait for notification failed: ...` and `missing 'uri' in
+    /// publishDiagnostics` errors). We therefore loop, draining any
+    /// orphan/out-of-order lines (logging them), until the response whose `id`
+    /// matches ours arrives.
     async fn request(
         &mut self,
         method: &str,
@@ -250,18 +272,26 @@ impl DaemonClient {
         self.writer.write_all(json.as_bytes()).await?;
         self.writer.flush().await?;
 
-        // Read response line.
-        let mut line = String::new();
-        tokio::time::timeout(Duration::from_secs(30), self.reader.read_line(&mut line))
-            .await
-            .context("Timeout waiting for daemon response")?
-            .context("Daemon connection closed")?;
+        // Read response lines until ours arrives, draining orphans.
+        loop {
+            let mut line = String::new();
+            tokio::time::timeout(Duration::from_secs(30), self.reader.read_line(&mut line))
+                .await
+                .context("Timeout waiting for daemon response")?
+                .context("Daemon connection closed")?;
 
-        let resp: DaemonResponse = serde_json::from_str(line.trim())?;
-        if resp.id != id {
-            warn!(expected = id, got = resp.id, "Response ID mismatch");
+            let resp: DaemonResponse = serde_json::from_str(line.trim())?;
+            if resp.id == id {
+                return Ok(resp);
+            }
+            warn!(
+                expected = id,
+                got = resp.id,
+                error = ?resp.error,
+                "Drained orphan/out-of-order daemon response from a cancelled or \
+                 earlier request; protocol stays in sync",
+            );
         }
-        Ok(resp)
     }
 }
 
