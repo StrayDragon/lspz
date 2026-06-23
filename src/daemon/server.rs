@@ -6,7 +6,8 @@
 use std::future::Future;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant};
 
 use anyhow::Context;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -23,6 +24,10 @@ pub struct DaemonServer {
     socket_path: PathBuf,
     pool: Arc<Mutex<LspPool>>,
     status: Arc<Mutex<DaemonStatus>>,
+    /// Count of currently-connected clients. The idle reaper consults this to
+    /// avoid exiting while a client (e.g. a live `lspz mcp` process) is still
+    /// attached, even if the pool is momentarily empty.
+    active_connections: Arc<AtomicU64>,
 }
 
 impl DaemonServer {
@@ -35,6 +40,7 @@ impl DaemonServer {
             socket_path,
             pool: Arc::new(Mutex::new(LspPool::new())),
             status: Arc::new(Mutex::new(DaemonStatus::default())),
+            active_connections: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -70,14 +76,29 @@ impl DaemonServer {
 
         let pool = self.pool.clone();
         let status = self.status.clone();
+        let active_connections = self.active_connections.clone();
+
+        spawn_idle_reaper(
+            pool.clone(),
+            status.clone(),
+            active_connections.clone(),
+            self.socket_path.clone(),
+        );
 
         loop {
             match listener.accept().await {
                 Ok((stream, _addr)) => {
-                    debug!("Daemon: new client connection");
+                    active_connections.fetch_add(1, Ordering::Relaxed);
+                    debug!(
+                        active = active_connections.load(Ordering::Relaxed),
+                        "Daemon: new client connection"
+                    );
                     let pool = pool.clone();
                     let status = status.clone();
+                    let conns = active_connections.clone();
                     tokio::spawn(async move {
+                        // Decrement on task exit — including panic/abort, via Drop.
+                        let _guard = ConnectionGuard(conns);
                         if let Err(e) = handle_client(stream, pool, status).await {
                             warn!(error = %e, "Client handler exited with error");
                         }
@@ -89,6 +110,91 @@ impl DaemonServer {
             }
         }
     }
+}
+
+/// RAII guard that decrements the daemon's active-connection counter when
+/// dropped. Ensures the count stays accurate even if a handler task panics or
+/// is aborted, which the idle reaper relies on to decide when the daemon is
+/// truly unused.
+struct ConnectionGuard(Arc<AtomicU64>);
+
+impl Drop for ConnectionGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
+}
+
+/// Reclaim an idle LSP session after this long without I/O.
+///
+/// Dropping the session kills its child language-server process, freeing the
+/// bulk of the memory.
+const SESSION_IDLE_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// Once the pool is empty **and** no client is connected, wait this long before
+/// the daemon shuts itself down. This is the only safety net for daemons that
+/// short-lived MCP clients detached via `setsid()` and then crashed: there is
+/// no one left to send `daemon/shutdown`.
+const DAEMON_IDLE_TTL: Duration = Duration::from_secs(10 * 60);
+
+/// How often the reaper rechecks idle state.
+const REAPER_CHECK_INTERVAL: Duration = Duration::from_secs(60);
+
+/// Spawn the background idle reaper.
+///
+/// Periodically reaps quiet LSP sessions and, once the daemon has had no
+/// sessions and no connections for [`DAEMON_IDLE_TTL`], removes the socket
+/// file and exits the process.
+fn spawn_idle_reaper(
+    pool: Arc<Mutex<LspPool>>,
+    status: Arc<Mutex<DaemonStatus>>,
+    active_connections: Arc<AtomicU64>,
+    socket_path: PathBuf,
+) {
+    tokio::spawn(async move {
+        let mut daemon_idle_since: Option<Instant> = None;
+        loop {
+            tokio::time::sleep(REAPER_CHECK_INTERVAL).await;
+
+            // Reap idle sessions first — this may empty the pool.
+            let reaped = pool.lock().await.reap_idle(SESSION_IDLE_TTL);
+            if reaped > 0 {
+                info!(reaped, "Reaped idle LSP sessions");
+                // Drop status entries whose backing session no longer exists,
+                // so `daemon list` does not show ghost sessions.
+                let live_keys = pool.lock().await.session_keys();
+                status
+                    .lock()
+                    .await
+                    .sessions
+                    .retain(|info| live_keys.contains(&info.key));
+            }
+
+            let busy = {
+                let pool_guard = pool.lock().await;
+                !pool_guard.is_empty() || active_connections.load(Ordering::Relaxed) > 0
+            };
+
+            if busy {
+                if daemon_idle_since.is_some() {
+                    debug!("Daemon active again, cancelling pending self-exit");
+                }
+                daemon_idle_since = None;
+            } else if daemon_idle_since.is_none() {
+                daemon_idle_since = Some(Instant::now());
+                info!(
+                    ttl_secs = DAEMON_IDLE_TTL.as_secs(),
+                    "Daemon is idle; will self-exit if it stays unused"
+                );
+            } else if daemon_idle_since.unwrap().elapsed() >= DAEMON_IDLE_TTL {
+                info!(
+                    socket = %socket_path.display(),
+                    "Daemon idle timeout reached, shutting down"
+                );
+                let _ = std::fs::remove_file(&socket_path);
+                std::process::exit(0);
+            }
+        }
+    });
 }
 
 /// Handle a single client connection.
@@ -138,9 +244,9 @@ async fn dispatch(
 
     match req.method.as_str() {
         "lsp/spawn" => handle_spawn(id, &req.params, pool, status).await,
-        "lsp/request" => handle_lsp_request(id, &req.params, pool).await,
-        "lsp/notify" => handle_lsp_notify(id, &req.params, pool).await,
-        "lsp/wait_notify" => handle_wait_notify(id, &req.params, pool).await,
+        "lsp/request" => handle_lsp_request(id, &req.params, pool, status).await,
+        "lsp/notify" => handle_lsp_notify(id, &req.params, pool, status).await,
+        "lsp/wait_notify" => handle_wait_notify(id, &req.params, pool, status).await,
         "daemon/status" => handle_status(id, status).await,
         "daemon/shutdown" => {
             info!("Daemon shutdown requested by client");
@@ -214,11 +320,13 @@ async fn handle_lsp_request(
     id: u64,
     params: &serde_json::Value,
     pool: &Arc<Mutex<LspPool>>,
+    status: &Arc<Mutex<DaemonStatus>>,
 ) -> DaemonResponse {
     let req: super::protocol::LspRequestParams = match serde_json::from_value(params.clone()) {
         Ok(r) => r,
         Err(e) => return DaemonResponse::err(id, format!("Invalid params: {e}")),
     };
+    status.lock().await.touch_by_key(&req.session_key);
 
     let mut pool_guard = pool.lock().await;
     let session = match pool_guard.get_mut_by_key(&req.session_key) {
@@ -237,11 +345,13 @@ async fn handle_lsp_notify(
     id: u64,
     params: &serde_json::Value,
     pool: &Arc<Mutex<LspPool>>,
+    status: &Arc<Mutex<DaemonStatus>>,
 ) -> DaemonResponse {
     let req: super::protocol::LspNotifyParams = match serde_json::from_value(params.clone()) {
         Ok(r) => r,
         Err(e) => return DaemonResponse::err(id, format!("Invalid params: {e}")),
     };
+    status.lock().await.touch_by_key(&req.session_key);
 
     let mut pool_guard = pool.lock().await;
     let session = match pool_guard.get_mut_by_key(&req.session_key) {
@@ -260,11 +370,13 @@ async fn handle_wait_notify(
     id: u64,
     params: &serde_json::Value,
     pool: &Arc<Mutex<LspPool>>,
+    status: &Arc<Mutex<DaemonStatus>>,
 ) -> DaemonResponse {
     let req: super::protocol::WaitNotifyParams = match serde_json::from_value(params.clone()) {
         Ok(r) => r,
         Err(e) => return DaemonResponse::err(id, format!("Invalid params: {e}")),
     };
+    status.lock().await.touch_by_key(&req.session_key);
 
     let mut pool_guard = pool.lock().await;
     let session = match pool_guard.get_mut_by_key(&req.session_key) {
@@ -366,7 +478,8 @@ mod tests {
         });
 
         let start = std::time::Instant::now();
-        let resp = handle_wait_notify(1, &params, &pool).await;
+        let status = Arc::new(Mutex::new(DaemonStatus::default()));
+        let resp = handle_wait_notify(1, &params, &pool, &status).await;
         let elapsed = start.elapsed();
 
         assert!(

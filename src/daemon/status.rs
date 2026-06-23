@@ -35,6 +35,25 @@ pub struct DaemonStatus {
 }
 
 impl DaemonStatus {
+    /// Mark an existing session as just-used (looked up by pool key).
+    ///
+    /// Unlike [`touch_session`](Self::touch_session), this never creates a new
+    /// entry — it only bumps `request_count` and `last_used_at` for an entry
+    /// that [`touch_session`](Self::touch_session) already created. The daemon
+    /// calls this when dispatching `lsp/request`, `lsp/notify`, and
+    /// `lsp/wait_notify` so that the idle timestamps shown to users reflect
+    /// real activity, not just the initial `lsp/spawn`.
+    pub fn touch_by_key(&mut self, key: &str) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        if let Some(s) = self.sessions.iter_mut().find(|s| s.key == key) {
+            s.request_count += 1;
+            s.last_used_at = now;
+        }
+    }
+
     /// Record or update a session entry.
     pub fn touch_session(
         &mut self,

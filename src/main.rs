@@ -588,11 +588,13 @@ async fn run_daemon(socket: Option<String>, log_level: String) -> ExitCode {
         .with_target(false)
         .init();
 
-    let workspace_root = std::env::var("LSPZ_DAEMON_WORKSPACE").unwrap_or_else(|_| {
-        std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
-            .unwrap_or_else(|_| ".".into())
-    });
+    let workspace_root = std::env::var("LSPZ_DAEMON_WORKSPACE")
+        .map(|v| resolve_workspace(&v))
+        .unwrap_or_else(|_| {
+            std::env::current_dir()
+                .map(|p| resolve_workspace(&p.to_string_lossy()))
+                .unwrap_or_else(|_| ".".into())
+        });
 
     let socket_path = match socket {
         Some(p) => std::path::PathBuf::from(p),
@@ -612,9 +614,9 @@ async fn run_daemon(socket: Option<String>, log_level: String) -> ExitCode {
 #[cfg(feature = "mcp")]
 async fn run_daemon_list(workspace: Option<String>, json: bool, toon: bool) -> ExitCode {
     let workspace_root = match workspace {
-        Some(w) => w,
+        Some(w) => resolve_workspace(&w),
         None => std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| resolve_workspace(&p.to_string_lossy()))
             .unwrap_or_else(|_| ".".into()),
     };
 
@@ -738,6 +740,16 @@ fn format_status_toon(ds: &lspz::daemon::DaemonStatus) -> String {
     out
 }
 
+/// Canonicalize a workspace root the same way the daemon socket layer does.
+///
+/// All daemon-aware CLI entry points (`mcp`, `daemon`, `daemon list`) route
+/// their workspace string through here so that the same project reached via
+/// different path spellings lands on the same daemon.
+#[cfg(feature = "mcp")]
+fn resolve_workspace(raw: &str) -> String {
+    lspz::daemon::resolve_workspace_root(raw)
+}
+
 #[cfg(feature = "mcp")]
 async fn run_mcp(log_level: String, no_daemon: bool) -> ExitCode {
     // Write tracing to a file to avoid polluting MCP's stdio JSON-RPC stream.
@@ -773,7 +785,7 @@ async fn run_mcp(log_level: String, no_daemon: bool) -> ExitCode {
     } else {
         tracing::info!("Starting lspz MCP server (daemon mode)");
         let workspace = std::env::current_dir()
-            .map(|p| p.to_string_lossy().to_string())
+            .map(|p| resolve_workspace(&p.to_string_lossy()))
             .unwrap_or_else(|_| ".".into());
         let server = lspz::mcp::DaemonMcpServer::new(workspace);
         match server.serve(stdio()).await {
