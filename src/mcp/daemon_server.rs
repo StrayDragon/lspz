@@ -122,13 +122,9 @@ impl DaemonMcpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = self.cached_workspace_root(&input.uri);
-        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
-        let session_key = self
-            .ensure_session(&language, &backend, root, &extra)
-            .await?;
-
+        // Read file content first — fail fast if file doesn't exist,
+        // avoiding orphan LSP sessions for invalid URIs.
         let path = input
             .uri
             .strip_prefix("file://")
@@ -136,6 +132,13 @@ impl DaemonMcpServer {
         let content = tokio::fs::read_to_string(path)
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
+
+        let root = self.cached_workspace_root(&input.uri);
+        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
+
+        let session_key = self
+            .ensure_session(&language, &backend, root, &extra)
+            .await?;
 
         {
             let mut guard = self.client.lock().await;
@@ -212,14 +215,9 @@ impl DaemonMcpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = self.cached_workspace_root(&input.uri);
-        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
-        let session_key = self
-            .ensure_session(&language, &backend, root, &extra)
-            .await?;
-
-        // Open the document
+        // Read file content first — fail fast if file doesn't exist,
+        // avoiding orphan LSP sessions for invalid URIs.
         let path = input
             .uri
             .strip_prefix("file://")
@@ -227,6 +225,13 @@ impl DaemonMcpServer {
         let content = tokio::fs::read_to_string(path)
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
+
+        let root = self.cached_workspace_root(&input.uri);
+        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
+
+        let session_key = self
+            .ensure_session(&language, &backend, root, &extra)
+            .await?;
 
         {
             let mut guard = self.client.lock().await;
@@ -273,13 +278,9 @@ impl DaemonMcpServer {
             input.language.as_deref(),
             input.backend.as_deref(),
         )?;
-        let root = self.cached_workspace_root(&input.uri);
-        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
-        let session_key = self
-            .ensure_session(&language, &backend, root, &extra)
-            .await?;
-
+        // Read file content first — fail fast if file doesn't exist,
+        // avoiding orphan LSP sessions for invalid URIs.
         let path = input
             .uri
             .strip_prefix("file://")
@@ -287,6 +288,13 @@ impl DaemonMcpServer {
         let content = tokio::fs::read_to_string(path)
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
+
+        let root = self.cached_workspace_root(&input.uri);
+        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
+
+        let session_key = self
+            .ensure_session(&language, &backend, root, &extra)
+            .await?;
 
         {
             let mut guard = self.client.lock().await;
