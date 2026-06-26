@@ -1,0 +1,18 @@
+kind: llman.sdd.spec
+name: proxy
+purpose: "代理核心，管理 LSP 会话生命周期、消息路由和拦截器链执行。"
+valid_scope[2]: src/proxy.rs,tests/
+requirements[5]{req_id,title,statement}:
+  r1,生命周期管理,系统 MUST 支持完整的 Proxy 生命周期：Created→Initializing→Ready→Working→ShuttingDown→Exited。
+  r2,消息路由,系统 MUST 将 Client→Server 消息透明转发，Server→Client 消息经过拦截器链处理。
+  r3,LSP 握手,系统 MUST 正确处理 initialize/initialized 握手流程。
+  r4,配置驱动,系统 MUST 使用 Config 结构体控制运行时行为。
+  r5,优雅关闭,系统 MUST 支持 shutdown 请求和 exit 通知的优雅关闭流程。
+scenarios[7]{req_id,id,given,when,then}:
+  r1,proxy-create,"Config 实例",Proxy::new(),状态变为 Created
+  r1,proxy-initialize,"Created 状态的 Proxy",调用 initialize(),状态变为 Initializing
+  r2,forward-client-msg,"Client→Server 消息",消息循环,透明转发给 LSP 服务器
+  r2,intercept-server-msg,"Server→Client 消息",消息循环,经过拦截器链处理后发送给客户端
+  r3,initialize-handshake,"LSP 客户端发送 initialize",Proxy 处理,转发给服务器并返回 capabilities
+  r4,config-backend,"配置指定 backend",Proxy 创建,使用指定的 LSP 服务器
+  r5,shutdown-flow,"调用 shutdown()",Proxy 处理,发送 shutdown 请求和 exit 通知

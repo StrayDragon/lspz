@@ -1,0 +1,15 @@
+kind: llman.sdd.spec
+name: mcp
+purpose: "MCP 服务器集成，将 LSP 能力暴露为 MCP 工具供 Claude Desktop 等客户端使用。"
+valid_scope[2]: src/mcp/,tests/
+requirements[4]{req_id,title,statement}:
+  r1,MCP 服务器,系统 MUST 实现 MCP 服务器协议，暴露 LSP 能力为 MCP 工具。
+  r2,工具注册,系统 MUST 注册 get_diagnostics、get_completions、get_symbols 等 MCP 工具。
+  r3,会话管理,系统 MUST 通过 AgentPool 管理多个 LSP 会话。
+  r4,自动语言检测,系统 MUST 根据文件扩展名自动检测语言和对应的 LSP 后端。
+scenarios[5]{req_id,id,given,when,then}:
+  r1,mcp-start,"MCP 服务器配置",启动 lspz mcp,服务器开始监听 MCP 请求
+  r2,tool-diagnostics,"MCP 客户端调用 get_diagnostics",MCP 服务器处理,返回压缩后的诊断信息
+  r2,tool-completions,"MCP 客户端调用 get_completions",MCP 服务器处理,返回压缩后的补全信息
+  r3,session-reuse,"相同工作空间的多个请求",AgentPool 处理,复用现有 LSP 会话
+  r4,auto-detect-rs,".rs 文件",工具调用,自动使用 rust-analyzer

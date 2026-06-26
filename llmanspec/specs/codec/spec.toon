@@ -1,0 +1,16 @@
+kind: llman.sdd.spec
+name: codec
+purpose: "编解码层，实现 JSON-RPC 2.0 协议编解码和多种输出格式（TOON、compact、passthrough）。"
+valid_scope[2]: src/codec/,tests/
+requirements[4]{req_id,title,statement}:
+  r1,JSON-RPC 编解码,系统 MUST 正确编解码 JSON-RPC 2.0 协议消息。
+  r2,TOON 格式,系统 MUST 支持 TOON（Token-Oriented Object Notation）输出格式。
+  r3,Compact 格式,系统 MUST 支持 compact 格式，使用缩短的字段名。
+  r4,Passthrough 格式,系统 MUST 支持 passthrough 格式，原样转发原始 LSP JSON。
+scenarios[6]{req_id,id,given,when,then}:
+  r1,encode-request,"JSON-RPC 请求",编码,输出符合 JSON-RPC 2.0 规范的字节
+  r1,decode-response,"JSON-RPC 响应字节",解码,输出 serde_json::Value
+  r2,toon-diagnostics,"诊断数据",TOON 编码,输出行协议+表格格式
+  r2,toon-completions,"补全数据",TOON 编码,输出行协议+表格格式
+  r3,compact-diagnostics,"诊断数据",compact 编码,输出缩短字段名的 JSON
+  r4,passthrough-diagnostics,"诊断数据",passthrough 编码,输出原始 LSP JSON
