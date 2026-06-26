@@ -1,1 +1,0 @@
-docs/src/specs/changelog.md
