@@ -45,14 +45,6 @@ doc-check:
 doc-test:
     cargo test --doc --all-features
 
-# Build the mdbook.
-book:
-    cd docs && mdbook build
-
-# Serve mdbook with live reload.
-book-serve:
-    cd docs && mdbook serve --open
-
 # --- Benchmarks ---
 
 # Run Criterion throughput benchmarks.
@@ -63,15 +55,10 @@ bench:
 bench-report:
     cargo run --example bench-report
 
-# Regenerate benchmark report into docs/src/benchmarks.md.
-gen-bench:
-    bash scripts/run-bench.sh
-
 # Run compression demo with sample data (quick verification).
 compress-demo:
     cargo run --example compress-demo
 
-# Run full benchmark suite + save report.
+# Run full benchmark suite.
 bench-all:
     cargo bench
-    bash scripts/run-bench.sh

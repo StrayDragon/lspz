@@ -4,14 +4,14 @@
   # lspz
 
   [![](https://img.shields.io/crates/v/lspz?style=flat-square&logo=rust&label=crates.io)](https://crates.io/crates/lspz)
+  [![](https://img.shields.io/crates/dr/lspz?style=flat-square&logo=rust)](https://crates.io/crates/lspz)
   [![](https://img.shields.io/docsrs/lspz?style=flat-square&logo=docsdotrs&label=docs.rs)](https://docs.rs/lspz)
-  [![](https://img.shields.io/crates/l/lspz?style=flat-square&color=blue)](https://github.com/straydragon/lspz/blob/main/LICENSE)
-  [![](https://img.shields.io/badge/edition-2024-orange?style=flat-square)](https://blog.rust-lang.org/2025/02/20/Rust-2024-Edition.html)
+  [![](https://img.shields.io/github/stars/straydragon/lspz?style=flat-square&logo=github)](https://github.com/straydragon/lspz/stargazers)
   [![](https://img.shields.io/github/actions/workflow/status/straydragon/lspz/ci.yml?style=flat-square&logo=github&label=CI)](https://github.com/straydragon/lspz/actions)
+  [![](https://img.shields.io/crates/l/lspz?style=flat-square&color=blue)](https://github.com/straydragon/lspz/blob/main/LICENSE)
 
   **lsp** **z**ip — 压缩 LSP 消息，给 AI 智能体省 token
 
-  [快速开始](docs/src/getting-started.md) · [架构设计](docs/src/architecture.md) · [API 文档](https://docs.rs/lspz) · [文档书](docs/src/SUMMARY.md)
 </div>
 
 ---
@@ -51,18 +51,20 @@ lspz mcp
 
 用 tiktoken 在真实 LSP 服务器输出上测的。TOON（Token-Oriented Object Notation）是默认输出格式。
 
-| 拦截器 | LSP 方法 | 紧凑格式节省 | TOON 节省 |
+| 拦截器 | LSP 方法 | 紧凑 vs 原始 | TOON vs 原始 |
 |---|---|---|---|
 | DiagnosticsCompressor | `textDocument/publishDiagnostics` | 73.5% | 76.6% |
-| HoverCompressor | `textDocument/hover` | 1.6% | 23.8% |
 | DocumentSymbolCompressor | `textDocument/documentSymbol` | 33.0% | 72.1% |
-| CompletionCompressor | `textDocument/completion` | — | 16.9% |
-| LocationCompressor | references/definition/... | 60–85% | — |
-| WorkspaceDiagnosticCompressor | `workspace/diagnostic` | 83–90% | — |
-| WorkspaceSymbolCompressor | `workspace/symbol` | 70–76% | — |
-| CappingInterceptor | 任意大响应 | 80–95% | — |
+| HoverCompressor | `textDocument/hover` | 1.6% | 23.8% |
+| WorkspaceDiagnosticCompressor | `workspace/diagnostic` | 26.2% | 29.3% |
+| CompletionCompressor | `textDocument/completion` | -0.7% | 16.9% |
+| WorkspaceSymbolCompressor | `workspace/symbol` | -5.3% | 36.7% |
+| LocationCompressor | `textDocument/references` 等 | -19.1% | 13.9% |
 
-完整数据见 [benchmarks.md](docs/src/benchmarks.md)。
+> 紧凑格式对小输入有 JSON 字段名开销，诊断和符号等大响应收益显著。
+> TOON 是默认格式，在所有场景下都能稳定节省 token。
+
+完整数据用 `cargo run --example bench-report` 生成。
 
 ## 输出格式
 
@@ -103,7 +105,7 @@ let edits = agent.rename("file:///home/user/project/src/main.rs", 10, 5, "new_na
 agent.shutdown().await?;
 ```
 
-完整 API 见 [Agent 集成指南](docs/src/guides/agent-integration.md)。
+完整 API 见 [Agent 集成指南](https://docs.rs/lspz/latest/lspz/agent_sdk/)。
 
 ## 安装
 
@@ -132,8 +134,8 @@ just qa                             # fmt + clippy + test + doc-check
 
 ## 文档
 
-- [文档书](docs/src/SUMMARY.md) — 架构、指南、规格
 - [API 参考](https://docs.rs/lspz) — 从 `///` 注释自动生成
+- [LSP 规范](docs/LSP-Specification.html) — LSP 3.17 规范参考
 - [CHANGELOG](CHANGELOG.md) — 版本历史
 - [ROADMAP](ROADMAP.md) — 已完成和计划中的功能
 
