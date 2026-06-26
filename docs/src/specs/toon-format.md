@@ -221,5 +221,5 @@ main               ← 顶层符号
 ## 参考
 
 - [TOON 规范 v3.0](https://github.com/toon-format/spec/blob/main/SPEC.md)
-- [002-compression-format.md](002-compression-format.md) — 当前紧凑 JSON 格式规范
-- [003-lsp-compatibility.md](003-lsp-compatibility.md) — LSP 兼容性规范
+- [压缩格式](./compression-format.md) — 当前紧凑 JSON 格式规范
+- [LSP 兼容性](./lsp-compatibility.md) — LSP 兼容性规范

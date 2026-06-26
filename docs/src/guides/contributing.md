@@ -183,7 +183,7 @@ git push origin feature/your-feature-name
 - 新功能必须有集成测试
 - 性能敏感代码需要基准测试
 
-详见: [docs/guides/testing-guide.md](testing-guide.md)
+详见: [测试指南](./testing.md)
 
 ---
 

@@ -1,6 +1,6 @@
 # lspz MVP 产品需求文档 v2.0
 
-> NOTE: LSP 服务器信息已整合到 [docs/specs/003-lsp-compatibility.md](./specs/lsp-compatibility.md)
+> NOTE: LSP 服务器信息已整合到 [LSP 兼容性规范](./specs/lsp-compatibility.md)
 
 ---
 
