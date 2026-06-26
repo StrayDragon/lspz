@@ -3,11 +3,17 @@
 ## 安装
 
 ```bash
+# 从 crates.io 安装（默认启用 cli feature）
+cargo install lspz
+
+# 安装并启用 MCP 服务器功能
+cargo install lspz --features mcp
+
+# 安装并启用 Agent SDK（隐含 mcp）
+cargo install lspz --features agent-sdk
+
 # 从源码构建（需要 Rust 2024 edition）
 cargo build --release
-
-# 或直接安装到 PATH
-cargo install --path .
 ```
 
 ## 作为 CLI Proxy 使用
@@ -32,7 +38,7 @@ lspz proxy --backend rust-analyzer --listen 127.0.0.1:9000
 
 ```toml
 [dependencies]
-lspz = "0.9"
+lspz = "0.11"
 ```
 
 基本使用示例：
@@ -60,7 +66,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ```toml
 [dependencies]
-lspz = { version = "0.9", features = ["mcp"] }
+lspz = { version = "0.11", features = ["mcp"] }
 ```
 
 ## 运行示例

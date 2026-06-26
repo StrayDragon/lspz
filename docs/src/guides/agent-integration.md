@@ -42,7 +42,7 @@
 
 ```toml
 [dependencies]
-lspz = { version = "0.9", default-features = false, features = ["agent-sdk"] }
+lspz = { version = "0.11", default-features = false, features = ["agent-sdk"] }
 tokio = { version = "1.35", features = ["full"] }
 anyhow = "1.0"
 ```

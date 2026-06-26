@@ -11,7 +11,7 @@ lspz 必须完全符合 [Language Server Protocol 3.17](https://microsoft.github
 
 **输出侧**（AI Agent 端）不受 LSP 标准约束——lspz 的消费端始终是 LLM，
 而非标准 LSP Client。这意味着输出格式可以完全脱离 JSON，采用
-[TOON 输出格式](005-toon-format.md) 等 LLM 原生友好的格式。
+[TOON 输出格式](./toon-format.md) 等 LLM 原生友好的格式。
 
 ### 兼容性原则
 
@@ -103,7 +103,7 @@ flowchart LR
 
 | 消息 | 处理方式 | 压缩策略 |
 |------|----------|----------|
-| `textDocument/publishDiagnostics` | 压缩后转发 | 诊断压缩（详见 [002-compression-format.md](002-compression-format.md)） |
+| `textDocument/publishDiagnostics` | 压缩后转发 | 诊断压缩（详见 [compression-format.md](./compression-format.md)） |
 
 ---
 
@@ -383,7 +383,6 @@ match compress_diagnostics(diagnostics) {
 
 - [LSP 3.17 规范](https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/)
 - [JSON-RPC 2.0 规范](https://www.jsonrpc.org/specification)
-- [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范
-- [specs/001-tri-modal-architecture.md](001-tri-modal-architecture.md) - 三模态架构
-- [specs/002-compression-format.md](002-compression-format.md) - 压缩格式规范（含输出格式进化路线）
-- [specs/005-toon-format.md](005-toon-format.md) - TOON 输出格式格式草案
+- [压缩格式](./compression-format.md) - 压缩格式规范
+- [架构设计](../architecture.md) - 三模态架构
+- [TOON 格式](./toon-format.md) - TOON 输出格式草案

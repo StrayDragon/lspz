@@ -32,7 +32,7 @@ Agent (LSP 客户端) ←→ lspz ←→ LSP 服务器 (rust-analyzer, gopls, ..
 
 ```toml
 [dependencies]
-lspz = { version = "0.9", default-features = false }
+lspz = { version = "0.11", default-features = false }
 ```
 
 **CLI 代理** — 直接替换你的 LSP 服务器命令：
@@ -104,6 +104,23 @@ agent.shutdown().await?;
 ```
 
 完整 API 见 [Agent 集成指南](docs/src/guides/agent-integration.md)。
+
+## 安装
+
+```bash
+# 从 crates.io（默认启用 cli feature）
+cargo install lspz
+
+# 启用 MCP 服务器
+cargo install lspz --features mcp
+
+# 启用 Agent SDK（隐含 mcp）
+cargo install lspz --features agent-sdk
+
+# 从源码
+git clone https://github.com/straydragon/lspz && cd lspz
+cargo install --path .
+```
 
 ## 快速验证
 
