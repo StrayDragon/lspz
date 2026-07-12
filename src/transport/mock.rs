@@ -3,6 +3,7 @@
 //! Pre-program responses with `push_response` or `push_message`,
 //! then inspect captured requests with `sent_messages`.
 
+use std::process::ExitStatus;
 use std::sync::Mutex;
 
 use crate::codec::json_rpc::LspMessage;
@@ -29,6 +30,8 @@ pub struct MockTransport {
     incoming: Mutex<Vec<Vec<u8>>>,
     pos: Mutex<usize>,
     sent: Mutex<Vec<Vec<u8>>>,
+    /// When set, [`Transport::try_wait`] reports the process as exited.
+    exited: Mutex<bool>,
 }
 
 impl MockTransport {
@@ -38,7 +41,13 @@ impl MockTransport {
             incoming: Mutex::new(Vec::new()),
             pos: Mutex::new(0),
             sent: Mutex::new(Vec::new()),
+            exited: Mutex::new(false),
         }
+    }
+
+    /// Mark this mock as a dead child process (for pool reaping tests).
+    pub fn mark_exited(&self) {
+        *self.exited.lock().unwrap() = true;
     }
 
     /// Enqueue a raw framed message to be returned by the next `receive()`.
@@ -91,6 +100,22 @@ impl Transport for MockTransport {
     async fn send(&mut self, data: &[u8]) -> Result<(), LspzError> {
         self.sent.lock().unwrap().push(data.to_vec());
         Ok(())
+    }
+
+    fn try_wait(&mut self) -> Result<Option<ExitStatus>, LspzError> {
+        if *self.exited.lock().unwrap() {
+            #[cfg(unix)]
+            {
+                use std::os::unix::process::ExitStatusExt;
+                return Ok(Some(ExitStatus::from_raw(0)));
+            }
+            #[cfg(not(unix))]
+            {
+                // Non-unix: fabricate via a finished process is awkward; treat as still alive.
+                return Ok(None);
+            }
+        }
+        Ok(None)
     }
 
     fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {

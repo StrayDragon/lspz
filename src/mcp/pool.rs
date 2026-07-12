@@ -26,6 +26,7 @@ impl LspPool {
     ///
     /// Double-checked locking: lookup under a short lock, spawn+initialize outside
     /// the lock, then insert under a short lock (loser of a race is dropped).
+    /// Dead child processes (try_wait reports exit) are removed before reuse.
     pub async fn get_or_spawn(
         pool: &Arc<Mutex<Self>>,
         language: &str,
@@ -35,7 +36,8 @@ impl LspPool {
     ) -> Result<Arc<Mutex<LspSession>>, anyhow::Error> {
         let key = pool_key(language, cmd, root_path);
         {
-            let guard = pool.lock().await;
+            let mut guard = pool.lock().await;
+            guard.reap_if_dead(&key);
             if let Some(session) = guard.sessions.get(&key) {
                 return Ok(session.clone());
             }
@@ -66,12 +68,32 @@ impl LspPool {
         self.sessions.entry(key).or_insert(session).clone()
     }
 
-    /// Look up an existing session by its pool key.
-    pub fn get_by_key(&self, key: &str) -> Result<Arc<Mutex<LspSession>>, anyhow::Error> {
+    /// Look up an existing session by its pool key, reaping a dead child first.
+    pub fn get_by_key(&mut self, key: &str) -> Result<Arc<Mutex<LspSession>>, anyhow::Error> {
+        self.reap_if_dead(key);
         self.sessions
             .get(key)
             .cloned()
             .ok_or_else(|| anyhow::anyhow!("no session for key: {key}"))
+    }
+
+    /// Remove `key` if its LSP child has exited (`try_wait` → `Some`).
+    pub fn reap_if_dead(&mut self, key: &str) -> bool {
+        let Some(session) = self.sessions.get(key).cloned() else {
+            return false;
+        };
+        let Ok(mut guard) = session.try_lock() else {
+            return false; // busy — leave for later
+        };
+        match guard.try_wait() {
+            Ok(Some(status)) => {
+                drop(guard);
+                tracing::warn!(%key, ?status, "Removing dead LSP session");
+                self.sessions.remove(key);
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Check whether a session exists for the given key.
@@ -199,7 +221,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_by_key_returns_independent_arc() {
-        let pool = make_pool(&["rust:ra:/p"]);
+        let mut pool = make_pool(&["rust:ra:/p"]);
         let a = pool.get_by_key("rust:ra:/p").unwrap();
         let b = pool.get_by_key("rust:ra:/p").unwrap();
         assert!(Arc::ptr_eq(&a, &b));
@@ -209,7 +231,7 @@ mod tests {
     async fn get_or_spawn_reuses_existing_without_respawn() {
         let pool = Arc::new(Mutex::new(make_pool(&["rust:ra:/ws"])));
         let first = {
-            let guard = pool.lock().await;
+            let mut guard = pool.lock().await;
             guard.get_by_key("rust:ra:/ws").unwrap()
         };
         // Hit path: existing key must return same Arc (no initialize).
@@ -232,5 +254,23 @@ mod tests {
         assert!(Arc::ptr_eq(&kept, &a));
         let kept2 = pool.insert_if_absent("k".into(), b);
         assert!(Arc::ptr_eq(&kept2, &a));
+    }
+
+    #[test]
+    fn reap_if_dead_removes_exited_session() {
+        let mock = MockTransport::new();
+        mock.mark_exited();
+        let mut pool = LspPool::new();
+        pool.insert_session_for_test("rust:ra:/p", LspSession::with_transport(Box::new(mock)));
+        assert!(pool.contains_key("rust:ra:/p"));
+        assert!(pool.reap_if_dead("rust:ra:/p"));
+        assert!(!pool.contains_key("rust:ra:/p"));
+    }
+
+    #[test]
+    fn reap_if_dead_keeps_live_session() {
+        let mut pool = make_pool(&["rust:ra:/p"]);
+        assert!(!pool.reap_if_dead("rust:ra:/p"));
+        assert!(pool.contains_key("rust:ra:/p"));
     }
 }
