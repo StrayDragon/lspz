@@ -253,6 +253,11 @@ impl LspSession {
         self.open_documents.remove(uri);
     }
 
+    /// Returns `true` if the URI is currently tracked as open.
+    pub fn is_document_open(&self, uri: &str) -> bool {
+        self.open_documents.contains_key(uri)
+    }
+
     /// Read frames until a notification with the given method arrives.
     pub async fn wait_for_notification(&mut self, method: &str) -> Result<Value, anyhow::Error> {
         self.wait_for_notification_where(method, |_| true).await

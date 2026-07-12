@@ -45,8 +45,20 @@ impl AgentHandle {
         }
     }
 
-    /// Open or update a file in the LSP session (`didOpen` / `didChange`).
-    async fn open_file(&mut self, uri: &str) -> Result<String, anyhow::Error> {
+    #[cfg(test)]
+    fn test_sent_messages(&mut self) -> Vec<Vec<u8>> {
+        self.session.mock_sent_messages()
+    }
+
+    /// Ensure the URI is open in the LSP session.
+    ///
+    /// If already open (e.g. after [`Self::notify_change`]), skips disk I/O so
+    /// unsaved buffers are not overwritten. Otherwise reads from disk and
+    /// sends `didOpen`.
+    async fn open_file(&mut self, uri: &str) -> Result<(), anyhow::Error> {
+        if self.session.is_document_open(uri) {
+            return Ok(());
+        }
         let path = uri
             .strip_prefix("file://")
             .ok_or_else(|| anyhow::anyhow!("URI must start with file://"))?;
@@ -54,7 +66,7 @@ impl AgentHandle {
         self.session
             .open_or_update_document(uri, &self.language, &content)
             .await?;
-        Ok(content)
+        Ok(())
     }
 
     /// Run params through the interceptor chain if compression is enabled.
@@ -924,6 +936,54 @@ mod tests {
     }
 
     // ── file sync ───────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_notify_change_then_query_skips_disk_reread() {
+        let (uri, _tmp) = temp_file("FROM_DISK_CONTENT");
+        let diag = LspMessage::Notification {
+            method: "textDocument/publishDiagnostics".into(),
+            params: json!({
+                "uri": &uri,
+                "diagnostics": [],
+            }),
+        };
+        let mut agent = mock_handle(vec![diag]);
+        agent
+            .notify_change(&uri, "FROM_AGENT_UNSAVED")
+            .await
+            .unwrap();
+
+        let before = agent.test_sent_messages();
+        assert!(
+            before.iter().any(|b| {
+                let s = String::from_utf8_lossy(b);
+                s.contains("FROM_AGENT_UNSAVED")
+            }),
+            "notify_change should sync agent buffer"
+        );
+
+        agent.get_diagnostics(&uri).await.unwrap();
+        let after = agent.test_sent_messages();
+        let new_frames = &after[before.len()..];
+        assert!(
+            new_frames.iter().all(|b| {
+                let s = String::from_utf8_lossy(b);
+                !s.contains("FROM_DISK_CONTENT")
+            }),
+            "query must not re-send disk content after notify_change; new frames: {:?}",
+            new_frames
+                .iter()
+                .map(|b| String::from_utf8_lossy(b).into_owned())
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            !after.iter().any(|b| {
+                let s = String::from_utf8_lossy(b);
+                s.contains("FROM_DISK_CONTENT")
+            }),
+            "disk content must never have been synced when notify_change ran first"
+        );
+    }
 
     #[tokio::test]
     async fn test_notify_change_sends_did_change() {
