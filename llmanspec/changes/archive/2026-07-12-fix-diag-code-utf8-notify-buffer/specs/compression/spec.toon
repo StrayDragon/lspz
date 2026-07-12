@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r6,诊断 code 保留数字,系统 MUST 将 LSP Diagnostic.code 的字符串与整数形式均写入 compact 字段 c；不得因类型为数字而丢弃。,null,null,null
+  add_requirement,r7,"UTF-8 安全截断","系统 MUST 在按字节长度截断诊断 message 时落在合法 UTF-8 字符边界上，禁止 panic 或产生非法 UTF-8。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r6,"numeric-code",诊断 code 为整数 6133,"DiagnosticsCompressor 或 compact::compress",输出条目的 c 为字符串 6133
+  r7,"utf8-truncate",含多字节字符且规范化后长度超过 200 字节的 message,normalize_message 截断,"结果为合法 UTF-8 且以省略号结尾"

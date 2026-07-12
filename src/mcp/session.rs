@@ -1,12 +1,15 @@
 //! LSP session — manages a single LSP server connection.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::time::{Duration, Instant};
 
 use crate::StdioTransport;
 use crate::Transport;
 use crate::codec::json_rpc::LspMessage;
 use serde_json::Value;
+
+/// Cap buffered notifications to avoid unbounded growth under noisy servers.
+const MAX_PENDING_NOTIFICATIONS: usize = 64;
 
 /// Parameters for [`LspSession::initialize`].
 #[derive(Default)]
@@ -25,6 +28,9 @@ pub struct LspSession {
     /// to reclaim sessions (and the underlying LSP process) that have gone
     /// quiet. Monotonic clock — process-local, never serialized.
     last_used_at: Instant,
+    /// Notifications received while waiting for a request response.
+    /// Consumed by [`Self::wait_for_notification_where`].
+    pending_notifications: VecDeque<(String, Value)>,
 }
 
 impl LspSession {
@@ -41,6 +47,7 @@ impl LspSession {
             next_id: 1,
             open_documents: HashMap::new(),
             last_used_at: Instant::now(),
+            pending_notifications: VecDeque::new(),
         })
     }
 
@@ -51,6 +58,7 @@ impl LspSession {
             next_id: 1,
             open_documents: HashMap::new(),
             last_used_at: Instant::now(),
+            pending_notifications: VecDeque::new(),
         }
     }
 
@@ -60,6 +68,22 @@ impl LspSession {
     /// sees fresh activity and does not reclaim a session mid-conversation.
     fn touch(&mut self) {
         self.last_used_at = Instant::now();
+    }
+
+    /// Buffer a server notification for later [`wait_for_notification_where`].
+    fn buffer_notification(&mut self, method: String, params: Value) {
+        if self.pending_notifications.len() >= MAX_PENDING_NOTIFICATIONS {
+            let dropped = self.pending_notifications.pop_front();
+            if let Some((m, _)) = dropped {
+                tracing::warn!(
+                    method = %m,
+                    cap = MAX_PENDING_NOTIFICATIONS,
+                    "Pending notification buffer full; dropping oldest"
+                );
+            }
+        }
+        tracing::trace!(method = %method, "Buffered notification");
+        self.pending_notifications.push_back((method, params));
     }
 
     /// Last time this session performed I/O (monotonic, process-local).
@@ -149,8 +173,8 @@ impl LspSession {
                         error
                     );
                 }
-                LspMessage::Notification { method: m, .. } => {
-                    tracing::trace!("Buffered notification: {}", m);
+                LspMessage::Notification { method: m, params } => {
+                    self.buffer_notification(m, params);
                 }
                 LspMessage::Request { method: m, .. } => {
                     tracing::trace!("Ignored request during wait: {}", m);
@@ -242,6 +266,20 @@ impl LspSession {
         predicate: impl Fn(&Value) -> bool,
     ) -> Result<Value, anyhow::Error> {
         self.touch();
+
+        // Prefer notifications buffered during earlier send_request waits.
+        if let Some(idx) = self
+            .pending_notifications
+            .iter()
+            .position(|(m, p)| m == method && predicate(p))
+        {
+            let (_, params) = self
+                .pending_notifications
+                .remove(idx)
+                .expect("index from position");
+            return Ok(params);
+        }
+
         loop {
             let raw = tokio::time::timeout(Duration::from_secs(30), self.transport.receive())
                 .await
@@ -254,8 +292,8 @@ impl LspSession {
                 {
                     return Ok(params);
                 }
-                LspMessage::Notification { method: m, .. } => {
-                    tracing::trace!("Skipping notification: {}", m);
+                LspMessage::Notification { method: m, params } => {
+                    self.buffer_notification(m, params);
                 }
                 LspMessage::Response { id, ref result, .. } => {
                     tracing::trace!("Skipping response id={}: {:?}", id, result);
@@ -517,5 +555,38 @@ mod tests {
             assert_eq!(params["textDocument"]["uri"], "file:///a.py");
             assert_eq!(params["textDocument"]["version"], 2);
         }
+    }
+
+    #[tokio::test]
+    async fn test_send_request_buffers_interleaved_notifications() {
+        let mock = MockTransport::new();
+        // While waiting for hover response id=1, a diagnostics notify arrives first.
+        mock.push_message(&LspMessage::Notification {
+            method: "textDocument/publishDiagnostics".into(),
+            params: json!({
+                "uri": "file:///t.rs",
+                "diagnostics": []
+            }),
+        })
+        .unwrap();
+        mock.push_message(&LspMessage::Response {
+            id: 1,
+            result: Some(json!({"contents": "doc"})),
+            error: None,
+        })
+        .unwrap();
+
+        let mut session = LspSession::with_transport(Box::new(mock));
+        let result = session
+            .send_request("textDocument/hover", json!({}))
+            .await
+            .unwrap();
+        assert_eq!(result["contents"], "doc");
+
+        let diags = session
+            .wait_for_notification("textDocument/publishDiagnostics")
+            .await
+            .unwrap();
+        assert_eq!(diags["uri"], "file:///t.rs");
     }
 }
