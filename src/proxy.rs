@@ -22,8 +22,17 @@ use crate::interceptors::{Direction, InterceptorChain};
 use crate::transport::Transport;
 use crate::transport::framing::{self, FrameState};
 
-/// Default timeout waiting for a server frame during handshake / message loop.
+/// Default timeout waiting for a server frame during handshake / shutdown wait.
 const RECEIVE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Whether the idle `message_loop` applies a fatal timeout on server `receive`.
+///
+/// Always `false`: editors may sit idle longer than [`RECEIVE_TIMEOUT`] without
+/// traffic. Handshake / shutdown still use [`Proxy::recv_server_frame`].
+#[cfg(test)]
+const fn message_loop_idle_receive_times_out() -> bool {
+    false
+}
 
 /// TTL for unmatched pending request entries before prune.
 const PENDING_TTL: Duration = Duration::from_secs(120);
@@ -234,23 +243,19 @@ impl Proxy {
                 }
 
                 // ── Server → Client (through interceptor chain) ────
-                server_msg = timeout(RECEIVE_TIMEOUT, self.transport.receive()) => {
+                // Idle must NOT time out: editors can sit quiet for minutes.
+                // Handshake / shutdown still use recv_server_frame (timed).
+                server_msg = self.transport.receive() => {
                     let msg_bytes = match server_msg {
-                        Ok(Ok(bytes)) => bytes,
-                        Ok(Err(LspzError::ServerExited)) => {
+                        Ok(bytes) => bytes,
+                        Err(LspzError::ServerExited) => {
                             tracing::warn!("Server exited unexpectedly");
                             self.state = State::Exited;
                             return Err(LspzError::ServerExited);
                         }
-                        Ok(Err(e)) => {
+                        Err(e) => {
                             tracing::error!(error = %e, "Error reading from server");
                             return Err(e);
-                        }
-                        Err(_) => {
-                            tracing::error!("Timeout waiting for server message in loop");
-                            return Err(LspzError::Timeout(
-                                "timeout waiting for server frame in message loop".into(),
-                            ));
                         }
                     };
 
@@ -587,6 +592,49 @@ mod tests {
     use super::*;
     use crate::codec::json_rpc::LspMessage;
     use crate::transport::framing::parse_content_length;
+
+    #[test]
+    fn test_message_loop_idle_receive_does_not_timeout() {
+        // Contract: idle proxy must survive > RECEIVE_TIMEOUT without server traffic.
+        assert!(
+            !message_loop_idle_receive_times_out(),
+            "message_loop must not apply a fatal idle receive timeout"
+        );
+        assert_eq!(RECEIVE_TIMEOUT, Duration::from_secs(30));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_recv_server_frame_still_times_out() {
+        use crate::interceptors::default_interceptors;
+        use std::future;
+
+        /// Transport whose receive never completes (simulates hung server).
+        struct HangTransport;
+        #[async_trait::async_trait]
+        impl Transport for HangTransport {
+            async fn receive(&mut self) -> Result<Vec<u8>, LspzError> {
+                future::pending().await
+            }
+            async fn send(&mut self, _data: &[u8]) -> Result<(), LspzError> {
+                Ok(())
+            }
+            fn as_any_mut(&mut self) -> Option<&mut dyn std::any::Any> {
+                None
+            }
+        }
+
+        let config = Arc::new(RwLock::new(
+            Config::builder().backend_cmd("mock").build().unwrap(),
+        ));
+        let chain = InterceptorChain::new(default_interceptors(), config.clone());
+        let mut proxy = Proxy::new(config, Box::new(HangTransport), chain);
+
+        let result = proxy.recv_server_frame("test-handshake").await;
+        assert!(
+            matches!(result, Err(LspzError::Timeout(_))),
+            "handshake path must still time out, got {result:?}"
+        );
+    }
 
     #[test]
     fn test_extract_method() {

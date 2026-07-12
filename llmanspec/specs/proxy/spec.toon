@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: proxy
 purpose: 代理核心，管理 LSP 会话生命周期、消息路由和拦截器链执行。
 valid_scope[2]: src/proxy.rs,tests/
-requirements[9]{req_id,title,statement}:
+requirements[10]{req_id,title,statement}:
   r1,生命周期管理,系统 MUST 支持完整的 Proxy 生命周期：Created→Initializing→Ready→Working→ShuttingDown→Exited。
   r2,消息路由,系统 MUST 将 Client→Server 消息透明转发，Server→Client 消息经过拦截器链处理。
   r3,LSP 握手,系统 MUST 正确处理 initialize/initialized 握手流程。
@@ -12,7 +12,8 @@ requirements[9]{req_id,title,statement}:
   r7,按 id 匹配握手与关闭响应,"系统 MUST 在 initialize 与 shutdown 流程中按 JSON-RPC id 匹配服务器响应，并将交错的通知转发给客户端。"
   r8,Receive 超时,系统 MUST 对 Proxy 侧等待服务器帧的 receive 使用有限超时（默认 30s），超时返回可观测错误而非无限阻塞。
   r9,pending_requests 回收,Proxy MUST 在收到 $/cancelRequest 时移除对应 pending id；MUST 按 TTL 剪枝超时未响应的 pending 条目，防止 HashMap 无限增长。
-scenarios[13]{req_id,id,given,when,then}:
+  r10,空闲不因 receive 超时退出,Proxy message_loop MUST NOT 因服务器侧空闲超过 RECEIVE_TIMEOUT 而退出；超时仅用于握手或已发出请求后的等待。空闲 select! 中的 server receive MUST 无限期等待（或与客户端事件一并取消），禁止把空闲超时当成致命错误。
+scenarios[14]{req_id,id,given,when,then}:
   r1,"proxy-create",Config 实例,"Proxy::new()",状态变为 Created
   r1,"proxy-initialize",Created 状态的 Proxy,调用 initialize(),状态变为 Initializing
   r2,"forward-client-msg",Client→Server 消息,消息循环,透明转发给 LSP 服务器
@@ -26,3 +27,4 @@ scenarios[13]{req_id,id,given,when,then}:
   r8,"receive-timeout",服务器不再发送数据,握手或消息循环等待 receive,在超时后返回错误并记录日志
   r9,"cancel-prunes",pending 中有 id=7 的请求,客户端发送 $/cancelRequest id=7,pending_requests 不再包含 7
   r9,"ttl-prunes",pending 条目超过 TTL,跟踪新请求触发剪枝,过期条目被移除
+  r10,"idle-survives",Proxy Ready 且 30s 内无任何消息,message_loop 继续运行,不返回 Timeout 且进程保持 Ready
