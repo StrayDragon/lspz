@@ -5,7 +5,7 @@ valid_scope[2]: src/mcp/,tests/
 requirements[10]{req_id,title,statement}:
   r1,MCP 服务器,系统 MUST 实现 MCP 服务器协议，暴露 LSP 能力为 MCP 工具。
   r2,工具注册,系统 MUST 注册 get_diagnostics、get_completions、get_symbols 等 MCP 工具。
-  r3,会话管理,系统 MUST 通过 AgentPool 管理多个 LSP 会话。
+  r3,会话管理,系统 MUST 通过 LspPool 管理多个 LSP 会话（按语言/工作区复用）。
   r4,自动语言检测,系统 MUST 根据文件扩展名自动检测语言和对应的 LSP 后端。
   r5,Daemon 优雅退出,"Daemon MUST 在 SIGINT、idle 超时与 daemon/shutdown 时先清空 LSP 会话池（触发子进程 Drop/kill）并删除真实 socket 文件，禁止在未回收子进程时直接 process::exit。"
   r6,Shutdown 使用真实 socket 路径,daemon/shutdown MUST 使用服务器持有的 socket_path 删除套接字文件，不得依赖可能未设置的 LSPZ_SOCKET 环境变量。
@@ -17,7 +17,7 @@ scenarios[11]{req_id,id,given,when,then}:
   r1,"mcp-start",MCP 服务器配置,启动 lspz mcp,服务器开始监听 MCP 请求
   r2,"tool-diagnostics",MCP 客户端调用 get_diagnostics,MCP 服务器处理,返回压缩后的诊断信息
   r2,"tool-completions",MCP 客户端调用 get_completions,MCP 服务器处理,返回压缩后的补全信息
-  r3,"session-reuse",相同工作空间的多个请求,AgentPool 处理,复用现有 LSP 会话
+  r3,"session-reuse",相同工作空间的多个请求,LspPool 处理,复用现有 LSP 会话
   r4,"auto-detect-rs",.rs 文件,工具调用,"自动使用 rust-analyzer"
   r5,"graceful-sigint",Daemon 持有已 spawn 的 LSP 子进程,收到 SIGINT 或 daemon/shutdown,会话池被清空、socket 文件被删除、子进程被终止后再退出
   r6,"socket-path","Daemon 以 --socket 路径启动且未设置 LSPZ_SOCKET",客户端调用 daemon/shutdown,该 socket 文件被删除

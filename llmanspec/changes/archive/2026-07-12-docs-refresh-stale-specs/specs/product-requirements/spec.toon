@@ -1,0 +1,9 @@
+kind: llman.sdd.delta
+ops[3]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r2,Token 压缩,系统 MUST 对 Server→Client 方向的 LSP 消息进行 Token 敏感的压缩（诊断去重合并等以语义等价为目标；hover 等可做有意截断以节省 token）。,null,null,null
+  modify_requirement,r4,去重合并,系统 MUST 将同一文件中相同 message+severity+code 的诊断合并为一个条目。,null,null,null
+  modify_requirement,r5,三模态支持,系统 MUST 支持库、CLI 代理、MCP 服务器（含 daemon 模式）三种使用模式。,null,null,null
+op_scenarios[3]{req_id,id,given,when,then}:
+  r2,"token-reduce",50 个诊断的 LSP 响应,压缩处理,token 数量明显减少且诊断语义可还原
+  r4,"dedup-with-code",30 个 unused variable 诊断且 code 相同,压缩处理,合并为 1 条 + 30 个 range
+  r5,"daemon-mode",运行 lspz daemon,MCP 客户端连接,复用 daemon 会话并返回压缩结果

@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r3,会话管理,系统 MUST 通过 LspPool 管理多个 LSP 会话（按语言/工作区复用）。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r3,"session-reuse",相同工作空间的多个请求,LspPool 处理,复用现有 LSP 会话
