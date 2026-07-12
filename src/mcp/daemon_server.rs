@@ -242,7 +242,7 @@ impl DaemonMcpServer {
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-            let compressed = compress_completions(&result, 50, true)
+            let compressed = compress_completions(&result, 0, true)
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
             toon::completions_to_toon(&compressed)

@@ -181,7 +181,7 @@ mod tests {
 
     #[tokio::test]
     async fn get_by_key_returns_independent_arc() {
-        let mut pool = make_pool(&["rust:ra:/p"]);
+        let pool = make_pool(&["rust:ra:/p"]);
         let a = pool.get_by_key("rust:ra:/p").unwrap();
         let b = pool.get_by_key("rust:ra:/p").unwrap();
         assert!(Arc::ptr_eq(&a, &b));

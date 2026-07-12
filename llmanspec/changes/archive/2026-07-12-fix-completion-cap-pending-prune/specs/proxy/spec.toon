@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r9,pending_requests 回收,Proxy MUST 在收到 $/cancelRequest 时移除对应 pending id；MUST 按 TTL 剪枝超时未响应的 pending 条目，防止 HashMap 无限增长。,null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r9,"cancel-prunes",pending 中有 id=7 的请求,客户端发送 $/cancelRequest id=7,pending_requests 不再包含 7
+  r9,"ttl-prunes",pending 条目超过 TTL,跟踪新请求触发剪枝,过期条目被移除
