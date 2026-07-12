@@ -78,6 +78,15 @@ impl LspPool {
         before - self.sessions.len()
     }
 
+    /// Remove all sessions, dropping their transports (kills child LSP processes).
+    pub fn clear(&mut self) {
+        let n = self.sessions.len();
+        self.sessions.clear();
+        if n > 0 {
+            tracing::info!(cleared = n, "Cleared all LSP sessions");
+        }
+    }
+
     /// Returns `true` if the pool holds no sessions.
     pub fn is_empty(&self) -> bool {
         self.sessions.is_empty()
@@ -129,6 +138,14 @@ mod tests {
     #[test]
     fn is_empty_for_fresh_pool() {
         assert!(LspPool::new().is_empty());
+    }
+
+    #[test]
+    fn clear_removes_all_sessions() {
+        let mut pool = make_pool(&["rust:rust-analyzer:/p", "go:gopls:/p"]);
+        assert_eq!(pool.session_keys().len(), 2);
+        pool.clear();
+        assert!(pool.is_empty());
     }
 
     /// A zero threshold reaps everything immediately, since `now - last_used`

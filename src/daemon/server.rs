@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use anyhow::Context;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, watch};
 use tracing::{debug, error, info, warn};
 
 use super::protocol::DaemonResponse;
@@ -46,8 +46,9 @@ impl DaemonServer {
 
     /// Start the daemon, listening on the Unix socket.
     ///
-    /// This spawns a cleanup task on SIGTERM/SIGINT.
-    /// Returns immediately (the daemon runs until signalled).
+    /// Runs until SIGINT, idle timeout, or `daemon/shutdown`. On exit the
+    /// session pool is cleared (killing LSP children) and the socket file is
+    /// removed — never via bare `process::exit` that would skip `Drop`.
     pub async fn start(self) -> Result<(), anyhow::Error> {
         // Remove stale socket file
         if self.socket_path.exists() {
@@ -64,13 +65,16 @@ impl DaemonServer {
         let listener = UnixListener::bind(&self.socket_path)
             .with_context(|| format!("Failed to bind to {:?}", self.socket_path))?;
 
-        let socket_path = self.socket_path.clone();
-        tokio::spawn(async move {
-            tokio::signal::ctrl_c().await.ok();
-            info!("Daemon received shutdown signal");
-            let _ = std::fs::remove_file(&socket_path);
-            std::process::exit(0);
-        });
+        let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
+
+        {
+            let tx = shutdown_tx.clone();
+            tokio::spawn(async move {
+                tokio::signal::ctrl_c().await.ok();
+                info!("Daemon received shutdown signal");
+                let _ = tx.send(true);
+            });
+        }
 
         info!(path = %self.socket_path.display(), "Daemon listening");
 
@@ -82,33 +86,54 @@ impl DaemonServer {
             pool.clone(),
             status.clone(),
             active_connections.clone(),
-            self.socket_path.clone(),
+            shutdown_tx.clone(),
         );
 
         loop {
-            match listener.accept().await {
-                Ok((stream, _addr)) => {
-                    active_connections.fetch_add(1, Ordering::Relaxed);
-                    debug!(
-                        active = active_connections.load(Ordering::Relaxed),
-                        "Daemon: new client connection"
-                    );
-                    let pool = pool.clone();
-                    let status = status.clone();
-                    let conns = active_connections.clone();
-                    tokio::spawn(async move {
-                        // Decrement on task exit — including panic/abort, via Drop.
-                        let _guard = ConnectionGuard(conns);
-                        if let Err(e) = handle_client(stream, pool, status).await {
-                            warn!(error = %e, "Client handler exited with error");
-                        }
-                    });
+            tokio::select! {
+                _ = shutdown_rx.changed() => {
+                    if *shutdown_rx.borrow() {
+                        info!("Daemon shutdown requested, tearing down");
+                        break;
+                    }
                 }
-                Err(e) => {
-                    error!(error = %e, "Daemon accept error");
+                accepted = listener.accept() => {
+                    match accepted {
+                        Ok((stream, _addr)) => {
+                            active_connections.fetch_add(1, Ordering::Relaxed);
+                            debug!(
+                                active = active_connections.load(Ordering::Relaxed),
+                                "Daemon: new client connection"
+                            );
+                            let pool = pool.clone();
+                            let status = status.clone();
+                            let conns = active_connections.clone();
+                            let shutdown_tx = shutdown_tx.clone();
+                            tokio::spawn(async move {
+                                let _guard = ConnectionGuard(conns);
+                                if let Err(e) =
+                                    handle_client(stream, pool, status, shutdown_tx).await
+                                {
+                                    warn!(error = %e, "Client handler exited with error");
+                                }
+                            });
+                        }
+                        Err(e) => {
+                            error!(error = %e, "Daemon accept error");
+                        }
+                    }
                 }
             }
         }
+
+        // Graceful teardown: drop sessions (kills children), then remove socket.
+        pool.lock().await.clear();
+        status.lock().await.sessions.clear();
+        if self.socket_path.exists() {
+            let _ = std::fs::remove_file(&self.socket_path);
+        }
+        info!(path = %self.socket_path.display(), "Daemon stopped cleanly");
+        Ok(())
     }
 }
 
@@ -142,18 +167,23 @@ const REAPER_CHECK_INTERVAL: Duration = Duration::from_secs(60);
 /// Spawn the background idle reaper.
 ///
 /// Periodically reaps quiet LSP sessions and, once the daemon has had no
-/// sessions and no connections for [`DAEMON_IDLE_TTL`], removes the socket
-/// file and exits the process.
+/// sessions and no connections for [`DAEMON_IDLE_TTL`], signals shutdown so
+/// the main loop can clear the pool and remove the socket cleanly.
 fn spawn_idle_reaper(
     pool: Arc<Mutex<LspPool>>,
     status: Arc<Mutex<DaemonStatus>>,
     active_connections: Arc<AtomicU64>,
-    socket_path: PathBuf,
+    shutdown_tx: watch::Sender<bool>,
 ) {
     tokio::spawn(async move {
         let mut daemon_idle_since: Option<Instant> = None;
         loop {
             tokio::time::sleep(REAPER_CHECK_INTERVAL).await;
+
+            // Stop if shutdown already requested.
+            if *shutdown_tx.borrow() {
+                break;
+            }
 
             // Reap idle sessions first — this may empty the pool.
             let reaped = pool.lock().await.reap_idle(SESSION_IDLE_TTL);
@@ -186,12 +216,9 @@ fn spawn_idle_reaper(
                     "Daemon is idle; will self-exit if it stays unused"
                 );
             } else if daemon_idle_since.unwrap().elapsed() >= DAEMON_IDLE_TTL {
-                info!(
-                    socket = %socket_path.display(),
-                    "Daemon idle timeout reached, shutting down"
-                );
-                let _ = std::fs::remove_file(&socket_path);
-                std::process::exit(0);
+                info!("Daemon idle timeout reached, requesting shutdown");
+                let _ = shutdown_tx.send(true);
+                break;
             }
         }
     });
@@ -202,6 +229,7 @@ async fn handle_client(
     stream: UnixStream,
     pool: Arc<Mutex<LspPool>>,
     status: Arc<Mutex<DaemonStatus>>,
+    shutdown_tx: watch::Sender<bool>,
 ) -> Result<(), anyhow::Error> {
     let (reader, mut writer) = stream.into_split();
     let mut buf_reader = BufReader::new(reader);
@@ -225,7 +253,7 @@ async fn handle_client(
             }
         };
 
-        let response = dispatch(request, &pool, &status).await;
+        let response = dispatch(request, &pool, &status, &shutdown_tx).await;
 
         let json = serde_json::to_string(&response)?;
         writer.write_all(format!("{json}\n").as_bytes()).await?;
@@ -239,6 +267,7 @@ async fn dispatch(
     req: super::protocol::DaemonRequest,
     pool: &Arc<Mutex<LspPool>>,
     status: &Arc<Mutex<DaemonStatus>>,
+    shutdown_tx: &watch::Sender<bool>,
 ) -> DaemonResponse {
     let id = req.id;
 
@@ -250,12 +279,7 @@ async fn dispatch(
         "daemon/status" => handle_status(id, status).await,
         "daemon/shutdown" => {
             info!("Daemon shutdown requested by client");
-            let _ = std::fs::remove_file(std::env::var("LSPZ_SOCKET").unwrap_or_default());
-            // Spawn so response is sent before exit
-            tokio::spawn(async {
-                tokio::time::sleep(std::time::Duration::from_millis(100)).await;
-                std::process::exit(0);
-            });
+            let _ = shutdown_tx.send(true);
             DaemonResponse::ok(id, serde_json::json!({"ok": true}))
         }
         _ => DaemonResponse::err(id, format!("Unknown method: {}", req.method)),
@@ -456,6 +480,28 @@ mod tests {
         async fn send(&mut self, _data: &[u8]) -> Result<(), LspzError> {
             Ok(())
         }
+    }
+
+    #[tokio::test]
+    async fn test_daemon_shutdown_signals_watch_not_process_exit() {
+        let pool = Arc::new(Mutex::new(LspPool::new()));
+        pool.lock().await.insert_session_for_test(
+            "rust:fake:/tmp",
+            LspSession::with_transport(Box::new(PendingTransport)),
+        );
+        let status = Arc::new(Mutex::new(DaemonStatus::default()));
+        let (shutdown_tx, shutdown_rx) = watch::channel(false);
+
+        let req = crate::daemon::protocol::DaemonRequest {
+            id: 42,
+            method: "daemon/shutdown".into(),
+            params: serde_json::Value::Null,
+        };
+        let resp = dispatch(req, &pool, &status, &shutdown_tx).await;
+        assert!(resp.error.is_none());
+        assert!(*shutdown_rx.borrow());
+        // Pool is cleared by the main loop after signal; dispatch only signals.
+        assert!(!pool.lock().await.is_empty());
     }
 
     /// `handle_wait_notify` must honour `timeout_ms` instead of falling back to
