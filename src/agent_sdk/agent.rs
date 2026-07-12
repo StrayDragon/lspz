@@ -59,10 +59,8 @@ impl AgentHandle {
         if self.session.is_document_open(uri) {
             return Ok(());
         }
-        let path = uri
-            .strip_prefix("file://")
-            .ok_or_else(|| anyhow::anyhow!("URI must start with file://"))?;
-        let content = tokio::fs::read_to_string(path).await?;
+        let path = crate::uri::path_from_file_uri(uri).map_err(|e| anyhow::anyhow!(e))?;
+        let content = tokio::fs::read_to_string(&path).await?;
         self.session
             .open_or_update_document(uri, &self.language, &content)
             .await?;

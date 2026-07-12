@@ -113,8 +113,8 @@ const ROOT_MARKERS: &[&str] = &[
 /// Returns a canonicalized absolute path (resolves symlinks) so that different
 /// paths pointing to the same directory produce the same cache key.
 pub(crate) fn detect_workspace_root(uri: &str) -> Option<String> {
-    let path = uri.strip_prefix("file://")?;
-    let mut dir = std::path::Path::new(path);
+    let path = crate::uri::path_from_file_uri(uri).ok()?;
+    let mut dir = path.as_path();
     if dir.is_file() {
         dir = dir.parent()?;
     }
@@ -227,11 +227,9 @@ impl McpServer {
         };
         let mut session = session.lock().await;
 
-        let path = input
-            .uri
-            .strip_prefix("file://")
-            .ok_or_else(|| ErrorData::invalid_request("URI must start with file://", None))?;
-        let content = tokio::fs::read_to_string(path)
+        let path = crate::uri::path_from_file_uri(&input.uri)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+        let content = tokio::fs::read_to_string(&path)
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
@@ -304,11 +302,9 @@ impl McpServer {
         };
         let mut session = session.lock().await;
 
-        let path = input
-            .uri
-            .strip_prefix("file://")
-            .ok_or_else(|| ErrorData::invalid_request("URI must start with file://", None))?;
-        let content = tokio::fs::read_to_string(path)
+        let path = crate::uri::path_from_file_uri(&input.uri)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+        let content = tokio::fs::read_to_string(&path)
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
@@ -352,11 +348,9 @@ impl McpServer {
         };
         let mut session = session.lock().await;
 
-        let path = input
-            .uri
-            .strip_prefix("file://")
-            .ok_or_else(|| ErrorData::invalid_request("URI must start with file://", None))?;
-        let content = tokio::fs::read_to_string(path)
+        let path = crate::uri::path_from_file_uri(&input.uri)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+        let content = tokio::fs::read_to_string(&path)
             .await
             .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
