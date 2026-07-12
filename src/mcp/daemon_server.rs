@@ -144,18 +144,7 @@ impl DaemonMcpServer {
             let mut guard = self.client.lock().await;
             let client = guard.as_mut().unwrap();
             client
-                .lsp_notify(
-                    &session_key,
-                    "textDocument/didOpen",
-                    serde_json::json!({
-                        "textDocument": {
-                            "uri": input.uri,
-                            "languageId": language,
-                            "version": 1,
-                            "text": content,
-                        }
-                    }),
-                )
+                .lsp_sync_document(&session_key, &input.uri, &language, &content)
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
         }
@@ -237,18 +226,7 @@ impl DaemonMcpServer {
             let mut guard = self.client.lock().await;
             let client = guard.as_mut().unwrap();
             client
-                .lsp_notify(
-                    &session_key,
-                    "textDocument/didOpen",
-                    serde_json::json!({
-                        "textDocument": {
-                            "uri": input.uri,
-                            "languageId": language,
-                            "version": 1,
-                            "text": content,
-                        }
-                    }),
-                )
+                .lsp_sync_document(&session_key, &input.uri, &language, &content)
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -300,18 +278,7 @@ impl DaemonMcpServer {
             let mut guard = self.client.lock().await;
             let client = guard.as_mut().unwrap();
             client
-                .lsp_notify(
-                    &session_key,
-                    "textDocument/didOpen",
-                    serde_json::json!({
-                        "textDocument": {
-                            "uri": input.uri,
-                            "languageId": language,
-                            "version": 1,
-                            "text": content,
-                        }
-                    }),
-                )
+                .lsp_sync_document(&session_key, &input.uri, &language, &content)
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 

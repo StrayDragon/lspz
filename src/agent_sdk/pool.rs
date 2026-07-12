@@ -307,10 +307,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_insert_handle_and_query() {
+        let (uri, _tmp) = temp_file("fn main() {}");
         let diag_notif = LspMessage::Notification {
             method: "textDocument/publishDiagnostics".into(),
             params: serde_json::json!({
-                "uri": "file:///test.rs",
+                "uri": uri,
                 "diagnostics": [{
                     "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 1, "character": 0 } },
                     "severity": 1,
@@ -329,7 +330,6 @@ mod tests {
 
         pool.insert_handle("rust", handle);
 
-        let (uri, _tmp) = temp_file("fn main() {}");
         let result = pool.get_diagnostics(&uri, "rust").await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
         assert_eq!(parsed["diagnostics"][0]["message"], "pool test");
@@ -337,12 +337,15 @@ mod tests {
 
     #[tokio::test]
     async fn test_multi_language_cross_talk() {
+        let (uri_a, _keep_a) = temp_file("fn main() {}");
+        let (uri_b, _keep_b) = temp_file("x = 1");
+
         let handle_a = {
             let mock = MockTransport::new();
             mock.push_message(&LspMessage::Notification {
                 method: "textDocument/publishDiagnostics".into(),
                 params: serde_json::json!({
-                    "uri": "file:///a.rs",
+                    "uri": uri_a,
                     "diagnostics": [{
                         "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 1, "character": 0 } },
                         "severity": 1,
@@ -360,7 +363,7 @@ mod tests {
             mock.push_message(&LspMessage::Notification {
                 method: "textDocument/publishDiagnostics".into(),
                 params: serde_json::json!({
-                    "uri": "file:///b.py",
+                    "uri": uri_b,
                     "diagnostics": [{
                         "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 1, "character": 0 } },
                         "severity": 2,
@@ -382,9 +385,6 @@ mod tests {
 
         pool.insert_handle("rust", handle_a);
         pool.insert_handle("python", handle_b);
-
-        let (uri_a, _keep_a) = temp_file("fn main() {}");
-        let (uri_b, _keep_b) = temp_file("x = 1");
 
         let result_a = pool.get_diagnostics(&uri_a, "rust").await.unwrap();
         let parsed_a: Value = serde_json::from_str(&result_a).unwrap();

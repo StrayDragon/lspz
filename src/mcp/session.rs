@@ -224,6 +224,11 @@ impl LspSession {
         Ok(())
     }
 
+    /// Mark a document closed in the session tracker after sending `didClose`.
+    pub fn close_document(&mut self, uri: &str) {
+        self.open_documents.remove(uri);
+    }
+
     /// Read frames until a notification with the given method arrives.
     pub async fn wait_for_notification(&mut self, method: &str) -> Result<Value, anyhow::Error> {
         self.wait_for_notification_where(method, |_| true).await

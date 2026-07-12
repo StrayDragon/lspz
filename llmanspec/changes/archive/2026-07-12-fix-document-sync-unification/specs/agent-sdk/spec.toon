@@ -1,0 +1,6 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r4,文件同步,"AgentHandle MUST 通过 LspSession::open_or_update_document 同步文档；get_diagnostics MUST 按 URI 过滤 publishDiagnostics；notify_change MUST 不产生与 didOpen 重复的 version。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r4,"open-or-update",已打开的文件,再次 open_file 或 notify_change,发送 didChange 且 version 严格递增
+  r4,"diag-uri-filter",多个文档已打开,get_diagnostics(uri),仅返回该 uri 的 publishDiagnostics

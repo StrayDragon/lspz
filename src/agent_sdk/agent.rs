@@ -1,6 +1,5 @@
 //! AgentHandle — high-level LSP integration for AI coding agents.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::config::Config;
@@ -14,7 +13,6 @@ pub struct AgentHandle {
     session: LspSession,
     language: String,
     interceptor_chain: Option<InterceptorChain>,
-    doc_versions: HashMap<String, u32>,
 }
 
 impl std::fmt::Debug for AgentHandle {
@@ -44,30 +42,17 @@ impl AgentHandle {
             session,
             language,
             interceptor_chain,
-            doc_versions: HashMap::new(),
         }
     }
 
-    /// Open a file in the LSP session (send `didOpen` notification).
+    /// Open or update a file in the LSP session (`didOpen` / `didChange`).
     async fn open_file(&mut self, uri: &str) -> Result<String, anyhow::Error> {
         let path = uri
             .strip_prefix("file://")
             .ok_or_else(|| anyhow::anyhow!("URI must start with file://"))?;
         let content = tokio::fs::read_to_string(path).await?;
-        let version = self.doc_versions.entry(uri.to_owned()).or_insert(0);
-        *version += 1;
         self.session
-            .send_notification(
-                "textDocument/didOpen",
-                serde_json::json!({
-                    "textDocument": {
-                        "uri": uri,
-                        "languageId": self.language,
-                        "version": *version,
-                        "text": content,
-                    }
-                }),
-            )
+            .open_or_update_document(uri, &self.language, &content)
             .await?;
         Ok(content)
     }
@@ -103,9 +88,12 @@ impl AgentHandle {
     /// Get diagnostics for a file.
     pub async fn get_diagnostics(&mut self, uri: &str) -> Result<String, anyhow::Error> {
         self.open_file(uri).await?;
+        let uri_owned = uri.to_string();
         let params = self
             .session
-            .wait_for_notification("textDocument/publishDiagnostics")
+            .wait_for_notification_where("textDocument/publishDiagnostics", move |p| {
+                p.get("uri").and_then(Value::as_str) == Some(uri_owned.as_str())
+            })
             .await?;
         let processed = self
             .process_through_chain("textDocument/publishDiagnostics", params)
@@ -320,32 +308,16 @@ impl AgentHandle {
 
     /// Notify the LSP server that a file's content has changed.
     ///
-    /// Uses full document sync (sends the entire new content).
-    /// Call this after writing new content to a file that has been opened.
+    /// Uses full document sync via [`LspSession::open_or_update_document`].
     pub async fn notify_change(&mut self, uri: &str, content: &str) -> Result<(), anyhow::Error> {
-        let version = self.doc_versions.entry(uri.to_owned()).or_insert(1);
-        let prev_version = *version;
-        *version += 1;
         self.session
-            .send_notification(
-                "textDocument/didChange",
-                serde_json::json!({
-                    "textDocument": {
-                        "uri": uri,
-                        "version": prev_version,
-                    },
-                    "contentChanges": [{
-                        "text": content,
-                    }],
-                }),
-            )
+            .open_or_update_document(uri, &self.language, content)
             .await?;
         Ok(())
     }
 
     /// Notify the LSP server that a file has been closed.
     pub async fn notify_close(&mut self, uri: &str) -> Result<(), anyhow::Error> {
-        self.doc_versions.remove(uri);
         self.session
             .send_notification(
                 "textDocument/didClose",
@@ -354,6 +326,7 @@ impl AgentHandle {
                 }),
             )
             .await?;
+        self.session.close_document(uri);
         Ok(())
     }
 
@@ -640,10 +613,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_diagnostics_no_compression() {
+        let (uri, _tmp) = temp_file("fn main() {}");
         let diag_notif = LspMessage::Notification {
             method: "textDocument/publishDiagnostics".into(),
             params: json!({
-                "uri": "file:///test.rs",
+                "uri": uri,
                 "diagnostics": [{
                     "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 1, "character": 0 } },
                     "severity": 1,
@@ -653,7 +627,6 @@ mod tests {
         };
 
         let mut agent = mock_handle(vec![diag_notif]);
-        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_diagnostics(&uri).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
@@ -662,10 +635,11 @@ mod tests {
 
     #[tokio::test]
     async fn test_get_diagnostics_with_compression() {
+        let (uri, _tmp) = temp_file("fn main() {}");
         let diag_notif = LspMessage::Notification {
             method: "textDocument/publishDiagnostics".into(),
             params: json!({
-                "uri": "file:///test.rs",
+                "uri": uri,
                 "diagnostics": [{
                     "range": { "start": { "line": 0, "character": 0 }, "end": { "line": 1, "character": 0 } },
                     "severity": 1,
@@ -675,7 +649,6 @@ mod tests {
         };
 
         let mut agent = mock_handle_compressed(vec![diag_notif]);
-        let (uri, _tmp) = temp_file("fn main() {}");
 
         let result = agent.get_diagnostics(&uri).await.unwrap();
         let parsed: Value = serde_json::from_str(&result).unwrap();
