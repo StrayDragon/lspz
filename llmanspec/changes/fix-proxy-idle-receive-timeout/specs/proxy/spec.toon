@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r10,空闲不因 receive 超时退出,Proxy message_loop MUST NOT 因服务器侧空闲超过 RECEIVE_TIMEOUT 而退出；超时仅用于握手或已发出请求后的等待。空闲 select! 中的 server receive MUST 无限期等待（或与客户端事件一并取消），禁止把空闲超时当成致命错误。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r10,"idle-survives",Proxy Ready 且 30s 内无任何消息,message_loop 继续运行,不返回 Timeout 且进程保持 Ready
