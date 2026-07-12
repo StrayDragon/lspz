@@ -18,6 +18,8 @@ pub struct StdioTransport {
     child: Option<Child>,
     stdin: ChildStdin,
     reader: BufReader<ChildStdout>,
+    /// Cancel-safe partial-frame buffer for `receive`.
+    frame_state: framing::FrameState,
 }
 
 impl StdioTransport {
@@ -62,6 +64,7 @@ impl StdioTransport {
             child: Some(child),
             stdin,
             reader: BufReader::new(stdout),
+            frame_state: framing::FrameState::new(),
         })
     }
 
@@ -77,7 +80,7 @@ impl StdioTransport {
 #[async_trait::async_trait]
 impl super::Transport for StdioTransport {
     async fn receive(&mut self) -> Result<Vec<u8>, LspzError> {
-        framing::read_frame(&mut self.reader).await
+        framing::read_frame_with_state(&mut self.reader, &mut self.frame_state).await
     }
 
     async fn send(&mut self, data: &[u8]) -> Result<(), LspzError> {

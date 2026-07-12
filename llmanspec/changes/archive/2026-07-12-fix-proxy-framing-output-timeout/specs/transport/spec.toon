@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r5,"Content-Length 上限","所有 Content-Length 分帧读取路径 MUST 拒绝超过 16MiB 的 body，与 codec 层上限一致。",null,null,null
+  add_requirement,r6,WebSocket Text 帧,"WsTransport MUST 接受 Text 帧并将其 UTF-8 字节作为 LSP 消息载荷，不得无限跳过 Text。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r5,"reject-oversized","Content-Length 声明大于 16MiB",read_frame,返回协议错误且不分配完整 body 缓冲
+  r6,"accept-text",对端发送 WebSocket Text LSP 帧,receive,返回对应字节内容

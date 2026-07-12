@@ -1,18 +1,25 @@
 kind: llman.sdd.spec
 name: proxy
-purpose: "代理核心，管理 LSP 会话生命周期、消息路由和拦截器链执行。"
+purpose: 代理核心，管理 LSP 会话生命周期、消息路由和拦截器链执行。
 valid_scope[2]: src/proxy.rs,tests/
-requirements[5]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   r1,生命周期管理,系统 MUST 支持完整的 Proxy 生命周期：Created→Initializing→Ready→Working→ShuttingDown→Exited。
   r2,消息路由,系统 MUST 将 Client→Server 消息透明转发，Server→Client 消息经过拦截器链处理。
   r3,LSP 握手,系统 MUST 正确处理 initialize/initialized 握手流程。
-  r4,配置驱动,系统 MUST 使用 Config 结构体控制运行时行为。
+  r4,配置驱动输出格式,系统 MUST 使用 Config 控制运行时行为，包括 OutputFormat：passthrough 原样转发，toon 对通知与响应均输出 TOON 且响应保留 id，json 输出 compact JSON。
   r5,优雅关闭,系统 MUST 支持 shutdown 请求和 exit 通知的优雅关闭流程。
-scenarios[7]{req_id,id,given,when,then}:
-  r1,proxy-create,"Config 实例",Proxy::new(),状态变为 Created
-  r1,proxy-initialize,"Created 状态的 Proxy",调用 initialize(),状态变为 Initializing
-  r2,forward-client-msg,"Client→Server 消息",消息循环,透明转发给 LSP 服务器
-  r2,intercept-server-msg,"Server→Client 消息",消息循环,经过拦截器链处理后发送给客户端
-  r3,initialize-handshake,"LSP 客户端发送 initialize",Proxy 处理,转发给服务器并返回 capabilities
-  r4,config-backend,"配置指定 backend",Proxy 创建,使用指定的 LSP 服务器
-  r5,shutdown-flow,"调用 shutdown()",Proxy 处理,发送 shutdown 请求和 exit 通知
+  r6,"Cancel-safe 消息循环","系统 MUST 在 select 竞争下以 cancel-safe 方式读取完整 LSP 帧，禁止中途取消导致字节丢失与帧错位。"
+  r7,按 id 匹配握手与关闭响应,"系统 MUST 在 initialize 与 shutdown 流程中按 JSON-RPC id 匹配服务器响应，并将交错的通知转发给客户端。"
+  r8,Receive 超时,系统 MUST 对 Proxy 侧等待服务器帧的 receive 使用有限超时（默认 30s），超时返回可观测错误而非无限阻塞。
+scenarios[11]{req_id,id,given,when,then}:
+  r1,"proxy-create",Config 实例,"Proxy::new()",状态变为 Created
+  r1,"proxy-initialize",Created 状态的 Proxy,调用 initialize(),状态变为 Initializing
+  r2,"forward-client-msg",Client→Server 消息,消息循环,透明转发给 LSP 服务器
+  r2,"intercept-server-msg",Server→Client 消息,消息循环,经过拦截器链处理后发送给客户端
+  r3,"initialize-handshake",LSP 客户端发送 initialize,Proxy 处理,转发给服务器并返回 capabilities
+  r4,"passthrough-honored",output_format=passthrough,服务器发送 publishDiagnostics,客户端收到未经压缩的原始 LSP JSON
+  r4,"toon-response-keeps-id",output_format=toon 且 pending completion 请求 id=7,服务器返回 completion 响应,"客户端收到带 id=7 且 result.format=toon 的 JSON-RPC 响应"
+  r5,"shutdown-flow",调用 shutdown(),Proxy 处理,发送 shutdown 请求和 exit 通知
+  r6,"cancel-safe-loop",stdin 与 server 同时有不完整帧数据,message_loop 运行 select,任一侧只在完整帧到达后投递，另一侧未读字节保留在其 reader
+  r7,"handshake-id-match",initialize 请求 id=1 且服务器先发 window/logMessage,执行握手,通知先转发给客户端，随后转发 id=1 的 initialize 响应
+  r8,"receive-timeout",服务器不再发送数据,握手或消息循环等待 receive,在超时后返回错误并记录日志

@@ -383,8 +383,8 @@ mod tests {
         pool.insert_handle("rust", handle_a);
         pool.insert_handle("python", handle_b);
 
-        let (uri_a, _) = temp_file("fn main() {}");
-        let (uri_b, _) = temp_file("x = 1");
+        let (uri_a, _keep_a) = temp_file("fn main() {}");
+        let (uri_b, _keep_b) = temp_file("x = 1");
 
         let result_a = pool.get_diagnostics(&uri_a, "rust").await.unwrap();
         let parsed_a: Value = serde_json::from_str(&result_a).unwrap();

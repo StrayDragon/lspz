@@ -42,7 +42,8 @@ impl Transport for WsTransport {
                 Some(Ok(Message::Close(_))) => return Err(LspzError::ServerExited),
                 Some(Ok(Message::Ping(_))) => continue, // auto-pong handled by tungstenite
                 Some(Ok(Message::Pong(_))) => continue,
-                Some(Ok(Message::Text(_))) => continue, // LSP uses binary, skip text
+                // Some servers send LSP frames as Text; treat UTF-8 bytes as the payload.
+                Some(Ok(Message::Text(text))) => return Ok(text.as_bytes().to_vec()),
                 Some(Ok(Message::Frame(_))) => continue,
                 Some(Err(e)) => {
                     return Err(LspzError::Io(std::io::Error::new(

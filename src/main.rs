@@ -391,7 +391,7 @@ async fn run_proxy(args: ProxyArgs) -> ExitCode {
             Err(code) => return code,
         };
 
-    let interceptor_chain = build_interceptor_chain(&shared_config);
+    let interceptor_chain = build_interceptor_chain(&shared_config).await;
 
     let mut proxy = Proxy::new(shared_config, transport, interceptor_chain);
 
@@ -523,8 +523,8 @@ fn build_config(args: &ProxyArgs, output_format: OutputFormat) -> Result<Config,
         })
 }
 
-fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorChain {
-    let config = shared_config.blocking_read();
+async fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorChain {
+    let config = shared_config.read().await;
 
     let mut interceptors: Vec<Box<dyn Interceptor>> = vec![Box::new(CappingInterceptor::new(
         config.capping.max_diags,

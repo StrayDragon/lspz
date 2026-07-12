@@ -4,10 +4,12 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::select;
 use tokio::sync::RwLock;
+use tokio::time::timeout;
 
 use crate::codec::compact::CompactDiagnostics;
 use crate::codec::json_rpc;
@@ -18,6 +20,10 @@ use crate::interceptors::workspace_diagnostics::workspace_diagnostics_to_toon;
 use crate::interceptors::workspace_symbols::workspace_symbols_to_toon;
 use crate::interceptors::{Direction, InterceptorChain};
 use crate::transport::Transport;
+use crate::transport::framing::{self, FrameState};
+
+/// Default timeout waiting for a server frame during handshake / message loop.
+const RECEIVE_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 代理状态机状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -98,22 +104,27 @@ impl Proxy {
     /// LSP initialize/initialized 握手。
     async fn perform_handshake(&mut self) -> Result<(), LspzError> {
         let mut stdin = BufReader::new(tokio::io::stdin());
+        let mut stdin_state = FrameState::new();
         let mut stdout = tokio::io::stdout();
 
         // Step 1: read "initialize" Request from client → forward to server
-        let init_req = read_stdin_frame(&mut stdin).await?;
+        let init_req = framing::read_frame_with_state(&mut stdin, &mut stdin_state).await?;
         ensure_method(&init_req, "initialize")?;
+        let init_id = extract_request_id(&init_req)
+            .ok_or_else(|| LspzError::Protocol("initialize request missing numeric id".into()))?;
         self.transport.send(&init_req).await?;
-        tracing::debug!("Forwarded 'initialize' request to server");
+        tracing::debug!(id = init_id, "Forwarded 'initialize' request to server");
 
-        // Step 2: read "initialize" Response from server → forward to client
-        let init_resp = self.transport.receive().await?;
+        // Step 2: wait for matching initialize Response; forward interleaved notifications
+        let init_resp = self
+            .recv_response_by_id(init_id, &mut stdout, "initialize")
+            .await?;
         stdout.write_all(&init_resp).await?;
         stdout.flush().await?;
         tracing::debug!("Forwarded 'initialize' response to client");
 
         // Step 3: read "initialized" Notification from client → forward to server
-        let init_not = read_stdin_frame(&mut stdin).await?;
+        let init_not = framing::read_frame_with_state(&mut stdin, &mut stdin_state).await?;
         ensure_method(&init_not, "initialized")?;
         self.transport.send(&init_not).await?;
         tracing::debug!("Forwarded 'initialized' notification to server");
@@ -121,20 +132,57 @@ impl Proxy {
         Ok(())
     }
 
+    /// Receive server frames until a response with `expected_id` arrives.
+    /// Non-matching notifications (and other messages) are forwarded to `stdout`.
+    async fn recv_response_by_id(
+        &mut self,
+        expected_id: u64,
+        stdout: &mut tokio::io::Stdout,
+        context: &str,
+    ) -> Result<Vec<u8>, LspzError> {
+        loop {
+            let raw = self.recv_server_frame(context).await?;
+            if frame_response_id(&raw) == Some(expected_id) {
+                return Ok(raw);
+            }
+            // Interleaved notification / unrelated message → forward as-is
+            tracing::debug!(
+                expected_id,
+                "Forwarding interleaved server message during {context}"
+            );
+            stdout.write_all(&raw).await?;
+            stdout.flush().await?;
+        }
+    }
+
+    async fn recv_server_frame(&mut self, context: &str) -> Result<Vec<u8>, LspzError> {
+        match timeout(RECEIVE_TIMEOUT, self.transport.receive()).await {
+            Ok(Ok(bytes)) => Ok(bytes),
+            Ok(Err(e)) => Err(e),
+            Err(_) => {
+                tracing::error!(context, "Timeout waiting for server frame");
+                Err(LspzError::Timeout(format!(
+                    "timeout waiting for server frame during {context}"
+                )))
+            }
+        }
+    }
+
     // ─── Message Loop ──────────────────────────────────────────────────
 
     /// Main message loop using [`tokio::select!`].
     ///
-    /// - Client → Server: transparent forward
-    /// - Server → Client: interceptor chain → forward
+    /// Client and server reads use cancel-safe [`FrameState`] / transport frame
+    /// state so a cancelled branch does not desync the stream.
     async fn message_loop(&mut self) -> Result<(), LspzError> {
         let mut stdin = BufReader::new(tokio::io::stdin());
+        let mut stdin_state = FrameState::new();
         let mut stdout = tokio::io::stdout();
 
         loop {
             select! {
                 // ── Client → Server (transparent passthrough) ──────
-                client_msg = read_stdin_frame(&mut stdin) => {
+                client_msg = framing::read_frame_with_state(&mut stdin, &mut stdin_state) => {
                     let msg_bytes = match client_msg {
                         Ok(bytes) => bytes,
                         Err(LspzError::ServerExited) => {
@@ -151,12 +199,21 @@ impl Proxy {
                     // Check for shutdown request
                     if extract_method(&msg_bytes).is_ok_and(|m| m == "shutdown") {
                         tracing::info!("Received 'shutdown' from client");
+                        let shutdown_id = extract_request_id(&msg_bytes);
                         self.transport.send(&msg_bytes).await?;
                         self.state = State::ShuttingDown;
-                        // Forward server response then exit
-                        let resp = self.transport.receive().await?;
-                        stdout.write_all(&resp).await?;
-                        stdout.flush().await?;
+                        if let Some(id) = shutdown_id {
+                            let resp = self
+                                .recv_response_by_id(id, &mut stdout, "shutdown")
+                                .await?;
+                            stdout.write_all(&resp).await?;
+                            stdout.flush().await?;
+                        } else {
+                            // Fall back: next frame (legacy servers)
+                            let resp = self.recv_server_frame("shutdown").await?;
+                            stdout.write_all(&resp).await?;
+                            stdout.flush().await?;
+                        }
                         self.state = State::Exited;
                         return Ok(());
                     }
@@ -168,17 +225,23 @@ impl Proxy {
                 }
 
                 // ── Server → Client (through interceptor chain) ────
-                server_msg = self.transport.receive() => {
+                server_msg = timeout(RECEIVE_TIMEOUT, self.transport.receive()) => {
                     let msg_bytes = match server_msg {
-                        Ok(bytes) => bytes,
-                        Err(LspzError::ServerExited) => {
+                        Ok(Ok(bytes)) => bytes,
+                        Ok(Err(LspzError::ServerExited)) => {
                             tracing::warn!("Server exited unexpectedly");
                             self.state = State::Exited;
                             return Err(LspzError::ServerExited);
                         }
-                        Err(e) => {
+                        Ok(Err(e)) => {
                             tracing::error!(error = %e, "Error reading from server");
                             return Err(e);
+                        }
+                        Err(_) => {
+                            tracing::error!("Timeout waiting for server message in loop");
+                            return Err(LspzError::Timeout(
+                                "timeout waiting for server frame in message loop".into(),
+                            ));
                         }
                     };
 
@@ -198,6 +261,11 @@ impl Proxy {
     /// Returns the (possibly transformed) frame bytes, or empty if dropped.
     /// Always succeeds: on error, returns the original raw bytes (fail-open).
     async fn process_server_message(&mut self, raw: &[u8]) -> Vec<u8> {
+        let format = self.config.read().await.output_format;
+        if format == OutputFormat::Passthrough {
+            return raw.to_vec();
+        }
+
         let (frame, _) = match json_rpc::parse_frame(raw) {
             Ok(Some(result)) => result,
             _ => return raw.to_vec(),
@@ -209,12 +277,14 @@ impl Proxy {
 
         // Notification or server→client request: has `method` field
         if let Some(method) = json_val.get("method").and_then(|v| v.as_str()) {
-            return self.process_notification(method, &json_val, raw).await;
+            return self
+                .process_notification(method, &json_val, raw, format)
+                .await;
         }
 
         // Response (no `method`): look up from pending requests
         if json_val.get("id").is_some() {
-            return self.process_response(&json_val, raw).await;
+            return self.process_response(&json_val, raw, format).await;
         }
 
         raw.to_vec()
@@ -226,6 +296,7 @@ impl Proxy {
         method: &str,
         json_val: &serde_json::Value,
         raw: &[u8],
+        format: OutputFormat,
     ) -> Vec<u8> {
         let params = json_val
             .get("params")
@@ -239,15 +310,17 @@ impl Proxy {
         {
             Ok(Some(p)) => p,
             Ok(None) => return Vec::new(), // Dropped by interceptor
-            Err(_) => return raw.to_vec(), // Fail-open
+            Err(e) => {
+                tracing::warn!(error = %e, method, "Interceptor failed, fail-open");
+                return raw.to_vec();
+            }
         };
 
-        // TOON mode: convert compact params to TOON text
-        if self.config.read().await.output_format == OutputFormat::Toon {
-            return self.toon_output(method, &transformed, raw);
+        if format == OutputFormat::Toon {
+            return self.toon_notification(method, &transformed, raw);
         }
 
-        // JSON mode: reconstruct message with transformed params (default)
+        // JSON mode: reconstruct message with transformed params
         let mut obj = match json_val.as_object() {
             Some(o) => o.clone(),
             None => return raw.to_vec(),
@@ -257,16 +330,20 @@ impl Proxy {
         let new_val = serde_json::Value::Object(obj);
         match json_rpc::serialize_frame(&new_val) {
             Ok(bytes) => bytes,
-            Err(_) => raw.to_vec(),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to serialize notification, fail-open");
+                raw.to_vec()
+            }
         }
     }
 
     /// Process a server→client response (no method, has id).
-    ///
-    /// Looks up the original request method from `pending_requests`,
-    /// passes the response `result` through the interceptor chain,
-    /// then reconstructs the response.
-    async fn process_response(&mut self, json_val: &serde_json::Value, raw: &[u8]) -> Vec<u8> {
+    async fn process_response(
+        &mut self,
+        json_val: &serde_json::Value,
+        raw: &[u8],
+        format: OutputFormat,
+    ) -> Vec<u8> {
         let id = match json_val.get("id").and_then(|v| v.as_u64()) {
             Some(id) => id,
             None => return raw.to_vec(),
@@ -296,8 +373,15 @@ impl Proxy {
         {
             Ok(Some(p)) => p,
             Ok(None) => return Vec::new(), // Dropped by interceptor
-            Err(_) => return raw.to_vec(), // Fail-open
+            Err(e) => {
+                tracing::warn!(error = %e, method = %method, "Interceptor failed, fail-open");
+                return raw.to_vec();
+            }
         };
+
+        if format == OutputFormat::Toon {
+            return self.toon_response(id, &method, &transformed, raw);
+        }
 
         // Reconstruct response with transformed result
         let mut obj = match json_val.as_object() {
@@ -309,52 +393,20 @@ impl Proxy {
         let new_val = serde_json::Value::Object(obj);
         match json_rpc::serialize_frame(&new_val) {
             Ok(bytes) => bytes,
-            Err(_) => raw.to_vec(),
+            Err(e) => {
+                tracing::warn!(error = %e, "Failed to serialize response, fail-open");
+                raw.to_vec()
+            }
         }
     }
 
-    /// Convert transformed params to TOON format and wrap in JSON-RPC.
-    fn toon_output(&self, method: &str, params: &serde_json::Value, raw: &[u8]) -> Vec<u8> {
-        let toon_text = match method {
-            "textDocument/publishDiagnostics" => {
-                // Deserialize compact Value back to typed struct
-                match serde_json::from_value::<CompactDiagnostics>(params.clone()) {
-                    Ok(compact) => toon::diagnostics_to_toon(&compact),
-                    Err(_) => return raw.to_vec(),
-                }
-            }
-            "textDocument/completion" => match toon::completions_to_toon(params) {
-                Ok(t) => t,
-                Err(_) => return raw.to_vec(),
-            },
-            "textDocument/hover" => match toon::hover_to_toon(params) {
-                Ok(t) => t,
-                Err(_) => return raw.to_vec(),
-            },
-            "textDocument/documentSymbol" => match toon::symbols_to_toon(params) {
-                Ok(t) => t,
-                Err(_) => return raw.to_vec(),
-            },
-            "textDocument/references"
-            | "textDocument/definition"
-            | "textDocument/implementation"
-            | "textDocument/typeDefinition" => match toon::locations_to_toon(params) {
-                Ok(t) => t,
-                Err(_) => return raw.to_vec(),
-            },
-            "workspace/symbol" => match workspace_symbols_to_toon(params) {
-                Ok(t) => t,
-                Err(_) => return raw.to_vec(),
-            },
-            "workspace/diagnostic" => match workspace_diagnostics_to_toon(params) {
-                Ok(t) => t,
-                Err(_) => return raw.to_vec(),
-            },
-            // Unknown method → passthrough
-            _ => return raw.to_vec(),
+    /// Convert transformed params to TOON and wrap as a JSON-RPC notification.
+    fn toon_notification(&self, method: &str, params: &serde_json::Value, raw: &[u8]) -> Vec<u8> {
+        let toon_text = match encode_toon(method, params) {
+            Some(t) => t,
+            None => return raw.to_vec(),
         };
 
-        // Wrap TOON text in a JSON-RPC notification
         let msg = serde_json::json!({
             "jsonrpc": "2.0",
             "method": method,
@@ -368,6 +420,56 @@ impl Proxy {
             Ok(bytes) => bytes,
             Err(_) => raw.to_vec(),
         }
+    }
+
+    /// Convert transformed result to TOON and wrap as a JSON-RPC response (keeps `id`).
+    fn toon_response(
+        &self,
+        id: u64,
+        method: &str,
+        params: &serde_json::Value,
+        raw: &[u8],
+    ) -> Vec<u8> {
+        let toon_text = match encode_toon(method, params) {
+            Some(t) => t,
+            None => return raw.to_vec(),
+        };
+
+        let msg = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": id,
+            "result": {
+                "format": "toon",
+                "text": toon_text,
+            }
+        });
+
+        match json_rpc::serialize_frame(&msg) {
+            Ok(bytes) => bytes,
+            Err(_) => raw.to_vec(),
+        }
+    }
+}
+
+/// Encode interceptor output to TOON text for a known method.
+fn encode_toon(method: &str, params: &serde_json::Value) -> Option<String> {
+    match method {
+        "textDocument/publishDiagnostics" => {
+            match serde_json::from_value::<CompactDiagnostics>(params.clone()) {
+                Ok(compact) => Some(toon::diagnostics_to_toon(&compact)),
+                Err(_) => None,
+            }
+        }
+        "textDocument/completion" => toon::completions_to_toon(params).ok(),
+        "textDocument/hover" => toon::hover_to_toon(params).ok(),
+        "textDocument/documentSymbol" => toon::symbols_to_toon(params).ok(),
+        "textDocument/references"
+        | "textDocument/definition"
+        | "textDocument/implementation"
+        | "textDocument/typeDefinition" => toon::locations_to_toon(params).ok(),
+        "workspace/symbol" => workspace_symbols_to_toon(params).ok(),
+        "workspace/diagnostic" => workspace_diagnostics_to_toon(params).ok(),
+        _ => None,
     }
 }
 
@@ -393,47 +495,6 @@ fn track_pending_request(raw: &[u8], pending: &mut HashMap<u64, String>) {
     pending.insert(id, method.to_string());
 }
 
-// ─── I/O Helpers ────────────────────────────────────────────────────────────
-
-/// Read one complete Content-Length framed message from stdin.
-async fn read_stdin_frame(reader: &mut BufReader<tokio::io::Stdin>) -> Result<Vec<u8>, LspzError> {
-    let mut header = String::new();
-    loop {
-        let mut line = String::new();
-        let n = reader.read_line(&mut line).await.map_err(|e| {
-            if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                LspzError::ServerExited
-            } else {
-                LspzError::Io(e)
-            }
-        })?;
-
-        if n == 0 {
-            return Err(LspzError::ServerExited);
-        }
-
-        header.push_str(&line);
-
-        // A blank line marks the end of headers
-        if line == "\r\n" || line == "\n" {
-            break;
-        }
-    }
-
-    let content_length = crate::transport::framing::parse_content_length(&header)?;
-
-    let mut body = vec![0u8; content_length as usize];
-    reader.read_exact(&mut body).await.map_err(|e| {
-        if e.kind() == std::io::ErrorKind::UnexpectedEof {
-            LspzError::ServerExited
-        } else {
-            LspzError::Io(e)
-        }
-    })?;
-
-    Ok([header.as_bytes(), &body].concat())
-}
-
 /// Extract the LSP method name from a raw framed message.
 fn extract_method(raw: &[u8]) -> Result<String, LspzError> {
     let (frame, _) = json_rpc::parse_frame(raw)?
@@ -443,6 +504,23 @@ fn extract_method(raw: &[u8]) -> Result<String, LspzError> {
         .and_then(|v| v.as_str())
         .map(String::from)
         .ok_or_else(|| LspzError::Protocol("no 'method' field in message".into()))
+}
+
+/// Extract a numeric JSON-RPC request id from a framed message.
+fn extract_request_id(raw: &[u8]) -> Option<u64> {
+    let (frame, _) = json_rpc::parse_frame(raw).ok().flatten()?;
+    let val: serde_json::Value = serde_json::from_slice(&frame.body).ok()?;
+    val.get("id").and_then(|v| v.as_u64())
+}
+
+/// Extract response id from a framed message (responses have `id` and no `method`).
+fn frame_response_id(raw: &[u8]) -> Option<u64> {
+    let (frame, _) = json_rpc::parse_frame(raw).ok().flatten()?;
+    let val: serde_json::Value = serde_json::from_slice(&frame.body).ok()?;
+    if val.get("method").is_some() {
+        return None;
+    }
+    val.get("id").and_then(|v| v.as_u64())
 }
 
 /// Ensure a raw message has the expected method name.
@@ -515,5 +593,93 @@ mod tests {
     fn test_invalid_content_length_value() {
         let header = "Content-Length: abc\r\n\r\n";
         assert!(parse_content_length(header).is_err());
+    }
+
+    #[test]
+    fn test_extract_request_id_and_frame_response_id() {
+        let req = LspMessage::Request {
+            id: 7,
+            method: "textDocument/completion".into(),
+            params: serde_json::Value::Null,
+        };
+        let req_bytes = req.to_bytes().unwrap();
+        assert_eq!(extract_request_id(&req_bytes), Some(7));
+
+        let resp = serde_json::json!({"jsonrpc":"2.0","id":7,"result":{}});
+        let resp_bytes = json_rpc::serialize_frame(&resp).unwrap();
+        assert_eq!(frame_response_id(&resp_bytes), Some(7));
+
+        let note = LspMessage::Notification {
+            method: "window/logMessage".into(),
+            params: serde_json::json!({"type": 3, "message": "hi"}),
+        };
+        let note_bytes = note.to_bytes().unwrap();
+        assert_eq!(frame_response_id(&note_bytes), None);
+    }
+
+    #[tokio::test]
+    async fn test_passthrough_skips_compression() {
+        use crate::interceptors::default_interceptors;
+        use crate::transport::mock::MockTransport;
+
+        let config = Arc::new(RwLock::new(
+            Config::builder()
+                .backend_cmd("mock")
+                .output_format(OutputFormat::Passthrough)
+                .build()
+                .unwrap(),
+        ));
+        let chain = InterceptorChain::new(default_interceptors(), config.clone());
+        let mut proxy = Proxy::new(config, Box::new(MockTransport::new()), chain);
+
+        let note = LspMessage::Notification {
+            method: "textDocument/publishDiagnostics".into(),
+            params: serde_json::json!({
+                "uri": "file:///t.rs",
+                "diagnostics": [{
+                    "range": {"start":{"line":0,"character":0},"end":{"line":0,"character":1}},
+                    "message": "unused",
+                    "severity": 2
+                }]
+            }),
+        };
+        let raw = note.to_bytes().unwrap();
+        let out = proxy.process_server_message(&raw).await;
+        assert_eq!(out, raw);
+    }
+
+    #[tokio::test]
+    async fn test_toon_response_preserves_id() {
+        use crate::interceptors::default_interceptors;
+        use crate::transport::mock::MockTransport;
+
+        let config = Arc::new(RwLock::new(
+            Config::builder()
+                .backend_cmd("mock")
+                .output_format(OutputFormat::Toon)
+                .build()
+                .unwrap(),
+        ));
+        let chain = InterceptorChain::new(default_interceptors(), config.clone());
+        let mut proxy = Proxy::new(config, Box::new(MockTransport::new()), chain);
+        proxy
+            .pending_requests
+            .insert(7, "textDocument/completion".into());
+
+        let resp = serde_json::json!({
+            "jsonrpc": "2.0",
+            "id": 7,
+            "result": {
+                "isIncomplete": false,
+                "items": [{"label": "foo", "kind": 1}]
+            }
+        });
+        let raw = json_rpc::serialize_frame(&resp).unwrap();
+        let out = proxy.process_server_message(&raw).await;
+        let (frame, _) = json_rpc::parse_frame(&out).unwrap().unwrap();
+        let val: serde_json::Value = serde_json::from_slice(&frame.body).unwrap();
+        assert_eq!(val["id"], 7);
+        assert_eq!(val["result"]["format"], "toon");
+        assert!(val["result"]["text"].as_str().unwrap().contains("foo"));
     }
 }
