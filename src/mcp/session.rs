@@ -594,4 +594,34 @@ mod tests {
             .unwrap();
         assert_eq!(diags["uri"], "file:///t.rs");
     }
+
+    #[tokio::test]
+    async fn test_empty_publish_diagnostics_is_terminal() {
+        // Contract shared with McpServer / DaemonMcpServer: first matching
+        // publishDiagnostics (including empty) completes the wait immediately.
+        let mock = MockTransport::new();
+        mock.push_message(&LspMessage::Notification {
+            method: "textDocument/publishDiagnostics".into(),
+            params: json!({
+                "uri": "file:///clean.rs",
+                "diagnostics": []
+            }),
+        })
+        .unwrap();
+        let mut session = LspSession::with_transport(Box::new(mock));
+
+        let started = tokio::time::Instant::now();
+        let params = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            session.wait_for_notification_where("textDocument/publishDiagnostics", |p| {
+                p.get("uri").and_then(Value::as_str) == Some("file:///clean.rs")
+            }),
+        )
+        .await
+        .expect("must not burn a multi-second budget on empty diagnostics")
+        .unwrap();
+
+        assert!(started.elapsed() < std::time::Duration::from_millis(500));
+        assert_eq!(params["diagnostics"].as_array().unwrap().len(), 0);
+    }
 }
