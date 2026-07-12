@@ -5,7 +5,7 @@
 //!
 //! ## Frame Parsing Algorithm
 //!
-//! [MermaidChart:docs/src/diagrams/json-rpc-frame.mmd]
+//! Header until `\r\n\r\n`, then exactly `Content-Length` body bytes.
 
 use serde::Serialize;
 use serde_json::Value;

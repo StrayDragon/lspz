@@ -36,7 +36,6 @@ pub enum Direction {
 
 /// 链中的单个拦截器。
 ///
-/// [MermaidChart:docs/src/diagrams/interceptor-chain.mmd]
 #[async_trait::async_trait]
 pub trait Interceptor: Send + Sync {
     /// 用于日志/配置的唯一名称。

@@ -8,7 +8,6 @@
 //! 4. Interning identical documentation strings
 //! 5. Using compact field names
 //!
-//! [MermaidChart:docs/src/diagrams/completion-compression.mmd]
 
 use serde_json::Value;
 

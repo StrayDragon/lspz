@@ -142,20 +142,20 @@ Project conventions for lspz (LSP compression proxy).
 ### 文档优先级
 
 1. **AGENTS.md** (本文件) - 通用规范 SSOT
-2. **docs/specs/** - 技术规格
-3. **docs/plan/** - 阶段计划
-4. **docs/guides/** - 开发指南（引用 AGENTS.md，不重复）
+2. **llmanspec/specs/** - 行为规格（llman SDD）
+3. **README.md** - 用户面向入口
+4. **cargo doc** - API 参考（由源码注释生成）
 
 ### 文档生成规则 (SSOT)
 
-> **详细规则**: 参见 [docs/src/specs/ssot-rules.md](docs/src/specs/ssot-rules.md)
+> **详细规则**: 参见 `llmanspec/specs/ssot-rules/spec.toon`
 
 #### 两层文档体系
 
 | 层 | 工具 | 内容 | 维护方式 |
 |----|------|------|----------|
 | API 文档 | `cargo doc` | `///` / `//!` 注释 | 编辑源码注释 |
-| Book | `mdbook` | 指南、规格、架构 | 编辑 `docs/src/**/*.md` |
+| 规格 | `llman sdd` | 需求与场景 | 编辑 `llmanspec/specs/**` |
 
 #### SSOT 位置
 
@@ -165,7 +165,7 @@ Project conventions for lspz (LSP compression proxy).
 | 配置参考 | `src/config.rs` 结构体 | `cargo doc` | `target/doc/lspz/config/` |
 | 错误类型 | `src/error.rs` 枚举 | `cargo doc` | `target/doc/lspz/error/` |
 | 文档示例 | `///` 代码块 | `cargo test --doc` | CI 验证 |
-| Mermaid 图表 | `docs/src/diagrams/*.mmd` | mdbook-mermaid | 嵌入 book |
+| 行为规格 | `llmanspec/specs/**` | `llman sdd validate --all` | 规格校验 |
 
 #### 文档命令
 
@@ -173,14 +173,12 @@ Project conventions for lspz (LSP compression proxy).
 just doc          # 构建 API 文档并在浏览器打开
 just doc-check    # 检查 API 文档构建是否成功 (CI 使用)
 just doc-test     # 运行文档测试 (验证 /// 示例编译)
-just book         # 构建 mdbook
-just book-serve   # 本地预览 book (热重载)
 ```
 
 #### CI 保证
 
 - `cargo doc --no-deps --all-features` — API 文档构建检查
-- `cargo test --doc --all-features` — 文档示例编译验证
+- `cargo test --doc --all-features` — 文档示例编译验证（可单独 `just doc-test`）
 - `#![warn(missing_docs)]` — 未文档化公开项产生警告
 
 ---
@@ -303,15 +301,14 @@ jobs:
 
 ### 原则
 
-**代码是唯一的真相源 (Single Source of Truth)**。API 文档由 `cargo doc` 从代码注释自动生成，book 由 `mdbook` 从 `docs/src/` 构建。
+**代码是唯一的真相源 (Single Source of Truth)**。API 文档由 `cargo doc` 从代码注释自动生成；行为规格由 `llmanspec/specs` 维护；用户入口为 README.md。
 
 ### 生成规则
 
 | SSOT 位置 | 生成命令 | 输出 |
 |-----------|---------|------|
 | `///` / `//!` 注释 | `cargo doc --no-deps --all-features` | `target/doc/lspz/` |
-| `docs/src/**/*.md` | `mdbook build` (在 `docs/` 目录) | `docs/book/` |
-| `docs/src/diagrams/*.mmd` | mdbook-mermaid | 嵌入 book HTML |
+| `llmanspec/specs/**` | `llman sdd validate --all` | 规格校验 |
 
 ### 架构不变量 (Architecture Invariants)
 
@@ -328,10 +325,9 @@ jobs:
 
 `just qa` 包含以下检查：
 
-1. `cargo doc --no-deps --all-features` → API 文档构建是否成功
-2. `cargo test --doc --all-features` → 文档示例是否编译通过
-3. `#![warn(missing_docs)]` → 未文档化公开项产生警告
-4. 架构不变量 → 代码审查中人工核对
+1. `cargo fmt --check` + `cargo clippy` + `cargo test` + `cargo doc`（`doc-check`）
+2. `prek run --all-files`（hooks）
+3. 架构不变量 → 代码审查中人工核对；规格用 `llman sdd validate --all`
 
 ### 架构级代码注释规范
 
@@ -417,9 +413,13 @@ jobs:
 
 ### 语义化版本
 
+当前发布线为 **v0.11.x**（见 `Cargo.toml` / git tags）。历史里程碑示例：
+
 - v0.1.0: MVP (Library + Proxy)
 - v0.2.0: MCP 集成
 - v0.3.0: Agent SDK
+- v0.10+: Daemon / 文档同步 hardening
+- v0.11.x: 当前稳定开发线
 
 ### 兼容性承诺
 
@@ -439,7 +439,7 @@ jobs:
 
 ### 执行流程
 
-1. **验证**: 运行 `just qa` (lint + test + gen-check) 确保无错误
+1. **验证**: 运行 `just qa`（fmt-check + lint + test + doc-check + prek）确保无错误
 2. **提交**: 按照 Conventional Commits 格式提交，消息中注明当前阶段/模块
 3. **版本号更新**: 在 Cargo.toml 中递增版本号（语义化版本）
 4. **打 tag**: 创建对应版本的 git tag: `git tag v{版本号}`
@@ -454,6 +454,7 @@ jobs:
 | Proxy Core 完成 | v0.1.0-beta.1 | LSP 握手 + 路由 |
 | 诊断压缩完成 | v0.1.0-rc.1 | MVP 功能冻结 |
 | MVP 发布 | v0.1.0 | 正式版 |
+| 当前开发线 | v0.11.x | Daemon + MCP + Agent SDK |
 
 ### 历史版本管理
 
