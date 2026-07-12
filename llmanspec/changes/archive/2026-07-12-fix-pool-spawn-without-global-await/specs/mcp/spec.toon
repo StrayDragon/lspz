@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r8,"Per-session 锁",系统 MUST 在 LSP 请求/通知等待期间仅锁定目标会话；get_or_spawn 的 initialize MUST NOT 在持有全局池锁时 await，以免阻塞其他会话查找。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r8,"spawn-no-global-await",会话 A 正在 initialize,会话 B 查找已存在的 key,B 不被 A 的 initialize await 阻塞

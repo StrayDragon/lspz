@@ -301,42 +301,38 @@ async fn handle_spawn(
         Err(e) => return DaemonResponse::err(id, format!("Invalid params: {e}")),
     };
 
-    let key = match &spawn.root_path {
-        Some(root) => format!("{}:{}:{}", spawn.language, spawn.backend, root),
-        None => format!("{}:{}", spawn.language, spawn.backend),
-    };
+    let key = crate::mcp::pool_key(
+        &spawn.language,
+        &spawn.backend,
+        spawn.root_path.as_deref(),
+    );
 
-    // Check if already spawned
+    match LspPool::get_or_spawn(
+        pool,
+        &spawn.language,
+        &spawn.backend,
+        spawn.root_path.as_deref(),
+        &spawn.extra_args,
+    )
+    .await
     {
-        let mut pool_guard = pool.lock().await;
-        match pool_guard
-            .get_or_spawn(
+        Ok(_session) => {
+            let mut s = status.lock().await;
+            s.touch_session(
+                &key,
                 &spawn.language,
                 &spawn.backend,
-                spawn.root_path.as_deref(),
-                &spawn.extra_args,
+                spawn.root_path.clone(),
+            );
+            DaemonResponse::ok(
+                id,
+                serde_json::json!({
+                    "session_key": key,
+                    "status": "ready",
+                }),
             )
-            .await
-        {
-            Ok(_session) => {
-                // Record stats
-                let mut s = status.lock().await;
-                s.touch_session(
-                    &key,
-                    &spawn.language,
-                    &spawn.backend,
-                    spawn.root_path.clone(),
-                );
-                DaemonResponse::ok(
-                    id,
-                    serde_json::json!({
-                        "session_key": key,
-                        "status": "ready",
-                    }),
-                )
-            }
-            Err(e) => DaemonResponse::err(id, format!("Failed to spawn LSP session: {e}")),
         }
+        Err(e) => DaemonResponse::err(id, format!("Failed to spawn LSP session: {e}")),
     }
 }
 
