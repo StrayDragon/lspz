@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r6,配置与文档默认值一致,系统文档与注释 MUST 将默认 OutputFormat 描述为 toon；CI/配置上下文 MUST NOT 依赖已删除的 mdbook/docs/src 构建路径。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r6,"default-toon-docs","阅读 OutputFormat::Json 文档注释与 llmanspec/config.yaml",核对默认输出格式与文档工具,默认标明为 toon，且无 mdbook/docs/src 依赖表述

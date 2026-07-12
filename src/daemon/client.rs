@@ -345,7 +345,7 @@ impl Drop for DaemonClient {
                         return;
                     }
                 };
-                let _ = rt.block_on(async {
+                rt.block_on(async {
                     match DaemonClient::connect_explicit(&socket).await {
                         Ok(mut client) => {
                             if let Err(e) = client.shutdown().await {

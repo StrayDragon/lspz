@@ -23,7 +23,7 @@ context: |
   文档:
     - AGENTS.md 是通用规范 SSOT
     - API 文档由 cargo doc 从代码注释生成
-    - Book 由 mdbook 从 docs/src/ 构建
+    - 规范行为由 llmanspec/specs 维护（无 mdbook/docs/src）
   测试:
     - 单元测试与源码同目录
     - 集成测试在 tests/ 目录

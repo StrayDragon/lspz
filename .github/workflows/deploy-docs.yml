@@ -29,24 +29,11 @@ jobs:
       - name: Build API docs
         run: cargo doc --no-deps --all-features
 
-      - name: Install mdbook
-        run: cargo install mdbook mdbook-mermaid
-
-      - name: Install mermaid assets
-        working-directory: docs
-        run: mdbook-mermaid install
-
-      - name: Build book
-        working-directory: docs
-        run: mdbook build
-
       - name: Assemble site
         run: |
           mkdir -p _site
-          cp -r docs/book/* _site/
-          mkdir -p _site/api
-          cp -r target/doc/lspz/* _site/api/
-          echo '<meta http-equiv="refresh" content="0;url=api/lspz/index.html">' > _site/api/index.html
+          cp -r target/doc/lspz _site/
+          printf '%s\n' '<meta http-equiv="refresh" content="0;url=lspz/index.html">' > _site/index.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
