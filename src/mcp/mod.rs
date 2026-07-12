@@ -9,6 +9,6 @@ mod server;
 mod session;
 
 pub use daemon_server::DaemonMcpServer;
-pub use pool::LspPool;
+pub use pool::{LspPool, pool_key};
 pub use server::McpServer;
 pub use session::{InitializeParams, LspSession};

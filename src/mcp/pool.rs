@@ -22,30 +22,48 @@ impl LspPool {
         }
     }
 
-    /// Get or create a session for the given language and workspace root.
+    /// Get or create a session without holding the pool mutex across `initialize`.
     ///
-    /// Returns an `Arc` so callers can drop the pool lock before awaiting on
-    /// the session.
+    /// Double-checked locking: lookup under a short lock, spawn+initialize outside
+    /// the lock, then insert under a short lock (loser of a race is dropped).
     pub async fn get_or_spawn(
-        &mut self,
+        pool: &Arc<Mutex<Self>>,
         language: &str,
         cmd: &str,
         root_path: Option<&str>,
         extra_args: &[String],
     ) -> Result<Arc<Mutex<LspSession>>, anyhow::Error> {
         let key = pool_key(language, cmd, root_path);
-        if let Some(session) = self.sessions.get(&key) {
-            return Ok(session.clone());
+        {
+            let guard = pool.lock().await;
+            if let Some(session) = guard.sessions.get(&key) {
+                return Ok(session.clone());
+            }
         }
+
         let mut session = LspSession::spawn_with_args(cmd, extra_args)?;
         let init_params = InitializeParams {
             root_uri: root_path.map(|s| s.to_string()),
         };
         session.initialize(init_params).await?;
-        tracing::info!(key, "LSP session initialized");
+        tracing::info!(%key, "LSP session initialized");
         let session = Arc::new(Mutex::new(session));
-        self.sessions.insert(key, session.clone());
+
+        let mut guard = pool.lock().await;
+        if let Some(existing) = guard.sessions.get(&key) {
+            return Ok(existing.clone());
+        }
+        guard.sessions.insert(key, session.clone());
         Ok(session)
+    }
+
+    /// Insert `session` for `key` if absent; return the map entry (existing or new).
+    pub fn insert_if_absent(
+        &mut self,
+        key: String,
+        session: Arc<Mutex<LspSession>>,
+    ) -> Arc<Mutex<LspSession>> {
+        self.sessions.entry(key).or_insert(session).clone()
     }
 
     /// Look up an existing session by its pool key.
@@ -185,5 +203,34 @@ mod tests {
         let a = pool.get_by_key("rust:ra:/p").unwrap();
         let b = pool.get_by_key("rust:ra:/p").unwrap();
         assert!(Arc::ptr_eq(&a, &b));
+    }
+
+    #[tokio::test]
+    async fn get_or_spawn_reuses_existing_without_respawn() {
+        let pool = Arc::new(Mutex::new(make_pool(&["rust:ra:/ws"])));
+        let first = {
+            let guard = pool.lock().await;
+            guard.get_by_key("rust:ra:/ws").unwrap()
+        };
+        // Hit path: existing key must return same Arc (no initialize).
+        let again = LspPool::get_or_spawn(&pool, "rust", "ra", Some("/ws"), &[])
+            .await
+            .unwrap();
+        assert!(Arc::ptr_eq(&first, &again));
+    }
+
+    #[test]
+    fn insert_if_absent_keeps_winner() {
+        let mut pool = LspPool::new();
+        let a = Arc::new(Mutex::new(LspSession::with_transport(Box::new(
+            MockTransport::new(),
+        ))));
+        let b = Arc::new(Mutex::new(LspSession::with_transport(Box::new(
+            MockTransport::new(),
+        ))));
+        let kept = pool.insert_if_absent("k".into(), a.clone());
+        assert!(Arc::ptr_eq(&kept, &a));
+        let kept2 = pool.insert_if_absent("k".into(), b);
+        assert!(Arc::ptr_eq(&kept2, &a));
     }
 }

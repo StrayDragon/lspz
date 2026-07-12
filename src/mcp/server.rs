@@ -221,8 +221,7 @@ impl McpServer {
         let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
         let session = {
-            let mut pool = self.pool.lock().await;
-            pool.get_or_spawn(&language, &backend, root.as_deref(), &extra)
+            LspPool::get_or_spawn(&self.pool, &language, &backend, root.as_deref(), &extra)
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
         };
@@ -299,8 +298,7 @@ impl McpServer {
         let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
         let session = {
-            let mut pool = self.pool.lock().await;
-            pool.get_or_spawn(&language, &backend, root.as_deref(), &extra)
+            LspPool::get_or_spawn(&self.pool, &language, &backend, root.as_deref(), &extra)
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
         };
@@ -348,8 +346,7 @@ impl McpServer {
         let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
         let session = {
-            let mut pool = self.pool.lock().await;
-            pool.get_or_spawn(&language, &backend, root.as_deref(), &extra)
+            LspPool::get_or_spawn(&self.pool, &language, &backend, root.as_deref(), &extra)
                 .await
                 .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
         };

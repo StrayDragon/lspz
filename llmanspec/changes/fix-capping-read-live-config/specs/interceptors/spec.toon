@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r8,Capping 读热更新配置,CappingInterceptor MUST 在每次 intercept 时从共享 Config 读取 max_diags/max_completions/max_symbols，使热重载后的上限立即生效。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r8,"live-cap",运行中把 max_diags 从 100 改为 5,下一条 publishDiagnostics,仅保留 5 条诊断

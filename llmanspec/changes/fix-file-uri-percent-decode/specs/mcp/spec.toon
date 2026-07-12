@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r12,file URI 百分号解码,"系统 MUST 在将 file:// URI 转为本地路径前进行百分号解码，使含空格/非 ASCII 的路径可被读取。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r12,"decode-space","URI file:///tmp/my%20file.rs",MCP 读取文件内容,成功打开 /tmp/my file.rs
