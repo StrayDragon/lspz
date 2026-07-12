@@ -28,6 +28,7 @@ pub mod languages;
 pub mod metrics;
 pub mod proxy;
 pub mod transport;
+pub mod uri;
 
 #[cfg(feature = "cli")]
 pub mod init;

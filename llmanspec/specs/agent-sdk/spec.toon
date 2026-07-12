@@ -2,13 +2,14 @@ kind: llman.sdd.spec
 name: "agent-sdk"
 purpose: Agent SDK，提供 AgentHandle 和 AgentPool API 将 LSP 能力嵌入 Rust 智能体应用。
 valid_scope[2]: src/agent_sdk/,tests/
-requirements[5]{req_id,title,statement}:
+requirements[6]{req_id,title,statement}:
   r1,AgentHandle,系统 MUST 提供 AgentHandle 结构体用于启动和管理单个 LSP 会话。
   r2,AgentPool,系统 MUST 提供 AgentPool 用于管理多个 AgentHandle 实例。
   r3,查询方法,AgentHandle MUST 支持 get_diagnostics、get_completions、get_symbols 等查询方法。
   r4,文件同步,"AgentHandle MUST 通过 LspSession::open_or_update_document 同步文档；get_diagnostics MUST 按 URI 过滤 publishDiagnostics；notify_change MUST 不产生与 didOpen 重复的 version。"
   r8,已打开文档不强制磁盘回读,AgentHandle 在文档已 open 时 MUST NOT 在查询前无磁盘内容覆盖会话缓冲；notify_change 写入的未保存内容 MUST 在后续 get_* 调用中保持，除非显式重新从磁盘打开。
-scenarios[8]{req_id,id,given,when,then}:
+  r9,file URI 百分号解码,"AgentHandle MUST 在磁盘读取前对 file:// URI 做百分号解码。"
+scenarios[9]{req_id,id,given,when,then}:
   r1,"agent-start","AgentHandle::builder()",调用 start(),返回可用的 AgentHandle 实例
   r1,"agent-shutdown",AgentHandle 实例,调用 shutdown(),优雅关闭 LSP 会话
   r2,"pool-manage",AgentPool 实例,多个请求,自动管理 AgentHandle 生命周期
@@ -17,3 +18,4 @@ scenarios[8]{req_id,id,given,when,then}:
   r4,"open-or-update",已打开的文件,再次 open_file 或 notify_change,发送 didChange 且 version 严格递增
   r4,"diag-uri-filter",多个文档已打开,get_diagnostics(uri),仅返回该 uri 的 publishDiagnostics
   r8,"keep-unsaved",notify_change 写入未保存缓冲,随后 get_diagnostics,会话仍持有未保存内容而非磁盘旧版本
+  r9,"decode-space",URI 含 %20,open_file 读盘,解码后路径可读
