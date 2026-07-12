@@ -15,7 +15,8 @@ use tokio::net::UnixStream;
 use tracing::{debug, info, warn};
 
 use super::protocol::{
-    DaemonRequest, DaemonResponse, LspNotifyParams, LspRequestParams, SpawnParams, WaitNotifyParams,
+    DaemonRequest, DaemonResponse, LspNotifyParams, LspRequestParams, SpawnParams,
+    SyncDocumentParams, WaitNotifyParams,
 };
 use super::socket::socket_path_for_workspace;
 
@@ -215,6 +216,29 @@ impl DaemonClient {
             anyhow::bail!("wait_notify '{}' failed: {err}", method);
         }
         Ok(resp.result)
+    }
+
+    /// Open or update a document via [`crate::mcp::LspSession::open_or_update_document`].
+    pub async fn lsp_sync_document(
+        &mut self,
+        session_key: &str,
+        uri: &str,
+        language_id: &str,
+        content: &str,
+    ) -> Result<(), anyhow::Error> {
+        let req = SyncDocumentParams {
+            session_key: session_key.to_string(),
+            uri: uri.to_string(),
+            language_id: language_id.to_string(),
+            content: content.to_string(),
+        };
+        let resp = self
+            .request("lsp/sync_document", &serde_json::to_value(&req)?)
+            .await?;
+        if let Some(err) = resp.error {
+            anyhow::bail!("LSP sync_document failed: {err}");
+        }
+        Ok(())
     }
 
     /// Query daemon status (sessions, stats).

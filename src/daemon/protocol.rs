@@ -114,6 +114,19 @@ pub struct WaitNotifyParams {
     pub timeout_ms: Option<u64>,
 }
 
+/// Parameters for `lsp/sync_document` — open or update a text document.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SyncDocumentParams {
+    /// Session key.
+    pub session_key: String,
+    /// Document URI (`file://...`).
+    pub uri: String,
+    /// LSP language id (e.g. `rust`).
+    pub language_id: String,
+    /// Full document text.
+    pub content: String,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

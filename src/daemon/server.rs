@@ -276,6 +276,7 @@ async fn dispatch(
         "lsp/request" => handle_lsp_request(id, &req.params, pool, status).await,
         "lsp/notify" => handle_lsp_notify(id, &req.params, pool, status).await,
         "lsp/wait_notify" => handle_wait_notify(id, &req.params, pool, status).await,
+        "lsp/sync_document" => handle_sync_document(id, &req.params, pool, status).await,
         "daemon/status" => handle_status(id, status).await,
         "daemon/shutdown" => {
             info!("Daemon shutdown requested by client");
@@ -386,6 +387,34 @@ async fn handle_lsp_notify(
     match session.send_notification(&req.method, req.params).await {
         Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
         Err(e) => DaemonResponse::err(id, format!("LSP notify failed: {e}")),
+    }
+}
+
+/// Handle `lsp/sync_document` — open or update via session SSOT helper.
+async fn handle_sync_document(
+    id: u64,
+    params: &serde_json::Value,
+    pool: &Arc<Mutex<LspPool>>,
+    status: &Arc<Mutex<DaemonStatus>>,
+) -> DaemonResponse {
+    let req: super::protocol::SyncDocumentParams = match serde_json::from_value(params.clone()) {
+        Ok(r) => r,
+        Err(e) => return DaemonResponse::err(id, format!("Invalid params: {e}")),
+    };
+    status.lock().await.touch_by_key(&req.session_key);
+
+    let mut pool_guard = pool.lock().await;
+    let session = match pool_guard.get_mut_by_key(&req.session_key) {
+        Ok(s) => s,
+        Err(e) => return DaemonResponse::err(id, e.to_string()),
+    };
+
+    match session
+        .open_or_update_document(&req.uri, &req.language_id, &req.content)
+        .await
+    {
+        Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
+        Err(e) => DaemonResponse::err(id, format!("LSP sync_document failed: {e}")),
     }
 }
 

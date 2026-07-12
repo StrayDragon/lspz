@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r7,文档同步 SSOT,"系统 MUST 通过 LspSession::open_or_update_document 作为文档打开/更新的唯一实现；MCP daemon 路径 MUST 经 daemon RPC 调用该逻辑，禁止固定 didOpen version=1。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r7,"daemon-sync",同一 URI 第二次工具调用,DaemonMcpServer 同步文档,会话发送 didChange 且 version 递增而非再次 didOpen
