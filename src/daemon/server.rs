@@ -301,11 +301,7 @@ async fn handle_spawn(
         Err(e) => return DaemonResponse::err(id, format!("Invalid params: {e}")),
     };
 
-    let key = crate::mcp::pool_key(
-        &spawn.language,
-        &spawn.backend,
-        spawn.root_path.as_deref(),
-    );
+    let key = crate::mcp::pool_key(&spawn.language, &spawn.backend, spawn.root_path.as_deref());
 
     match LspPool::get_or_spawn(
         pool,
