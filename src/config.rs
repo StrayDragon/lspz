@@ -14,9 +14,9 @@ use crate::metrics::MetricsConfig;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum OutputFormat {
-    /// 紧凑 JSON（当前默认值）。
+    /// 紧凑 JSON（非默认；默认见 [`OutputFormat::Toon`]）。
     Json,
-    /// TOON（Token-Oriented Object Notation）。
+    /// TOON（Token-Oriented Object Notation）。默认输出格式。
     Toon,
     /// 标准 LSP JSON 透传（输出中不压缩）。
     Passthrough,
