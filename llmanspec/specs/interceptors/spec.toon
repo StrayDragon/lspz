@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: interceptors
 purpose: 拦截器链架构，按顺序执行拦截器处理 Server→Client 消息，支持配置驱动的启用/禁用。
 valid_scope[2]: src/interceptors/,tests/
-requirements[7]{req_id,title,statement}:
+requirements[8]{req_id,title,statement}:
   r1,Interceptor trait,系统 MUST 定义 Interceptor trait 包含 name、applies_to 和 intercept 方法。
   r2,InterceptorChain,系统 MUST 实现 InterceptorChain 按顺序执行所有匹配的拦截器。
   r3,失败开放,拦截器失败时系统 MUST 记录 WARN 日志并返回原始参数。
@@ -10,7 +10,8 @@ requirements[7]{req_id,title,statement}:
   r5,方向过滤,拦截器 MUST 仅处理 ServerToClient 方向的消息。
   r6,Completion MarkupContent,CompletionCompressor MUST 从 documentation 的纯字符串与 MarkupContent.value 提取文档文本；不得因 documentation 为对象而静默丢弃。
   r7,补全截断配置驱动,CompletionCompressor MUST 将 max_items=0 视为不截断；默认 MUST 为 0。数量截断 MUST 由 CappingInterceptor 的 Config.capping.max_completions 控制，禁止在压缩机中硬编码 50。
-scenarios[9]{req_id,id,given,when,then}:
+  r8,Capping 读热更新配置,CappingInterceptor MUST 在每次 intercept 时从共享 Config 读取 max_diags/max_completions/max_symbols，使热重载后的上限立即生效。
+scenarios[10]{req_id,id,given,when,then}:
   r1,"diagnostics-compressor",DiagnosticsCompressor,applies_to(textDocument/publishDiagnostics),返回 true
   r1,"hover-compressor",HoverCompressor,applies_to(textDocument/hover),返回 true
   r2,"chain-execute",包含 3 个拦截器的链,处理消息,按顺序执行所有拦截器
@@ -20,3 +21,4 @@ scenarios[9]{req_id,id,given,when,then}:
   r5,"client-to-server",ClientToServer 方向消息,InterceptorChain 处理,直接透传不执行拦截器
   r6,"markup-doc",completion item documentation 为 MarkupContent 对象,compress_completions,compact 项含 doc 字段且等于 MarkupContent.value
   r7,"unlimited-default",CompletionCompressor 默认构造且无 capping,压缩含 100 项的 completion,输出保留全部 100 项
+  r8,"live-cap",运行中把 max_diags 从 100 改为 5,下一条 publishDiagnostics,仅保留 5 条诊断

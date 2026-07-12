@@ -526,11 +526,8 @@ fn build_config(args: &ProxyArgs, output_format: OutputFormat) -> Result<Config,
 async fn build_interceptor_chain(shared_config: &Arc<RwLock<Config>>) -> InterceptorChain {
     let config = shared_config.read().await;
 
-    let mut interceptors: Vec<Box<dyn Interceptor>> = vec![Box::new(CappingInterceptor::new(
-        config.capping.max_diags,
-        config.capping.max_completions,
-        config.capping.max_symbols,
-    ))];
+    let mut interceptors: Vec<Box<dyn Interceptor>> =
+        vec![Box::new(CappingInterceptor::new(shared_config.clone()))];
     interceptors.extend(default_interceptors());
 
     tracing::info!(
