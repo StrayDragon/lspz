@@ -175,6 +175,35 @@ pub fn encode_tags(tags: &[Value]) -> Option<String> {
     }
 }
 
+/// Convert LSP `Diagnostic.code` (string or number) to a stable string.
+///
+/// LSP allows `code` to be `integer | string`. Compact format always stores
+/// strings in field `c`.
+pub fn diagnostic_code_to_string(code: &Value) -> Option<String> {
+    code.as_str()
+        .map(str::to_string)
+        .or_else(|| code.as_i64().map(|n| n.to_string()))
+        .or_else(|| code.as_u64().map(|n| n.to_string()))
+}
+
+/// Truncate `s` to at most `max_bytes` UTF-8 bytes without splitting a char.
+///
+/// When truncation occurs, appends `"..."` (included in the byte budget).
+pub fn truncate_utf8(s: &str, max_bytes: usize) -> String {
+    if s.len() <= max_bytes {
+        return s.to_string();
+    }
+    let ellipsis = "...";
+    if max_bytes <= ellipsis.len() {
+        return ellipsis[..max_bytes].to_string();
+    }
+    let mut end = max_bytes - ellipsis.len();
+    while end > 0 && !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}{ellipsis}", &s[..end])
+}
+
 // ─── Compress ───────────────────────────────────────────────────────────────
 
 /// Result of a single compression step.
@@ -225,7 +254,7 @@ pub fn compress(params: &Value) -> Result<Value, LspzError> {
             None => CompactSeverity::W, // Default to Warning
         };
 
-        let code = diag.get("code").and_then(|v| v.as_str()).map(String::from);
+        let code = diag.get("code").and_then(diagnostic_code_to_string);
 
         let tags = diag
             .get("tags")
@@ -491,6 +520,45 @@ mod tests {
         assert_eq!(decompressed["uri"], "file:///test.rs");
         // Verify diagnostics array exists
         assert!(decompressed["diagnostics"].as_array().unwrap().len() >= 3);
+    }
+
+    #[test]
+    fn test_diagnostic_code_to_string_accepts_number_and_string() {
+        assert_eq!(
+            diagnostic_code_to_string(&serde_json::json!(6133)).as_deref(),
+            Some("6133")
+        );
+        assert_eq!(
+            diagnostic_code_to_string(&serde_json::json!("E0425")).as_deref(),
+            Some("E0425")
+        );
+        assert_eq!(diagnostic_code_to_string(&serde_json::json!(true)), None);
+    }
+
+    #[test]
+    fn test_truncate_utf8_respects_char_boundary() {
+        // Each CJK ideograph is 3 bytes in UTF-8.
+        let s = "测".repeat(80); // 240 bytes
+        let out = truncate_utf8(&s, 200);
+        assert!(out.len() <= 200);
+        assert!(out.ends_with("..."));
+        assert!(out.is_char_boundary(out.len() - 3));
+    }
+
+    #[test]
+    fn test_compress_preserves_numeric_code() {
+        let params = serde_json::json!({
+            "uri": "file:///t.ts",
+            "diagnostics": [{
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                "severity": 2,
+                "message": "'x' is declared but its value is never read.",
+                "code": 6133
+            }]
+        });
+        let compact = compress(&params).unwrap();
+        let diags = compact["diagnostics"].as_array().unwrap();
+        assert_eq!(diags[0]["c"], "6133");
     }
 
     #[test]

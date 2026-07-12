@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r9,请求等待期间缓冲通知,"LspSession::send_request MUST 将交错的服务器通知缓冲；wait_for_notification 系列 MUST 优先消费缓冲，不得静默丢弃。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r9,"buffer-during-request",send_request 等待响应期间收到 publishDiagnostics,随后 wait_for_notification publishDiagnostics,返回先前缓冲的通知 params

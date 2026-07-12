@@ -74,11 +74,9 @@ impl Interceptor for DiagnosticsCompressor {
                 .to_string();
 
             // Step 2: Normalise message — extract string or numeric code for normalization
-            let norm_code = diag.get("code").and_then(|v| {
-                v.as_str()
-                    .map(|s| s.to_string())
-                    .or_else(|| v.as_i64().map(|n| n.to_string()))
-            });
+            let norm_code = diag
+                .get("code")
+                .and_then(compact::diagnostic_code_to_string);
             let normalized = if self.enable_normalisation {
                 normalize_message(&message, norm_code.as_deref())
             } else {
@@ -90,7 +88,9 @@ impl Interceptor for DiagnosticsCompressor {
                 None => CompactSeverity::W,
             };
 
-            let code = diag.get("code").and_then(|v| v.as_str()).map(String::from);
+            let code = diag
+                .get("code")
+                .and_then(compact::diagnostic_code_to_string);
 
             let tags = diag
                 .get("tags")
@@ -212,9 +212,9 @@ pub fn normalize_message(message: &str, code: Option<&str>) -> String {
     // Fallback: replace backtick identifiers with `<ident>`
     let normalized = replace_backtick_idents(message);
 
-    // Truncate overly long messages
+    // Truncate overly long messages (UTF-8 safe)
     if normalized.len() > 200 {
-        normalized[..197].to_string() + "..."
+        compact::truncate_utf8(&normalized, 200)
     } else {
         normalized
     }
@@ -359,6 +359,39 @@ mod tests {
     fn test_normalize_no_match() {
         let msg = "some random error message";
         assert_eq!(normalize_message(msg, None), msg);
+    }
+
+    #[test]
+    fn test_normalize_truncates_multibyte_safely() {
+        let msg = "测".repeat(100); // 300 bytes
+        let out = normalize_message(&msg, None);
+        assert!(out.len() <= 200);
+        assert!(out.ends_with("..."));
+        assert!(std::str::from_utf8(out.as_bytes()).is_ok());
+    }
+
+    #[tokio::test]
+    async fn test_intercept_preserves_numeric_code() {
+        let compressor = make_compressor();
+        let params = serde_json::json!({
+            "uri": "file:///t.ts",
+            "diagnostics": [{
+                "range": {"start": {"line": 0, "character": 0}, "end": {"line": 0, "character": 1}},
+                "severity": 2,
+                "message": "unused",
+                "code": 6133
+            }]
+        });
+        let result = compressor
+            .intercept(
+                "textDocument/publishDiagnostics",
+                params,
+                Direction::ServerToClient,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(result["diagnostics"][0]["c"], "6133");
     }
 
     // ─── Interceptor ─────────────────────────────────────────────────
