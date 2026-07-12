@@ -13,7 +13,7 @@
 //!
 //! ## Architecture（架构）
 //!
-//! [MermaidChart:docs/src/diagrams/transport-architecture.mmd]
+//! Content-Length framed transports: stdio, TCP, WebSocket, and in-memory mock.
 
 pub(crate) mod framing;
 pub mod mock;

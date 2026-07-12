@@ -1,6 +1,5 @@
 //! LSP 诊断的紧凑格式。
 //!
-//! [MermaidChart:docs/src/diagrams/compression-pipeline.mmd]
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;

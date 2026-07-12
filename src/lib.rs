@@ -14,7 +14,8 @@
 //!
 //! ## Architecture（架构）
 //!
-//! [MermaidChart:docs/src/diagrams/architecture.mmd]
+//! Core flow: Agent/Client ↔ Proxy (interceptor chain) ↔ Transport ↔ LSP server.
+//! See `llmanspec/specs/proxy` and module docs under `proxy`, `interceptors`, `transport`.
 
 #![cfg_attr(docsrs, warn(missing_docs))]
 

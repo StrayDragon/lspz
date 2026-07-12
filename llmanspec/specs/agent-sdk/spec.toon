@@ -1,7 +1,7 @@
 kind: llman.sdd.spec
 name: "agent-sdk"
 purpose: Agent SDK，提供 AgentHandle 和 AgentPool API 将 LSP 能力嵌入 Rust 智能体应用。
-valid_scope[2]: src/agent_sdk.rs,tests/
+valid_scope[2]: src/agent_sdk/,tests/
 requirements[4]{req_id,title,statement}:
   r1,AgentHandle,系统 MUST 提供 AgentHandle 结构体用于启动和管理单个 LSP 会话。
   r2,AgentPool,系统 MUST 提供 AgentPool 用于管理多个 AgentHandle 实例。

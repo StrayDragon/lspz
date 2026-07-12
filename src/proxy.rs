@@ -1,6 +1,6 @@
 //! LSP 代理状态机和消息循环。
 //!
-//! [MermaidChart:docs/src/diagrams/proxy-state-machine.mmd]
+//! 状态：Created → Initializing → Ready → ShuttingDown → Exited。
 
 use std::collections::HashMap;
 use std::sync::Arc;

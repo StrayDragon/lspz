@@ -32,7 +32,7 @@ Agent (LSP 客户端) ←→ lspz ←→ LSP 服务器 (rust-analyzer, gopls, ..
 
 ```toml
 [dependencies]
-lspz = { version = "0.11", default-features = false }
+lspz = { version = "0.11", default-features = false, features = ["agent-sdk"] }
 ```
 
 **CLI 代理** — 直接替换你的 LSP 服务器命令：
@@ -41,9 +41,10 @@ lspz = { version = "0.11", default-features = false }
 lspz proxy --backend rust-analyzer
 ```
 
-**MCP 服务器** — 把 LSP 能力暴露为 MCP 工具，给 Claude Desktop 等客户端用：
+**MCP 服务器** — 把 LSP 能力暴露为 MCP 工具，给 Claude Desktop 等客户端用（需 `--features mcp`）：
 
 ```bash
+cargo install lspz --features mcp
 lspz mcp
 ```
 
@@ -71,7 +72,7 @@ lspz mcp
 | 格式 | 说明 | 适用场景 |
 |---|---|---|
 | `toon`（默认） | 自描述行协议 + 表格 | LLM 直接消费 |
-| `compact` | 缩短 JSON 字段名 | 需要结构化数据时 |
+| `json` | 缩短字段名的 compact JSON | 需要结构化数据时 |
 | `passthrough` | 原始 LSP JSON 不动 | 调试 |
 
 ## Feature flags
@@ -136,8 +137,8 @@ just qa                             # fmt + clippy + test + doc-check
 
 - [API 参考](https://docs.rs/lspz) — 从 `///` 注释自动生成
 - [LSP 规范](docs/LSP-Specification.html) — LSP 3.17 规范参考
-- [CHANGELOG](CHANGELOG.md) — 版本历史
-- [ROADMAP](ROADMAP.md) — 已完成和计划中的功能
+- [AGENTS.md](AGENTS.md) — 项目约定与架构不变量
+- [llmanspec/](llmanspec/) — SDD 规格（`llman sdd list --specs`）
 
 ## 许可证
 

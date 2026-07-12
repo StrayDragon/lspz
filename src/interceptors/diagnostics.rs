@@ -8,7 +8,6 @@
 //! 4. **Dedup** — group by (normalized_message, severity, code)
 //! 5. **Range encoding** — `[line, col, line, col]` with delta for multiple ranges
 //!
-//! [MermaidChart:docs/src/diagrams/compression-pipeline.mmd]
 
 use serde_json::Value;
 
