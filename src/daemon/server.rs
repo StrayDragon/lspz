@@ -353,11 +353,11 @@ async fn handle_lsp_request(
     };
     status.lock().await.touch_by_key(&req.session_key);
 
-    let mut pool_guard = pool.lock().await;
-    let session = match pool_guard.get_mut_by_key(&req.session_key) {
+    let session = match pool.lock().await.get_by_key(&req.session_key) {
         Ok(s) => s,
         Err(e) => return DaemonResponse::err(id, e.to_string()),
     };
+    let mut session = session.lock().await;
 
     match session.send_request(&req.method, req.params).await {
         Ok(result) => DaemonResponse::ok(id, result),
@@ -378,11 +378,11 @@ async fn handle_lsp_notify(
     };
     status.lock().await.touch_by_key(&req.session_key);
 
-    let mut pool_guard = pool.lock().await;
-    let session = match pool_guard.get_mut_by_key(&req.session_key) {
+    let session = match pool.lock().await.get_by_key(&req.session_key) {
         Ok(s) => s,
         Err(e) => return DaemonResponse::err(id, e.to_string()),
     };
+    let mut session = session.lock().await;
 
     match session.send_notification(&req.method, req.params).await {
         Ok(()) => DaemonResponse::ok(id, serde_json::json!({"ok": true})),
@@ -403,11 +403,11 @@ async fn handle_sync_document(
     };
     status.lock().await.touch_by_key(&req.session_key);
 
-    let mut pool_guard = pool.lock().await;
-    let session = match pool_guard.get_mut_by_key(&req.session_key) {
+    let session = match pool.lock().await.get_by_key(&req.session_key) {
         Ok(s) => s,
         Err(e) => return DaemonResponse::err(id, e.to_string()),
     };
+    let mut session = session.lock().await;
 
     match session
         .open_or_update_document(&req.uri, &req.language_id, &req.content)
@@ -431,11 +431,11 @@ async fn handle_wait_notify(
     };
     status.lock().await.touch_by_key(&req.session_key);
 
-    let mut pool_guard = pool.lock().await;
-    let session = match pool_guard.get_mut_by_key(&req.session_key) {
+    let session = match pool.lock().await.get_by_key(&req.session_key) {
         Ok(s) => s,
         Err(e) => return DaemonResponse::err(id, e.to_string()),
     };
+    let mut session = session.lock().await;
 
     // The client may pass a deadline (`timeout_ms`). The daemon enforces it so
     // it always writes a response *before* the client gives up. Without this,

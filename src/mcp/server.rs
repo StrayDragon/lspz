@@ -220,11 +220,13 @@ impl McpServer {
         let root = self.cached_workspace_root(&input.uri);
         let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
-        let mut pool = self.pool.lock().await;
-        let session = pool
-            .get_or_spawn(&language, &backend, root.as_deref(), &extra)
-            .await
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let session = {
+            let mut pool = self.pool.lock().await;
+            pool.get_or_spawn(&language, &backend, root.as_deref(), &extra)
+                .await
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+        };
+        let mut session = session.lock().await;
 
         let path = input
             .uri
@@ -309,11 +311,13 @@ impl McpServer {
         let root = self.cached_workspace_root(&input.uri);
         let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
-        let mut pool = self.pool.lock().await;
-        let session = pool
-            .get_or_spawn(&language, &backend, root.as_deref(), &extra)
-            .await
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let session = {
+            let mut pool = self.pool.lock().await;
+            pool.get_or_spawn(&language, &backend, root.as_deref(), &extra)
+                .await
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+        };
+        let mut session = session.lock().await;
 
         let path = input
             .uri
@@ -356,11 +360,13 @@ impl McpServer {
         let root = self.cached_workspace_root(&input.uri);
         let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
 
-        let mut pool = self.pool.lock().await;
-        let session = pool
-            .get_or_spawn(&language, &backend, root.as_deref(), &extra)
-            .await
-            .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
+        let session = {
+            let mut pool = self.pool.lock().await;
+            pool.get_or_spawn(&language, &backend, root.as_deref(), &extra)
+                .await
+                .map_err(|e| ErrorData::internal_error(e.to_string(), None))?
+        };
+        let mut session = session.lock().await;
 
         let path = input
             .uri

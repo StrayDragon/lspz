@@ -1,13 +1,17 @@
 use std::collections::HashMap;
+use std::sync::Arc;
+
+use tokio::sync::Mutex;
 
 use super::session::{InitializeParams, LspSession};
 
 /// A pool of LSP sessions, keyed by `(language, workspace_root)`.
 ///
-/// Sessions are created lazily on first access. Different workspace roots
-/// get separate sessions so each LSP server analyzes the correct project.
+/// Sessions are created lazily on first access. Each session is behind its own
+/// [`Mutex`] so LSP I/O on one session does not block other sessions once the
+/// pool map lock is released.
 pub struct LspPool {
-    sessions: HashMap<String, LspSession>,
+    sessions: HashMap<String, Arc<Mutex<LspSession>>>,
 }
 
 impl LspPool {
@@ -20,36 +24,35 @@ impl LspPool {
 
     /// Get or create a session for the given language and workspace root.
     ///
-    /// `root_path` is a canonicalized absolute path (no `file://` prefix) used
-    /// both as part of the cache key and as the LSP `rootUri` during initialization.
-    /// `extra_args` are additional CLI arguments passed when spawning a new session.
+    /// Returns an `Arc` so callers can drop the pool lock before awaiting on
+    /// the session.
     pub async fn get_or_spawn(
         &mut self,
         language: &str,
         cmd: &str,
         root_path: Option<&str>,
         extra_args: &[String],
-    ) -> Result<&mut LspSession, anyhow::Error> {
+    ) -> Result<Arc<Mutex<LspSession>>, anyhow::Error> {
         let key = pool_key(language, cmd, root_path);
-        if !self.sessions.contains_key(&key) {
-            let mut session = LspSession::spawn_with_args(cmd, extra_args)?;
-            let init_params = InitializeParams {
-                root_uri: root_path.map(|s| s.to_string()),
-            };
-            session.initialize(init_params).await?;
-            tracing::info!(key, "LSP session initialized");
-            self.sessions.insert(key.clone(), session);
+        if let Some(session) = self.sessions.get(&key) {
+            return Ok(session.clone());
         }
-        Ok(self.sessions.get_mut(&key).unwrap())
+        let mut session = LspSession::spawn_with_args(cmd, extra_args)?;
+        let init_params = InitializeParams {
+            root_uri: root_path.map(|s| s.to_string()),
+        };
+        session.initialize(init_params).await?;
+        tracing::info!(key, "LSP session initialized");
+        let session = Arc::new(Mutex::new(session));
+        self.sessions.insert(key, session.clone());
+        Ok(session)
     }
 
     /// Look up an existing session by its pool key.
-    ///
-    /// Returns an error if the session hasn't been spawned yet.
-    /// The key format is `{language}:{backend}:{root_path}` or `{language}:{backend}`.
-    pub fn get_mut_by_key(&mut self, key: &str) -> Result<&mut LspSession, anyhow::Error> {
+    pub fn get_by_key(&self, key: &str) -> Result<Arc<Mutex<LspSession>>, anyhow::Error> {
         self.sessions
-            .get_mut(key)
+            .get(key)
+            .cloned()
             .ok_or_else(|| anyhow::anyhow!("no session for key: {key}"))
     }
 
@@ -65,16 +68,15 @@ impl LspPool {
 
     /// Remove sessions whose last I/O was longer ago than `idle_threshold`.
     ///
-    /// Dropping an [`LspSession`] terminates its child LSP server process, so
-    /// this reclaims the memory and CPU held by stale language servers. The
-    /// daemon calls this periodically to keep idle workspaces from piling up.
-    ///
-    /// Returns the number of sessions removed.
+    /// Only reaps sessions that are not currently locked (try_lock). Busy
+    /// sessions are skipped until a later pass.
     pub fn reap_idle(&mut self, idle_threshold: std::time::Duration) -> usize {
         let now = std::time::Instant::now();
         let before = self.sessions.len();
-        self.sessions
-            .retain(|_, s| now.duration_since(s.last_used_at()) < idle_threshold);
+        self.sessions.retain(|_, s| match s.try_lock() {
+            Ok(guard) => now.duration_since(guard.last_used_at()) < idle_threshold,
+            Err(_) => true, // busy — keep
+        });
         before - self.sessions.len()
     }
 
@@ -96,11 +98,9 @@ impl LspPool {
 #[cfg(test)]
 impl LspPool {
     /// Insert a pre-built session under a key (testing only).
-    ///
-    /// Allows driving daemon handlers against a session backed by a mock
-    /// transport, without spawning a real LSP server.
     pub fn insert_session_for_test(&mut self, key: &str, session: LspSession) {
-        self.sessions.insert(key.to_string(), session);
+        self.sessions
+            .insert(key.to_string(), Arc::new(Mutex::new(session)));
     }
 }
 
@@ -148,9 +148,6 @@ mod tests {
         assert!(pool.is_empty());
     }
 
-    /// A zero threshold reaps everything immediately, since `now - last_used`
-    /// is never less than zero. Sessions are freshly created so their
-    /// `last_used_at` equals `now`, making `0 < 0` false → reaped.
     #[test]
     fn reap_idle_zero_reaps_all() {
         let mut pool = make_pool(&["rust:rust-analyzer:/p", "go:gopls:/p"]);
@@ -162,8 +159,6 @@ mod tests {
         assert!(pool.is_empty());
     }
 
-    /// A large threshold keeps freshly-created sessions (their last I/O is
-    /// essentially *now*, well within the window).
     #[test]
     fn reap_idle_large_threshold_keeps_all() {
         let mut pool = make_pool(&["rust:rust-analyzer:/p"]);
@@ -174,17 +169,21 @@ mod tests {
         assert!(!pool.is_empty());
     }
 
-    /// Reaping is selective: only sessions past the threshold are dropped.
     #[test]
     fn reap_idle_is_selective() {
-        // Two sessions; both fresh, so a zero threshold reaps both while a
-        // large threshold keeps both. (We can't fast-forward `Instant`, so we
-        // verify the boundary behavior from both sides instead.)
         let mut pool = make_pool(&["a:x:/p", "b:y:/p"]);
         assert_eq!(pool.reap_idle(Duration::from_secs(3600)), 0);
         assert_eq!(pool.session_keys().len(), 2);
 
         assert_eq!(pool.reap_idle(Duration::ZERO), 2);
         assert!(pool.is_empty());
+    }
+
+    #[tokio::test]
+    async fn get_by_key_returns_independent_arc() {
+        let mut pool = make_pool(&["rust:ra:/p"]);
+        let a = pool.get_by_key("rust:ra:/p").unwrap();
+        let b = pool.get_by_key("rust:ra:/p").unwrap();
+        assert!(Arc::ptr_eq(&a, &b));
     }
 }
