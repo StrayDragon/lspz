@@ -1,20 +1,21 @@
 kind: llman.sdd.spec
-name: product-requirements
-purpose: "产品需求规范，定义 lspz 的核心目标、用户场景和 MVP 范围。"
+name: "product-requirements"
+purpose: 产品需求规范，定义 lspz 的核心目标、用户场景和 MVP 范围。
 valid_scope[2]: src/,tests/
 requirements[6]{req_id,title,statement}:
   r1,AI 友好代理,系统 MUST 构建对 AI Coding Agent 友好的 LSP 代理层。
-  r2,Token 压缩,系统 MUST 对 Server→Client 方向的 LSP 消息进行 Token 敏感的无损压缩。
+  r2,Token 压缩,系统 MUST 对 Server→Client 方向的 LSP 消息进行 Token 敏感的压缩（诊断去重合并等以语义等价为目标；hover 等可做有意截断以节省 token）。
   r3,诊断压缩优先,系统 MUST 优先压缩 textDocument/publishDiagnostics 诊断消息。
-  r4,去重合并,系统 MUST 将相同 message+severity 的诊断合并为一个条目。
-  r5,三模态支持,系统 MUST 支持库、CLI 代理、MCP 服务器三种使用模式。
+  r4,去重合并,系统 MUST 将同一文件中相同 message+severity+code 的诊断合并为一个条目。
+  r5,三模态支持,系统 MUST 支持库、CLI 代理、MCP 服务器（含 daemon 模式）三种使用模式。
   r6,LSP 兼容性,系统 MUST 保持所有 LSP 标准接口的兼容性。
-scenarios[8]{req_id,id,given,when,then}:
-  r1,agent-friendly,"AI Agent 使用 lspz",Agent 发送 LSP 请求,返回压缩后的响应
-  r2,token-reduce,"50 个诊断的 LSP 响应",压缩处理,token 数量减少 60%+
-  r3,diagnostics-first,"publishDiagnostics 消息",Proxy 接收,优先进行压缩处理
-  r4,dedup-30-unused,"30 个 unused variable 诊断",压缩处理,合并为 1 条 + 30 个 range
-  r5,library-mode,"Cargo.toml 添加 lspz 依赖",编译,成功链接 lspz 库
-  r5,cli-mode,"运行 lspz proxy --backend ra",启动,透明代理 LSP 通信
-  r5,mcp-mode,"运行 lspz mcp",启动,MCP 服务器监听请求
-  r6,lsp-compatible,"标准 LSP 服务器",Proxy 连接,正确处理所有 LSP 消息
+scenarios[9]{req_id,id,given,when,then}:
+  r1,"agent-friendly",AI Agent 使用 lspz,Agent 发送 LSP 请求,返回压缩后的响应
+  r2,"token-reduce",50 个诊断的 LSP 响应,压缩处理,token 数量明显减少且诊断语义可还原
+  r3,"diagnostics-first",publishDiagnostics 消息,Proxy 接收,优先进行压缩处理
+  r4,"dedup-with-code",30 个 unused variable 诊断且 code 相同,压缩处理,合并为 1 条 + 30 个 range
+  r5,"daemon-mode",运行 lspz daemon,MCP 客户端连接,复用 daemon 会话并返回压缩结果
+  r6,"lsp-compatible",标准 LSP 服务器,Proxy 连接,正确处理所有 LSP 消息
+  r5,"library-mode",Cargo.toml 添加 lspz 依赖,编译,成功链接 lspz 库
+  r5,"cli-mode","运行 lspz proxy --backend ra",启动,透明代理 LSP 通信
+  r5,"mcp-mode",运行 lspz mcp,启动,MCP 服务器监听请求

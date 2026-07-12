@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r6,取消安全分帧,"系统 MUST 使用可取消安全的分帧状态（FrameState）读取 Content-Length 帧，避免 select! 取消导致字节丢失与协议错位。",null,null,null
+  add_requirement,r7,按 id 匹配握手响应,"系统 MUST 在 initialize/shutdown 握手中按 JSON-RPC id 匹配响应，期间转发交错的服务器通知，禁止将下一条任意消息当作响应。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r6,"cancel-safe-frame",stdin 与 server 同时可读且一方被取消,Proxy 继续读帧,已读字节保留在 FrameState 中且后续帧解析正确
+  r7,"handshake-by-id",initialize 请求 id=1 且服务器先发 window/logMessage,Proxy 等待 initialize 响应,转发通知并仅在 id=1 的响应到达后完成握手
