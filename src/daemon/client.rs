@@ -321,7 +321,44 @@ impl DaemonClient {
 
 impl Drop for DaemonClient {
     fn drop(&mut self) {
-        debug!("DaemonClient dropped (owns_daemon={})", self.owns_daemon);
+        if !self.owns_daemon {
+            debug!("DaemonClient dropped (owns_daemon=false)");
+            return;
+        }
+        let socket = self.socket_path.clone();
+        debug!(
+            ?socket,
+            "DaemonClient dropped (owns_daemon=true); requesting shutdown"
+        );
+        // Best-effort: Drop cannot await. Open a fresh connection on a helper
+        // thread so we do not block the runtime that may still own this client.
+        std::thread::Builder::new()
+            .name("lspz-daemon-shutdown".into())
+            .spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        warn!(error = %e, "Failed to build runtime for daemon shutdown");
+                        return;
+                    }
+                };
+                let _ = rt.block_on(async {
+                    match DaemonClient::connect_explicit(&socket).await {
+                        Ok(mut client) => {
+                            if let Err(e) = client.shutdown().await {
+                                warn!(error = %e, "daemon/shutdown after Drop failed");
+                            }
+                        }
+                        Err(e) => {
+                            debug!(error = %e, "Could not connect to shut down owned daemon");
+                        }
+                    }
+                });
+            })
+            .ok();
     }
 }
 
