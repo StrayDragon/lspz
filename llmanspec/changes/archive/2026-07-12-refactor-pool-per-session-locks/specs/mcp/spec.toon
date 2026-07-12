@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r8,"Per-session 锁",系统 MUST 在 LSP 请求/通知等待期间仅锁定目标会话，不得因持有全局池锁而阻塞其他会话的并发 I/O。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r8,"concurrent-sessions",两个不同 session_key 的客户端,同时 wait_notify,彼此不因对方会话锁而阻塞（池锁不跨越 await）
