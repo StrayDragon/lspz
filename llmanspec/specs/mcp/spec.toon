@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: mcp
 purpose: MCP 服务器集成，将 LSP 能力暴露为 MCP 工具供 Claude Desktop 等客户端使用。
 valid_scope[2]: src/mcp/,tests/
-requirements[10]{req_id,title,statement}:
+requirements[11]{req_id,title,statement}:
   r1,MCP 服务器,系统 MUST 实现 MCP 服务器协议，暴露 LSP 能力为 MCP 工具。
   r2,工具注册,系统 MUST 注册 get_diagnostics、get_completions、get_symbols 等 MCP 工具。
   r3,会话管理,系统 MUST 通过 LspPool 管理多个 LSP 会话（按语言/工作区复用）。
@@ -13,7 +13,8 @@ requirements[10]{req_id,title,statement}:
   r8,"Per-session 锁",系统 MUST 在 LSP 请求/通知等待期间仅锁定目标会话，不得因持有全局池锁而阻塞其他会话的并发 I/O。
   r9,请求等待期间缓冲通知,"LspSession::send_request MUST 将交错的服务器通知缓冲；wait_for_notification 系列 MUST 优先消费缓冲，不得静默丢弃。"
   r10,Daemon 状态计数,DaemonStatus MUST 在接受连接时递增 total_connections、在分发请求时递增 total_requests，并在 daemon/status 中报告自启动以来的 uptime_secs。
-scenarios[11]{req_id,id,given,when,then}:
+  r11,接受首个空诊断通知,"In-process MCP get_diagnostics MUST 与 daemon 路径一致：将目标 URI 的首个 publishDiagnostics（可为空数组）视为终态，禁止为等待非空诊断而空转直至超时。"
+scenarios[12]{req_id,id,given,when,then}:
   r1,"mcp-start",MCP 服务器配置,启动 lspz mcp,服务器开始监听 MCP 请求
   r2,"tool-diagnostics",MCP 客户端调用 get_diagnostics,MCP 服务器处理,返回压缩后的诊断信息
   r2,"tool-completions",MCP 客户端调用 get_completions,MCP 服务器处理,返回压缩后的补全信息
@@ -25,3 +26,4 @@ scenarios[11]{req_id,id,given,when,then}:
   r8,"concurrent-sessions",两个不同 session_key 的客户端,同时 wait_notify,彼此不因对方会话锁而阻塞（池锁不跨越 await）
   r9,"buffer-during-request",send_request 等待响应期间收到 publishDiagnostics,随后 wait_for_notification publishDiagnostics,返回先前缓冲的通知 params
   r10,"status-counters",Daemon 已运行并处理过连接与请求,daemon/status,total_connections 与 total_requests 大于 0 且 uptime_secs 大于等于 0
+  r11,"empty-is-terminal",干净源文件首次 publishDiagnostics 为空,get_diagnostics,立即返回空结果且不消耗完整 10s 预算

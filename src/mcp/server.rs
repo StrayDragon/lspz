@@ -245,18 +245,15 @@ impl McpServer {
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
         let target_uri = input.uri.clone();
-        // Wait for the first non-empty diagnostic notification, with a 10s budget.
-        // Some LSP servers send initial empty notifications before analysis completes.
-        let mut params = serde_json::Value::Null;
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(10);
-        loop {
-            let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
-            if remaining.is_zero() {
-                break;
-            }
-
+        // Wait for the first publishDiagnostics for this URI.
+        //
+        // Per LSP, the first notification after didOpen/didChange is the
+        // complete set — an empty array is the legitimate terminal state for a
+        // clean file. Do not keep waiting for non-empty (that burns the budget
+        // on clean files and diverges from DaemonMcpServer).
+        let params = {
             let wait_result = tokio::time::timeout(
-                remaining,
+                std::time::Duration::from_secs(10),
                 session.wait_for_notification_where("textDocument/publishDiagnostics", |p| {
                     p.get("uri").and_then(Value::as_str) == Some(&target_uri)
                 }),
@@ -264,23 +261,13 @@ impl McpServer {
             .await;
 
             match wait_result {
-                Ok(Ok(p)) => {
-                    params = p;
-                    let diags = params.get("diagnostics").and_then(Value::as_array);
-                    if diags.is_some_and(|a| !a.is_empty()) {
-                        break;
-                    }
-                    // Empty diagnostics — keep waiting within budget
-                }
+                Ok(Ok(p)) => p,
                 Ok(Err(e)) => {
                     return Err(ErrorData::internal_error(e.to_string(), None));
                 }
-                Err(_) => {
-                    // Timeout — return whatever we have (may be empty)
-                    break;
-                }
+                Err(_) => serde_json::Value::Null,
             }
-        }
+        };
 
         // If no matching notification arrived (timeout), return empty diagnostics
         // instead of passing Value::Null to compress(), which would produce a
