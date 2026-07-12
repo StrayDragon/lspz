@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r8,已打开文档不强制磁盘回读,AgentHandle 在文档已 open 时 MUST NOT 在查询前无磁盘内容覆盖会话缓冲；notify_change 写入的未保存内容 MUST 在后续 get_* 调用中保持，除非显式重新从磁盘打开。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r8,"keep-unsaved",notify_change 写入未保存缓冲,随后 get_diagnostics,会话仍持有未保存内容而非磁盘旧版本

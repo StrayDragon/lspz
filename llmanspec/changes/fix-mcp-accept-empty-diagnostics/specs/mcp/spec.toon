@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r11,接受首个空诊断通知,"In-process MCP get_diagnostics MUST 与 daemon 路径一致：将目标 URI 的首个 publishDiagnostics（可为空数组）视为终态，禁止为等待非空诊断而空转直至超时。",null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r11,"empty-is-terminal",干净源文件首次 publishDiagnostics 为空,get_diagnostics,立即返回空结果且不消耗完整 10s 预算
