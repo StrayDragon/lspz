@@ -13,8 +13,8 @@ use std::fmt;
 
 use crate::error::LspzError;
 
-/// Maximum body size: 16 MB.
-const MAX_BODY_SIZE: usize = 16 * 1024 * 1024;
+/// Maximum body size: 16 MB (SSOT: framing::MAX_BODY_SIZE).
+use crate::transport::framing::MAX_BODY_SIZE;
 
 /// A parsed JSON-RPC 2.0 message.
 #[derive(Debug, Clone, PartialEq)]

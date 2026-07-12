@@ -16,6 +16,8 @@ use super::framing;
 pub struct TcpTransport {
     writer: WriteHalf<tokio::net::TcpStream>,
     reader: BufReader<ReadHalf<tokio::net::TcpStream>>,
+    /// Cancel-safe partial-frame buffer for `receive`.
+    frame_state: framing::FrameState,
 }
 
 impl TcpTransport {
@@ -28,6 +30,7 @@ impl TcpTransport {
         Ok(Self {
             writer: write_half,
             reader: BufReader::new(read_half),
+            frame_state: framing::FrameState::new(),
         })
     }
 }
@@ -35,7 +38,7 @@ impl TcpTransport {
 #[async_trait::async_trait]
 impl Transport for TcpTransport {
     async fn receive(&mut self) -> Result<Vec<u8>, LspzError> {
-        framing::read_frame(&mut self.reader).await
+        framing::read_frame_with_state(&mut self.reader, &mut self.frame_state).await
     }
 
     async fn send(&mut self, data: &[u8]) -> Result<(), LspzError> {

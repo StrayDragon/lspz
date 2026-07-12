@@ -19,6 +19,9 @@ pub enum LspzError {
     #[error("server exited unexpectedly")]
     ServerExited,
 
+    #[error("timeout: {0}")]
+    Timeout(String),
+
     #[error("config error: {0}")]
     Config(String),
 }

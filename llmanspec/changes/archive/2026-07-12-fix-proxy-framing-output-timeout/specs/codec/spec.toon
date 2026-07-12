@@ -1,0 +1,7 @@
+kind: llman.sdd.delta
+ops[2]{op,req_id,title,statement,from,to,name}:
+  modify_requirement,r4,Passthrough 格式,系统 MUST 支持 passthrough：Proxy 在该模式下不得改写消息体，原样转发原始 LSP JSON。,null,null,null
+  modify_requirement,r2,TOON 格式,"系统 MUST 支持 TOON 输出：通知与响应均可编码为 TOON；响应 MUST 保留原 JSON-RPC id 并将 TOON 文本置于 result。",null,null,null
+op_scenarios[2]{req_id,id,given,when,then}:
+  r4,"proxy-passthrough",Config.output_format=passthrough,拦截路径处理任意 ServerToClient 消息,输出字节与输入 raw 帧语义一致且无压缩字段
+  r2,"toon-response-shape",已压缩的 completion result 与请求 id,编码为 TOON 响应,"JSON-RPC 含相同 id 且 result 含 format=toon 与 text"
