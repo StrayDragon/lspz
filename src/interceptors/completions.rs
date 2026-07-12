@@ -89,16 +89,16 @@ pub fn compress_completions(
         // First pass: count frequencies
         let mut freq: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
         for item in &items {
-            if let Some(doc) = item.get("documentation").and_then(|v| v.as_str()) {
+            if let Some(doc) = item.get("documentation").and_then(documentation_text) {
                 *freq.entry(doc).or_default() += 1;
             }
         }
         // Second pass: collect docs that appear >1 time, preserving insertion order
         let mut pool: Vec<String> = Vec::new();
         for item in &items {
-            if let Some(doc) = item.get("documentation").and_then(|v| v.as_str())
+            if let Some(doc) = item.get("documentation").and_then(documentation_text)
                 && freq.get(doc).copied().unwrap_or(0) > 1
-                && !pool.contains(&doc.to_string())
+                && !pool.iter().any(|d| d == doc)
             {
                 pool.push(doc.to_string());
             }
@@ -133,7 +133,8 @@ pub fn compress_completions(
             }
 
             // documentation -> doc (or doc_id if dedup enabled)
-            if let Some(doc) = item.get("documentation").and_then(|v| v.as_str()) {
+            // Supports plain string and MarkupContent `{ kind, value }`.
+            if let Some(doc) = item.get("documentation").and_then(documentation_text) {
                 if doc_dedup {
                     if let Some(idx) = doc_pool.iter().position(|d| d == doc) {
                         c.insert("doc_id".into(), Value::Number(idx.into()));
@@ -181,6 +182,15 @@ pub fn compress_completions(
     }
 
     Ok(Value::Object(result))
+}
+
+/// Extract plain text from a CompletionItem `documentation` value.
+///
+/// LSP allows `string | MarkupContent`. MarkupContent is
+/// `{ "kind": "plaintext"|"markdown", "value": "..." }`.
+fn documentation_text(doc: &Value) -> Option<&str> {
+    doc.as_str()
+        .or_else(|| doc.get("value").and_then(Value::as_str))
 }
 
 /// Map LSP CompletionItemKind numeric value to a single character.
@@ -319,6 +329,45 @@ mod tests {
         assert!(item.get("data").is_none());
         assert!(item.get("additionalTextEdits").is_none());
         assert!(item.get("commitCharacters").is_none());
+    }
+
+    #[tokio::test]
+    async fn test_markup_content_documentation_preserved() {
+        let c = make_compressor();
+        let params = serde_json::json!([
+            {
+                "label": "foo",
+                "kind": 6,
+                "documentation": {
+                    "kind": "markdown",
+                    "value": "**foo** does bar"
+                }
+            }
+        ]);
+
+        let result = c
+            .intercept("textDocument/completion", params, Direction::ServerToClient)
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(result["items"][0]["doc"], "**foo** does bar");
+    }
+
+    #[test]
+    fn test_documentation_text_helpers() {
+        assert_eq!(
+            documentation_text(&serde_json::json!("plain")),
+            Some("plain")
+        );
+        assert_eq!(
+            documentation_text(&serde_json::json!({
+                "kind": "markdown",
+                "value": "md body"
+            })),
+            Some("md body")
+        );
+        assert_eq!(documentation_text(&serde_json::json!(42)), None);
     }
 
     #[tokio::test]
