@@ -39,7 +39,7 @@ impl DaemonServer {
         Self {
             socket_path,
             pool: Arc::new(Mutex::new(LspPool::new())),
-            status: Arc::new(Mutex::new(DaemonStatus::default())),
+            status: Arc::new(Mutex::new(DaemonStatus::new())),
             active_connections: Arc::new(AtomicU64::new(0)),
         }
     }
@@ -101,6 +101,7 @@ impl DaemonServer {
                     match accepted {
                         Ok((stream, _addr)) => {
                             active_connections.fetch_add(1, Ordering::Relaxed);
+                            status.lock().await.record_connection();
                             debug!(
                                 active = active_connections.load(Ordering::Relaxed),
                                 "Daemon: new client connection"
@@ -270,6 +271,7 @@ async fn dispatch(
     shutdown_tx: &watch::Sender<bool>,
 ) -> DaemonResponse {
     let id = req.id;
+    status.lock().await.record_request();
 
     match req.method.as_str() {
         "lsp/spawn" => handle_spawn(id, &req.params, pool, status).await,
@@ -485,7 +487,8 @@ where
 
 /// Handle `daemon/status` — return current daemon state.
 async fn handle_status(id: u64, status: &Arc<Mutex<DaemonStatus>>) -> DaemonResponse {
-    let s = status.lock().await;
+    let mut s = status.lock().await;
+    s.refresh_uptime();
     let json = serde_json::to_value(&*s).unwrap_or(serde_json::Value::Null);
     DaemonResponse::ok(id, json)
 }

@@ -1,18 +1,20 @@
 kind: llman.sdd.spec
 name: interceptors
-purpose: "拦截器链架构，按顺序执行拦截器处理 Server→Client 消息，支持配置驱动的启用/禁用。"
+purpose: 拦截器链架构，按顺序执行拦截器处理 Server→Client 消息，支持配置驱动的启用/禁用。
 valid_scope[2]: src/interceptors/,tests/
-requirements[5]{req_id,title,statement}:
+requirements[6]{req_id,title,statement}:
   r1,Interceptor trait,系统 MUST 定义 Interceptor trait 包含 name、applies_to 和 intercept 方法。
   r2,InterceptorChain,系统 MUST 实现 InterceptorChain 按顺序执行所有匹配的拦截器。
   r3,失败开放,拦截器失败时系统 MUST 记录 WARN 日志并返回原始参数。
   r4,配置驱动,系统 MUST 根据 Config 配置启用或禁用特定拦截器。
   r5,方向过滤,拦截器 MUST 仅处理 ServerToClient 方向的消息。
-scenarios[7]{req_id,id,given,when,then}:
-  r1,diagnostics-compressor,"DiagnosticsCompressor",applies_to(textDocument/publishDiagnostics),返回 true
-  r1,hover-compressor,"HoverCompressor",applies_to(textDocument/hover),返回 true
-  r2,chain-execute,"包含 3 个拦截器的链",处理消息,按顺序执行所有拦截器
-  r2,chain-skip-disabled,"拦截器被配置禁用",处理消息,跳过该拦截器
-  r3,interceptor-fail,"拦截器返回错误",InterceptorChain 处理,返回原始消息且日志包含 WARN
-  r4,config-toggle,"配置禁用某个拦截器",InterceptorChain 处理,跳过该拦截器
-  r5,client-to-server,"ClientToServer 方向消息",InterceptorChain 处理,直接透传不执行拦截器
+  r6,Completion MarkupContent,CompletionCompressor MUST 从 documentation 的纯字符串与 MarkupContent.value 提取文档文本；不得因 documentation 为对象而静默丢弃。
+scenarios[8]{req_id,id,given,when,then}:
+  r1,"diagnostics-compressor",DiagnosticsCompressor,applies_to(textDocument/publishDiagnostics),返回 true
+  r1,"hover-compressor",HoverCompressor,applies_to(textDocument/hover),返回 true
+  r2,"chain-execute",包含 3 个拦截器的链,处理消息,按顺序执行所有拦截器
+  r2,"chain-skip-disabled",拦截器被配置禁用,处理消息,跳过该拦截器
+  r3,"interceptor-fail",拦截器返回错误,InterceptorChain 处理,返回原始消息且日志包含 WARN
+  r4,"config-toggle",配置禁用某个拦截器,InterceptorChain 处理,跳过该拦截器
+  r5,"client-to-server",ClientToServer 方向消息,InterceptorChain 处理,直接透传不执行拦截器
+  r6,"markup-doc",completion item documentation 为 MarkupContent 对象,compress_completions,compact 项含 doc 字段且等于 MarkupContent.value

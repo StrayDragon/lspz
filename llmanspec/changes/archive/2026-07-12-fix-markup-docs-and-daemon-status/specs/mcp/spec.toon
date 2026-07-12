@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r10,Daemon 状态计数,DaemonStatus MUST 在接受连接时递增 total_connections、在分发请求时递增 total_requests，并在 daemon/status 中报告自启动以来的 uptime_secs。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r10,"status-counters",Daemon 已运行并处理过连接与请求,daemon/status,total_connections 与 total_requests 大于 0 且 uptime_secs 大于等于 0
