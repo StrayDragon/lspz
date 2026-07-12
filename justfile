@@ -27,6 +27,10 @@ qa: fmt-check lint test doc-check
 alias check := qa
 alias ci := qa
 
+# Full verification harness (fmt + clippy + tests + docs + SDD + prek).
+verify:
+    bash scripts/verify-all.sh
+
 # fmt-check only
 fmt-check:
     cargo fmt -- --check

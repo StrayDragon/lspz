@@ -2,7 +2,8 @@
 //!
 //! Compresses `textDocument/completion` responses by:
 //!
-//! 1. Truncating to `max_items` (default 50)
+//! 1. Optionally truncating to `max_items` when `max_items > 0` (default: 0 = unlimited;
+//!    proxy capping is owned by [`CappingInterceptor`](crate::interceptors::capping::CappingInterceptor))
 //! 2. Pruning fields — drop `command`, `data`, `additionalTextEdits`, `commitCharacters`
 //! 3. Reducing `CompletionItemKind` (1-25) to single-char codes
 //! 4. Interning identical documentation strings
@@ -19,7 +20,7 @@ use crate::interceptors::{Direction, Interceptor};
 /// Transforms LSP completion responses into a compact format.
 /// On any error, logs a WARN and returns `Err` (fail-open in the chain).
 pub struct CompletionCompressor {
-    /// Maximum number of completion items to keep (default: 50).
+    /// Maximum number of completion items to keep (`0` = unlimited).
     pub max_items: usize,
     /// Whether to deduplicate identical documentation strings (default: true).
     pub enable_doc_dedup: bool,
@@ -28,7 +29,7 @@ pub struct CompletionCompressor {
 impl Default for CompletionCompressor {
     fn default() -> Self {
         Self {
-            max_items: 50,
+            max_items: 0,
             enable_doc_dedup: true,
         }
     }
@@ -81,8 +82,12 @@ pub fn compress_completions(
         return Ok(params.clone());
     };
 
-    // Truncate
-    let items: Vec<Value> = items.into_iter().take(max_items).collect();
+    // Truncate only when explicitly limited (0 = unlimited).
+    let items: Vec<Value> = if max_items > 0 {
+        items.into_iter().take(max_items).collect()
+    } else {
+        items
+    };
 
     // Collect documentation strings for dedup — only pool docs used >1 time
     let doc_pool: Vec<String> = if doc_dedup {
@@ -423,6 +428,26 @@ mod tests {
 
         let compact = result.unwrap();
         assert_eq!(compact["items"].as_array().unwrap().len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_default_max_items_unlimited() {
+        let c = CompletionCompressor::default();
+        let items: Vec<Value> = (0..80)
+            .map(|i| serde_json::json!({"label": format!("item_{}", i)}))
+            .collect();
+
+        let result = c
+            .intercept(
+                "textDocument/completion",
+                Value::Array(items),
+                Direction::ServerToClient,
+            )
+            .await
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(result["items"].as_array().unwrap().len(), 80);
     }
 
     #[tokio::test]

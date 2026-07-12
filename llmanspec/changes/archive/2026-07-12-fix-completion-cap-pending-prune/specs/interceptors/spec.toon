@@ -1,0 +1,5 @@
+kind: llman.sdd.delta
+ops[1]{op,req_id,title,statement,from,to,name}:
+  add_requirement,r7,补全截断配置驱动,CompletionCompressor MUST 将 max_items=0 视为不截断；默认 MUST 为 0。数量截断 MUST 由 CappingInterceptor 的 Config.capping.max_completions 控制，禁止在压缩机中硬编码 50。,null,null,null
+op_scenarios[1]{req_id,id,given,when,then}:
+  r7,"unlimited-default",CompletionCompressor 默认构造且无 capping,压缩含 100 项的 completion,输出保留全部 100 项

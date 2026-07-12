@@ -131,6 +131,7 @@ cargo install --path .
 cargo run --example compress-demo   # 展示各拦截器的 token 节省
 cargo bench                         # Criterion 吞吐量基准
 just qa                             # fmt + clippy + test + doc-check
+just verify                         # full harness (qa + doc-test + SDD + prek)
 ```
 
 ## 文档

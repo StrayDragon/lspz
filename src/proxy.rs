@@ -4,7 +4,7 @@
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use tokio::io::{AsyncWriteExt, BufReader};
 use tokio::select;
@@ -24,6 +24,15 @@ use crate::transport::framing::{self, FrameState};
 
 /// Default timeout waiting for a server frame during handshake / message loop.
 const RECEIVE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// TTL for unmatched pending request entries before prune.
+const PENDING_TTL: Duration = Duration::from_secs(120);
+
+/// In-flight client request tracked for response interception.
+struct PendingEntry {
+    method: String,
+    at: Instant,
+}
 
 /// 代理状态机状态。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,8 +58,8 @@ pub struct Proxy {
     state: State,
     transport: Box<dyn Transport>,
     interceptor_chain: InterceptorChain,
-    /// Tracks in-flight request IDs to their method for response interception.
-    pending_requests: HashMap<u64, String>,
+    /// Tracks in-flight request IDs for response interception (method + insert time).
+    pending_requests: HashMap<u64, PendingEntry>,
     /// Holds the config watcher alive so hot-reload keeps working.
     _config_watcher: Option<crate::config_watcher::ConfigWatcher>,
 }
@@ -351,7 +360,7 @@ impl Proxy {
 
         // Look up and remove the request method; if unknown, pass through
         let method = match self.pending_requests.remove(&id) {
-            Some(m) => m,
+            Some(entry) => entry.method,
             None => return raw.to_vec(),
         };
 
@@ -473,8 +482,14 @@ fn encode_toon(method: &str, params: &serde_json::Value) -> Option<String> {
     }
 }
 
-/// Track a client→server request ID → method mapping for response interception.
-fn track_pending_request(raw: &[u8], pending: &mut HashMap<u64, String>) {
+/// Drop pending entries older than [`PENDING_TTL`].
+fn prune_pending_requests(pending: &mut HashMap<u64, PendingEntry>) {
+    let now = Instant::now();
+    pending.retain(|_, entry| now.duration_since(entry.at) < PENDING_TTL);
+}
+
+/// Apply `$/cancelRequest`: remove the cancelled id from the pending map.
+fn apply_cancel_request(raw: &[u8], pending: &mut HashMap<u64, PendingEntry>) {
     let (frame, _) = match json_rpc::parse_frame(raw) {
         Ok(Some(f)) => f,
         _ => return,
@@ -483,7 +498,32 @@ fn track_pending_request(raw: &[u8], pending: &mut HashMap<u64, String>) {
         Ok(v) => v,
         _ => return,
     };
-    // Only track requests (must have both id and method)
+    if val.get("method").and_then(|v| v.as_str()) != Some("$/cancelRequest") {
+        return;
+    }
+    let id = val
+        .get("params")
+        .and_then(|p| p.get("id"))
+        .and_then(|v| v.as_u64());
+    if let Some(id) = id {
+        pending.remove(&id);
+    }
+}
+
+/// Track a client→server request ID → method mapping for response interception.
+fn track_pending_request(raw: &[u8], pending: &mut HashMap<u64, PendingEntry>) {
+    prune_pending_requests(pending);
+    apply_cancel_request(raw, pending);
+
+    let (frame, _) = match json_rpc::parse_frame(raw) {
+        Ok(Some(f)) => f,
+        _ => return,
+    };
+    let val: serde_json::Value = match serde_json::from_slice(&frame.body) {
+        Ok(v) => v,
+        _ => return,
+    };
+    // Only track requests (must have both id and method); skip cancel notifications
     let id = match val.get("id").and_then(|v| v.as_u64()) {
         Some(id) => id,
         None => return,
@@ -492,7 +532,13 @@ fn track_pending_request(raw: &[u8], pending: &mut HashMap<u64, String>) {
         Some(m) => m,
         None => return,
     };
-    pending.insert(id, method.to_string());
+    pending.insert(
+        id,
+        PendingEntry {
+            method: method.to_string(),
+            at: Instant::now(),
+        },
+    );
 }
 
 /// Extract the LSP method name from a raw framed message.
@@ -662,9 +708,13 @@ mod tests {
         ));
         let chain = InterceptorChain::new(default_interceptors(), config.clone());
         let mut proxy = Proxy::new(config, Box::new(MockTransport::new()), chain);
-        proxy
-            .pending_requests
-            .insert(7, "textDocument/completion".into());
+        proxy.pending_requests.insert(
+            7,
+            PendingEntry {
+                method: "textDocument/completion".into(),
+                at: Instant::now(),
+            },
+        );
 
         let resp = serde_json::json!({
             "jsonrpc": "2.0",
@@ -681,5 +731,60 @@ mod tests {
         assert_eq!(val["id"], 7);
         assert_eq!(val["result"]["format"], "toon");
         assert!(val["result"]["text"].as_str().unwrap().contains("foo"));
+    }
+
+    #[test]
+    fn test_cancel_request_removes_pending() {
+        let mut pending = HashMap::new();
+        pending.insert(
+            42,
+            PendingEntry {
+                method: "textDocument/completion".into(),
+                at: Instant::now(),
+            },
+        );
+
+        let cancel = crate::codec::json_rpc::LspMessage::Notification {
+            method: "$/cancelRequest".into(),
+            params: serde_json::json!({"id": 42}),
+        };
+        let raw = cancel.to_bytes().unwrap();
+        track_pending_request(&raw, &mut pending);
+        assert!(!pending.contains_key(&42));
+    }
+
+    #[test]
+    fn test_prune_pending_ttl() {
+        let mut pending = HashMap::new();
+        pending.insert(
+            1,
+            PendingEntry {
+                method: "textDocument/hover".into(),
+                at: Instant::now() - PENDING_TTL - Duration::from_secs(1),
+            },
+        );
+        pending.insert(
+            2,
+            PendingEntry {
+                method: "textDocument/completion".into(),
+                at: Instant::now(),
+            },
+        );
+        prune_pending_requests(&mut pending);
+        assert!(!pending.contains_key(&1));
+        assert!(pending.contains_key(&2));
+    }
+
+    #[test]
+    fn test_track_pending_request_inserts() {
+        let mut pending = HashMap::new();
+        let req = crate::codec::json_rpc::LspMessage::Request {
+            id: 9,
+            method: "textDocument/hover".into(),
+            params: serde_json::Value::Null,
+        };
+        let raw = req.to_bytes().unwrap();
+        track_pending_request(&raw, &mut pending);
+        assert_eq!(pending.get(&9).unwrap().method, "textDocument/hover");
     }
 }
