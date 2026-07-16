@@ -1,72 +1,19 @@
 ---
-name: "llman-sdd-archive"
-description: "归档已完成的 llman SDD 变更：合并 delta specs 到主 specs，校验全量，引导 commit。在 verify 报告全绿后运行。支持单个或批量归档。"
+name: "llman-sdd-validate"
+description: "校验 llmanspec 变更与 specs 并提供修复提示。"
 metadata:
   version: "0.0.60"
 ---
 
-# LLMAN SDD 归档
+# LLMAN SDD 校验
 
-使用此 skill 归档已完成的变更，合并 delta specs 到主 specs，并引导 commit。
-
-## Pipeline 位置
-
-```mermaid
-flowchart LR
-    verify["llman-sdd-verify<br/>验证"] --> archive
-    archive["★ llman-sdd-archive ★<br/>归档（你现在在这里）"]
-    archive --> commit["git commit<br/>完成闭环"]
-
-    style archive fill:#fff3cd,stroke:#ffc107,stroke-width:3px
-```
-
-> 📍 你现在在归档阶段：pipeline 最后一站。
-> 📎 若 specs 逐渐膨胀，可运行 `llman-sdd-specs-compact` 压缩。
-
-## 硬约束
-
-- **必须先通过 verify 阶段全绿**：未通过验证的 change 禁止归档。
-- **SSOT 校验**：每个 change 归档前必须通过 `llman sdd validate <id> --strict --no-interactive`。
-- **不要问「要不要继续」**：批量归档时间线上一路执行到底，除非遇到无法自动解决的错误。
+使用此 skill 校验变更/spec 格式与过期状态。
 
 ## 步骤
-
-### 0) Preflight
-- `git status --porcelain`：确认工作区改动属于已完成的 change。
-- 若有未预期改动，先处理（stash 或报告）。
-
-### 1) 确认目标变更
-- 确定目标 ID：单个或批量（来自用户输入或 `llman sdd list --json`）。
-- 始终说明："归档 IDs：<id1>, <id2>, ..."。
-- 确认每个 change 都已通过 verify 阶段的全绿验证。
-
-### 2) 逐个归档
-- 先逐个校验：`llman sdd validate <id> --strict --no-interactive`。
-- 校验失败 → STOP 并报告；不要跳过校验强行归档。
-- 可选预览：`llman sdd archive <id> --dry-run`。
-- 执行归档：
-  - 默认：`llman sdd archive run <id>`
-  - 仅工具类变更：`llman sdd archive run <id> --skip-specs`
-  - **任一失败立即停止**，报告剩余未处理 ID。
-- **BDD-on**：`archive run` 仅将 delta `spec.toon` 合并到主 `spec.toon`。`.feature` 文件由 `llman sdd solidify` 管理——archive 不复制 `.feature` 文件。归档前运行 `solidify <id>`。
-
-### 3) 全量校验
-- 全部归档完成后执行：`llman sdd validate --all --strict --no-interactive`。
-- 确认归档后的 specs 工件一致。
-
-### 4) Commit 引导
-- 输出建议的 commit message（格式：`feat(sdd): archive <id1>, <id2> - <简短总结>`）。
-- 提示用户：`git add -A && git commit -m "..."`。
-- 若用户要求自动 commit，执行后输出 commit hash。
-
-> 💡 上一阶段 `llman-sdd-verify`（验证通过）→ 本阶段归档后闭环结束。若 specs 逐渐膨胀，可运行 `llman-sdd-specs-compact` 压缩。
-
-## Archive 冷备引导
-- 当 archive 目录增长过大时，使用冷备维护：
-  - 预览冻结候选：`llman sdd archive freeze --dry-run`
-  - 冻结旧归档：`llman sdd archive freeze --before <YYYY-MM-DD> --keep-recent <N>`
-  - 需要恢复时：`llman sdd archive thaw --change <YYYY-MM-DD-id>`
-- freeze/thaw 仅用于日期归档目录（`YYYY-MM-DD-*`）；建议保留少量最近目录不冻结。
+1. 校验单个条目：`llman sdd validate <id>`。
+2. 批量校验：`llman sdd validate --all`（或 `--changes` / `--specs`）。
+3. 在 CI 或自动化场景中使用 `--strict` 与 `--no-interactive`。
+4. 若校验失败，汇总错误并给出最小、可执行的修复建议。
 
 
 在执行之前，请先阅读 `llmanspec/config.yaml`，若其中包含 `context` 与 `rules` 请遵循。

@@ -1,73 +1,61 @@
 ---
-name: "llman-sdd-archive"
-description: "归档已完成的 llman SDD 变更：合并 delta specs 到主 specs，校验全量，引导 commit。在 verify 报告全绿后运行。支持单个或批量归档。"
+name: "llman-sdd-solidify"
+description: "将变更的 delta scenarios 序列化为可执行的 .feature 文件（仅 BDD-on）。在 apply 之后、archive 之前运行。框架无关：按 scenario 的 feature 字段和自指黑名单过滤后写入 Gherkin。"
 metadata:
   version: "0.0.60"
 ---
 
-# LLMAN SDD 归档
+# LLMAN SDD Solidify
 
-使用此 skill 归档已完成的变更，合并 delta specs 到主 specs，并引导 commit。
+使用此 skill 为某个 change 生成（重新生成）可执行的 `.feature` 文件，来源是其 delta `spec.toon` 中的 scenarios。仅 BDD-on 项目。
 
 ## Pipeline 位置
 
 ```mermaid
 flowchart LR
-    verify["llman-sdd-verify<br/>验证"] --> archive
-    archive["★ llman-sdd-archive ★<br/>归档（你现在在这里）"]
+    apply["llman-sdd-apply<br/>实施"] --> verify["llman-sdd-verify<br/>验证"]
+    verify --> solidify
+    solidify["★ llman-sdd-solidify ★<br/>固化（你现在在这里）"]
+    solidify --> archive["llman-sdd-archive<br/>归档"]
     archive --> commit["git commit<br/>完成闭环"]
 
-    style archive fill:#fff3cd,stroke:#ffc107,stroke-width:3px
+    style solidify fill:#fff3cd,stroke:#ffc107,stroke-width:3px
 ```
 
-> 📍 你现在在归档阶段：pipeline 最后一站。
-> 📎 若 specs 逐渐膨胀，可运行 `llman-sdd-specs-compact` 压缩。
+> 📍 你现在在 solidify 阶段：verify 通过之后、archive 之前。
+> BDD-off 项目：此命令为 no-op（无内容可生成）。
 
 ## 硬约束
 
-- **必须先通过 verify 阶段全绿**：未通过验证的 change 禁止归档。
-- **SSOT 校验**：每个 change 归档前必须通过 `llman sdd validate <id> --strict --no-interactive`。
-- **不要问「要不要继续」**：批量归档时间线上一路执行到底，除非遇到无法自动解决的错误。
+- **BDD 模式感知**——先检查 `llmanspec/config.yaml` 是否含 `bdd:` 段，再分支：
+  - **BDD-on**（有 `bdd:` 段）：正常执行 solidify（见下方步骤）。
+  - **BDD-off，且 `llmanspec/specs/` 下无任何 `.feature` 文件**：no-op。报告「无需固化（BDD 未启用）」。
+  - **BDD-off，但存在 `.feature` 文件**：报告**残留警告**——列出每个文件并说明：「发现 N 个 `.feature` 文件，但 BDD 未启用（`config.yaml` 无 `bdd:` 段）。它们会被 `validate`/`index` 忽略。若要重新启用可执行性，请添加 `bdd:` 段（如 `bdd:\n  run_command: \"cargo test --features bdd\"`）。有意重新启用，还是不再需要则删除？」**禁止删除这些文件**——只展示，由用户决定。
+- **框架无关**：solidify 不扫描 `tests/bdd_steps.rs` 或任何 BDD 框架的 step 绑定。scenario 是否在运行时「可执行」由 `bdd.run_command` 判定。
+- **禁止手工编辑 `.feature`**：它们是生成产物。改 `spec.toon` 的 scenarios，再重新运行 solidify。
+- **不要问「要不要继续」**：一路执行到底，除非遇到无法自动解决的错误。
 
 ## 步骤
 
-### 0) Preflight
-- `git status --porcelain`：确认工作区改动属于已完成的 change。
-- 若有未预期改动，先处理（stash 或报告）。
+### 1) 确认目标 change
+- 确定 change id（来自用户输入或上下文）。
+- 始终说明："固化的变更：<id>"。
+- `spec.toon` 是 SSOT。`.feature` 文件是其 scenarios 的**可执行子集**，序列化为 Gherkin。
+- 当 scenario 的 `when` 调用 `llman sdd validate|archive|solidify` 时为**自指递归**，会被跳过（否则 BDD runner 会递归 spawn）。
 
-### 1) 确认目标变更
-- 确定目标 ID：单个或批量（来自用户输入或 `llman sdd list --json`）。
-- 始终说明："归档 IDs：<id1>, <id2>, ..."。
-- 确认每个 change 都已通过 verify 阶段的全绿验证。
+### 2)（可选）Dry-run 预览
+- `llman sdd solidify <id> --dry-run` 预览哪些 scenario 写入、哪些跳过。
+- 检查跳过原因：`feature=false` 与自指 scenario 的跳过是预期的。
 
-### 2) 逐个归档
-- 先逐个校验：`llman sdd validate <id> --strict --no-interactive`。
-- 校验失败 → STOP 并报告；不要跳过校验强行归档。
-- 可选预览：`llman sdd archive <id> --dry-run`。
-- 执行归档：
-  - 默认：`llman sdd archive run <id>`
-  - 仅工具类变更：`llman sdd archive run <id> --skip-specs`
-  - **任一失败立即停止**，报告剩余未处理 ID。
-- **BDD-on**：`archive run` 仅将 delta `spec.toon` 合并到主 `spec.toon`。`.feature` 文件由 `llman sdd solidify` 管理——archive 不复制 `.feature` 文件。归档前运行 `solidify <id>`。
+### 3) 执行 solidify
+- `llman sdd solidify <id>`
+- 会为每个 capability 在 `llmanspec/specs/<capability>/<capability>.feature` 写入一个文件。
 
-### 3) 全量校验
-- 全部归档完成后执行：`llman sdd validate --all --strict --no-interactive`。
-- 确认归档后的 specs 工件一致。
+### 4) 报告
+- 汇总：每个 capability 写入/跳过的 scenario 数量，及输出路径。
+- 跳过的 scenario 列出原因。
 
-### 4) Commit 引导
-- 输出建议的 commit message（格式：`feat(sdd): archive <id1>, <id2> - <简短总结>`）。
-- 提示用户：`git add -A && git commit -m "..."`。
-- 若用户要求自动 commit，执行后输出 commit hash。
-
-> 💡 上一阶段 `llman-sdd-verify`（验证通过）→ 本阶段归档后闭环结束。若 specs 逐渐膨胀，可运行 `llman-sdd-specs-compact` 压缩。
-
-## Archive 冷备引导
-- 当 archive 目录增长过大时，使用冷备维护：
-  - 预览冻结候选：`llman sdd archive freeze --dry-run`
-  - 冻结旧归档：`llman sdd archive freeze --before <YYYY-MM-DD> --keep-recent <N>`
-  - 需要恢复时：`llman sdd archive thaw --change <YYYY-MM-DD-id>`
-- freeze/thaw 仅用于日期归档目录（`YYYY-MM-DD-*`）；建议保留少量最近目录不冻结。
-
+> 💡 上一阶段 `llman-sdd-verify`（已通过）→ 本阶段生成 `.feature` → 下一步 `llman-sdd-archive`（归档）。
 
 在执行之前，请先阅读 `llmanspec/config.yaml`，若其中包含 `context` 与 `rules` 请遵循。
 
