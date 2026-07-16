@@ -1,73 +1,36 @@
 ---
-name: "llman-sdd-archive"
-description: "归档已完成的 llman SDD 变更：合并 delta specs 到主 specs，校验全量，引导 commit。在 verify 报告全绿后运行。支持单个或批量归档。"
+name: "llman-sdd-ff"
+description: "Fast-forward：一次性创建 proposal/specs/design/tasks。"
 metadata:
   version: "0.0.60"
 ---
 
-# LLMAN SDD 归档
+# LLMAN SDD Fast-Forward (FF)
 
-使用此 skill 归档已完成的变更，合并 delta specs 到主 specs，并引导 commit。
-
-## Pipeline 位置
-
-```mermaid
-flowchart LR
-    verify["llman-sdd-verify<br/>验证"] --> archive
-    archive["★ llman-sdd-archive ★<br/>归档（你现在在这里）"]
-    archive --> commit["git commit<br/>完成闭环"]
-
-    style archive fill:#fff3cd,stroke:#ffc107,stroke-width:3px
-```
-
-> 📍 你现在在归档阶段：pipeline 最后一站。
-> 📎 若 specs 逐渐膨胀，可运行 `llman-sdd-specs-compact` 压缩。
-
-## 硬约束
-
-- **必须先通过 verify 阶段全绿**：未通过验证的 change 禁止归档。
-- **SSOT 校验**：每个 change 归档前必须通过 `llman sdd validate <id> --strict --no-interactive`。
-- **不要问「要不要继续」**：批量归档时间线上一路执行到底，除非遇到无法自动解决的错误。
+使用此 skill 快速为一个新 change 创建 **全部** artifacts（proposal → specs → design（可选）→ tasks）。
 
 ## 步骤
-
-### 0) Preflight
-- `git status --porcelain`：确认工作区改动属于已完成的 change。
-- 若有未预期改动，先处理（stash 或报告）。
-
-### 1) 确认目标变更
-- 确定目标 ID：单个或批量（来自用户输入或 `llman sdd list --json`）。
-- 始终说明："归档 IDs：<id1>, <id2>, ..."。
-- 确认每个 change 都已通过 verify 阶段的全绿验证。
-
-### 2) 逐个归档
-- 先逐个校验：`llman sdd validate <id> --strict --no-interactive`。
-- 校验失败 → STOP 并报告；不要跳过校验强行归档。
-- 可选预览：`llman sdd archive <id> --dry-run`。
-- 执行归档：
-  - 默认：`llman sdd archive run <id>`
-  - 仅工具类变更：`llman sdd archive run <id> --skip-specs`
-  - **任一失败立即停止**，报告剩余未处理 ID。
-- **BDD-on**：`archive run` 仅将 delta `spec.toon` 合并到主 `spec.toon`。`.feature` 文件由 `llman sdd solidify` 管理——archive 不复制 `.feature` 文件。归档前运行 `solidify <id>`。
-
-### 3) 全量校验
-- 全部归档完成后执行：`llman sdd validate --all --strict --no-interactive`。
-- 确认归档后的 specs 工件一致。
-
-### 4) Commit 引导
-- 输出建议的 commit message（格式：`feat(sdd): archive <id1>, <id2> - <简短总结>`）。
-- 提示用户：`git add -A && git commit -m "..."`。
-- 若用户要求自动 commit，执行后输出 commit hash。
-
-> 💡 上一阶段 `llman-sdd-verify`（验证通过）→ 本阶段归档后闭环结束。若 specs 逐渐膨胀，可运行 `llman-sdd-specs-compact` 压缩。
-
-## Archive 冷备引导
-- 当 archive 目录增长过大时，使用冷备维护：
-  - 预览冻结候选：`llman sdd archive freeze --dry-run`
-  - 冻结旧归档：`llman sdd archive freeze --before <YYYY-MM-DD> --keep-recent <N>`
-  - 需要恢复时：`llman sdd archive thaw --change <YYYY-MM-DD-id>`
-- freeze/thaw 仅用于日期归档目录（`YYYY-MM-DD-*`）；建议保留少量最近目录不冻结。
-
+1. 询问用户：
+   - 变更的一句话描述
+   - 期望的 change id（或你来派生；kebab-case + 动词前缀）
+   - 受影响的 capability（用于创建 `specs/<capability>/`）
+   - 在创建任何目录前，先让用户确认最终 id。
+2. 确保项目已初始化：
+   - 必须存在 `llmanspec/`；若不存在，提示先运行 `llman sdd init`，然后 STOP。
+3. 如果 `llmanspec/changes/<id>/` 已存在，询问用户是否：
+   - 继续补齐缺失工件（推荐），或
+   - 改用其他 id。
+   不要在未明确确认的情况下覆盖已有工件。
+4. 在 `llmanspec/changes/<id>/` 下创建 artifacts：
+   - `proposal.md`
+   - `specs/<capability>/spec.toon`（至少一个）
+   - `design.md`（仅当需要时）
+   - `tasks.md`（有序、小步、可验证，包含校验步骤）
+5. 校验：
+   ```bash
+   llman sdd validate <id> --strict --no-interactive
+   ```
+6. 给出简短状态总结，并建议下一步（`llman-sdd-apply`）。
 
 在执行之前，请先阅读 `llmanspec/config.yaml`，若其中包含 `context` 与 `rules` 请遵循。
 
@@ -84,7 +47,6 @@ flowchart LR
 - `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结归档目录）
 - `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（解冻归档）
 - `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
-
 
 常见校验修复（TOON 独立文件 spec）：
 

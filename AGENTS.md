@@ -3,46 +3,6 @@
 
 本项目使用 llman SDD。阅读 `llmanspec/config.yaml` 了解 SDD 命令行为配置，以及 `llmanspec/AGENTS.md` 获取项目附加规则。
 
-## 项目上下文
-
-Tech stack: Rust (Edition 2024), Tokio async runtime
-项目: lspz - AI-friendly LSP compression proxy
-核心功能: 拦截 LSP 服务器响应，压缩成紧凑格式（TOON/compact），节省 AI token
-三种用法: 库（嵌入 Rust agent）、CLI 代理、MCP 服务器
-代码规范:
-  - Conventional Commits 格式
-  - Clippy 严格模式（配置在 .clippy.toml）
-  - 使用 tracing 进行结构化日志
-  - 错误处理: Result<T, LspzError> + thiserror
-  - 异步代码: Tokio + async-trait
-架构原则:
-  - Interceptor chain 是核心抽象
-  - Fail-open: 压缩失败只记录 WARN，透明转发
-  - Transport-agnostic: 核心不依赖特定传输实现
-  - Config-driven: 运行时行为通过 Config 控制
-文档:
-  - AGENTS.md 是通用规范 SSOT
-  - API 文档由 cargo doc 从代码注释生成
-  - 规范行为由 llmanspec/specs 维护（无 mdbook/docs/src）
-测试:
-  - 单元测试与源码同目录
-  - 集成测试在 tests/ 目录
-  - 性能测试在 benches/ 目录（criterion）
-  - 覆盖率目标: 核心逻辑 ≥90%, Proxy ≥80%
-
-## Artifact 规则
-
-- proposal: 提案保持在 800 字以内
-- proposal: 必须包含"非目标"章节
-- proposal: 必须说明对现有架构的影响
-- proposal: 涉及公共 API 变更时需说明兼容性
-- tasks: 每个任务不超过 2 小时
-- tasks: 任务描述需明确涉及的文件和模块
-- tasks: 测试任务需说明覆盖率目标
-- spec: 技术规格需包含代码示例
-- spec: 涉及架构变更需更新 AGENTS.md
-- spec: API 变更需同步更新 cargo doc 注释
-
 ## SDD 流水线
 
 使用 `/llman-sdd-explore` 开始，然后按照 pipeline：`/llman-sdd-propose` → `/llman-sdd-apply` → `/llman-sdd-verify` → `/llman-sdd-archive`。
