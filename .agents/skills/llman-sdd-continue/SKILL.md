@@ -2,7 +2,7 @@
 name: "llman-sdd-continue"
 description: "继续一个 llman SDD change：创建下一个缺失的 artifact。"
 metadata:
-  version: "0.0.60"
+  version: "0.0.61"
 ---
 
 # LLMAN SDD Continue

@@ -2,7 +2,7 @@
 name: "llman-sdd-ff"
 description: "Fast-forward：一次性创建 proposal/specs/design/tasks。"
 metadata:
-  version: "0.0.60"
+  version: "0.0.61"
 ---
 
 # LLMAN SDD Fast-Forward (FF)

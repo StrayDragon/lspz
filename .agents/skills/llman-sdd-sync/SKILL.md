@@ -2,7 +2,7 @@
 name: "llman-sdd-sync"
 description: "手动把 delta specs 同步到主 specs（不归档 change）。"
 metadata:
-  version: "0.0.60"
+  version: "0.0.61"
 ---
 
 # LLMAN SDD Sync

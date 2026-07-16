@@ -2,7 +2,7 @@
 name: "llman-sdd-new-change"
 description: "创建新的 SDD 变更提案与增量 specs。"
 metadata:
-  version: "0.0.60"
+  version: "0.0.61"
 ---
 
 # LLMAN SDD 新变更
