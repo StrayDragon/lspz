@@ -3,21 +3,21 @@ name: compression
 purpose: LSP 消息压缩能力，通过去重、字段裁剪、枚举缩减和 Range Delta 编码减少 token 消耗。
 valid_scope[2]: src/interceptors/,src/codec/
 requirements[7]{req_id,title,statement}:
-  r1,去重合并,系统 MUST 将同一文件中相同 message+severity+code 的诊断合并为一个条目。
-  r2,字段裁剪,系统 MUST 默认移除 source、data、codeDescription、relatedInformation 等非必要字段。
-  r3,枚举缩减,系统 MUST 将 severity 编码为单字符（E/W/I/H），tags 编码为单字符（U/D）。
-  r4,Range Delta 编码,系统 MUST 对多个 range 使用 delta 编码，第一个 range 存绝对值，后续存相对差值。
+  r16,去重合并,系统 MUST 将同一文件中相同 message+severity+code 的诊断合并为一个条目。
+  r26,字段裁剪,系统 MUST 默认移除 source、data、codeDescription、relatedInformation 等非必要字段。
+  r35,枚举缩减,系统 MUST 将 severity 编码为单字符（E/W/I/H），tags 编码为单字符（U/D）。
+  r44,Range Delta 编码,系统 MUST 对多个 range 使用 delta 编码，第一个 range 存绝对值，后续存相对差值。
   r5,失败开放,任何压缩失败时系统 MUST 记录 WARN 日志并透明转发原始消息。
   r6,诊断 code 保留数字,系统 MUST 将 LSP Diagnostic.code 的字符串与整数形式均写入 compact 字段 c；不得因类型为数字而丢弃。
   r7,"UTF-8 安全截断","系统 MUST 在按字节长度截断诊断 message 时落在合法 UTF-8 字符边界上，禁止 panic 或产生非法 UTF-8。"
-scenarios[10]{req_id,id,given,when,then}:
-  r1,"dedup-same-message",3 个相同 message 的诊断,DiagnosticsCompressor 处理,输出 1 个条目且 count=3
-  r1,"dedup-different-message",2 个不同 message 的诊断,DiagnosticsCompressor 处理,输出 2 个独立条目
-  r2,"prune-default-fields",包含 source 字段的诊断,压缩处理,输出不包含 source 字段
-  r3,"severity-error",severity=1 的诊断,压缩处理,输出 severity='E'
-  r3,"severity-warning",severity=2 的诊断,压缩处理,输出 severity='W'
-  r4,"delta-multiple-ranges",3 个连续 range,压缩处理,第一个 range 绝对值，后续 delta 编码
-  r4,"delta-single-range",1 个 range,压缩处理,直接存绝对值不做 delta
-  r5,"compression-failure",压缩器抛出异常,InterceptorChain 处理,返回原始消息且日志包含 WARN
-  r6,"numeric-code",诊断 code 为整数 6133,"DiagnosticsCompressor 或 compact::compress",输出条目的 c 为字符串 6133
-  r7,"utf8-truncate",含多字节字符且规范化后长度超过 200 字节的 message,normalize_message 截断,"结果为合法 UTF-8 且以省略号结尾"
+scenarios[10]{req_id,id,given,when,then,feature}:
+  r16,"dedup-same-message",3 个相同 message 的诊断,DiagnosticsCompressor 处理,输出 1 个条目且 count=3,true
+  r16,"dedup-different-message",2 个不同 message 的诊断,DiagnosticsCompressor 处理,输出 2 个独立条目,true
+  r26,"prune-default-fields",包含 source 字段的诊断,压缩处理,输出不包含 source 字段,true
+  r35,"severity-error",severity=1 的诊断,压缩处理,输出 severity='E',true
+  r35,"severity-warning",severity=2 的诊断,压缩处理,输出 severity='W',true
+  r44,"delta-multiple-ranges",3 个连续 range,压缩处理,第一个 range 绝对值，后续 delta 编码,true
+  r44,"delta-single-range",1 个 range,压缩处理,直接存绝对值不做 delta,true
+  r5,"compression-failure",压缩器抛出异常,InterceptorChain 处理,返回原始消息且日志包含 WARN,true
+  r6,"numeric-code",诊断 code 为整数 6133,"DiagnosticsCompressor 或 compact::compress",输出条目的 c 为字符串 6133,true
+  r7,"utf8-truncate",含多字节字符且规范化后长度超过 200 字节的 message,normalize_message 截断,"结果为合法 UTF-8 且以省略号结尾",true

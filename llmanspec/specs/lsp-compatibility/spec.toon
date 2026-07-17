@@ -3,20 +3,20 @@ name: "lsp-compatibility"
 purpose: LSP 兼容性规范，确保输入侧完全符合 LSP 3.17 规范，输出侧以 token 效率优先。
 valid_scope[2]: src/proxy.rs,src/transport/
 requirements[7]{req_id,title,statement}:
-  r1,输入兼容,系统 MUST 完全符合 LSP 3.17 规范处理 Server→lspz 的输入。
-  r2,输出自由,系统输出（lspz→Agent）MUST 不受 LSP 标准约束，以 token 效率优先。
-  r3,透明转发,非目标消息 MUST 透明转发，不干扰 LSP 通信流。
-  r4,能力协商,系统 MUST 正确处理 server/client capabilities，不做篡改。
-  r5,错误隔离,压缩失败 MUST 不影响 LSP 通信。
-  r6,取消安全分帧,"系统 MUST 使用可取消安全的分帧状态（FrameState）读取 Content-Length 帧，避免 select! 取消导致字节丢失与协议错位。"
-  r7,按 id 匹配握手响应,"系统 MUST 在 initialize/shutdown 握手中按 JSON-RPC id 匹配响应，期间转发交错的服务器通知，禁止将下一条任意消息当作响应。"
-scenarios[9]{req_id,id,given,when,then}:
-  r1,"lsp-317-input",LSP 3.17 服务器响应,Proxy 接收,正确解析符合规范
-  r2,"toon-output",诊断数据,压缩后输出,使用 TOON 格式而非标准 LSP JSON
-  r3,"forward-non-target",非诊断消息,Proxy 接收,透明转发给客户端
-  r3,"forward-initialize",initialize 请求,Proxy 接收,透明转发给服务器
-  r4,"capabilities-forward",server capabilities,Proxy 接收,原样转发给客户端
-  r4,"capabilities-no-modify",client capabilities,Proxy 接收,不修改直接转发
-  r5,"compression-fail",压缩器异常,InterceptorChain 处理,返回原始消息且 LSP 通信继续
-  r6,"cancel-safe-frame",stdin 与 server 同时可读且一方被取消,Proxy 继续读帧,已读字节保留在 FrameState 中且后续帧解析正确
-  r7,"handshake-by-id",initialize 请求 id=1 且服务器先发 window/logMessage,Proxy 等待 initialize 响应,转发通知并仅在 id=1 的响应到达后完成握手
+  r18,输入兼容,系统 MUST 完全符合 LSP 3.17 规范处理 Server→lspz 的输入。
+  r28,输出自由,系统输出（lspz→Agent）MUST 不受 LSP 标准约束，以 token 效率优先。
+  r37,透明转发,非目标消息 MUST 透明转发，不干扰 LSP 通信流。
+  r46,能力协商,系统 MUST 正确处理 server/client capabilities，不做篡改。
+  r53,错误隔离,压缩失败 MUST 不影响 LSP 通信。
+  r60,取消安全分帧,"系统 MUST 使用可取消安全的分帧状态（FrameState）读取 Content-Length 帧，避免 select! 取消导致字节丢失与协议错位。"
+  r67,按 id 匹配握手响应,"系统 MUST 在 initialize/shutdown 握手中按 JSON-RPC id 匹配响应，期间转发交错的服务器通知，禁止将下一条任意消息当作响应。"
+scenarios[9]{req_id,id,given,when,then,feature}:
+  r18,"lsp-317-input",LSP 3.17 服务器响应,Proxy 接收,正确解析符合规范,true
+  r28,"toon-output",诊断数据,压缩后输出,使用 TOON 格式而非标准 LSP JSON,true
+  r37,"forward-non-target",非诊断消息,Proxy 接收,透明转发给客户端,true
+  r37,"forward-initialize",initialize 请求,Proxy 接收,透明转发给服务器,true
+  r46,"capabilities-forward",server capabilities,Proxy 接收,原样转发给客户端,true
+  r46,"capabilities-no-modify",client capabilities,Proxy 接收,不修改直接转发,true
+  r53,"compression-fail",压缩器异常,InterceptorChain 处理,返回原始消息且 LSP 通信继续,true
+  r60,"cancel-safe-frame",stdin 与 server 同时可读且一方被取消,Proxy 继续读帧,已读字节保留在 FrameState 中且后续帧解析正确,true
+  r67,"handshake-by-id",initialize 请求 id=1 且服务器先发 window/logMessage,Proxy 等待 initialize 响应,转发通知并仅在 id=1 的响应到达后完成握手,true

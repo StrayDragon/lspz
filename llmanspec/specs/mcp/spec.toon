@@ -3,33 +3,33 @@ name: mcp
 purpose: MCP 服务器集成，将 LSP 能力暴露为 MCP 工具供 Claude Desktop 等客户端使用。
 valid_scope[2]: src/mcp/,tests/
 requirements[14]{req_id,title,statement}:
-  r1,MCP 服务器,系统 MUST 实现 MCP 服务器协议，暴露 LSP 能力为 MCP 工具。
-  r2,工具注册,系统 MUST 注册 get_diagnostics、get_completions、get_symbols 等 MCP 工具。
-  r3,会话管理,系统 MUST 通过 LspPool 管理多个 LSP 会话（按语言/工作区复用）。
-  r4,自动语言检测,系统 MUST 根据文件扩展名自动检测语言和对应的 LSP 后端。
-  r5,Daemon 优雅退出,"Daemon MUST 在 SIGINT、idle 超时与 daemon/shutdown 时先清空 LSP 会话池（触发子进程 Drop/kill）并删除真实 socket 文件，禁止在未回收子进程时直接 process::exit。"
-  r6,Shutdown 使用真实 socket 路径,daemon/shutdown MUST 使用服务器持有的 socket_path 删除套接字文件，不得依赖可能未设置的 LSPZ_SOCKET 环境变量。
-  r7,文档同步 SSOT,"系统 MUST 通过 LspSession::open_or_update_document 作为文档打开/更新的唯一实现；MCP daemon 路径 MUST 经 daemon RPC 调用该逻辑，禁止固定 didOpen version=1。"
-  r8,"Per-session 锁",系统 MUST 在 LSP 请求/通知等待期间仅锁定目标会话；get_or_spawn 的 initialize MUST NOT 在持有全局池锁时 await，以免阻塞其他会话查找。
-  r9,请求等待期间缓冲通知,"LspSession::send_request MUST 将交错的服务器通知缓冲；wait_for_notification 系列 MUST 优先消费缓冲，不得静默丢弃。"
+  r19,MCP 服务器,系统 MUST 实现 MCP 服务器协议，暴露 LSP 能力为 MCP 工具。
+  r29,工具注册,系统 MUST 注册 get_diagnostics、get_completions、get_symbols 等 MCP 工具。
+  r38,会话管理,系统 MUST 通过 LspPool 管理多个 LSP 会话（按语言/工作区复用）。
+  r47,自动语言检测,系统 MUST 根据文件扩展名自动检测语言和对应的 LSP 后端。
+  r54,Daemon 优雅退出,"Daemon MUST 在 SIGINT、idle 超时与 daemon/shutdown 时先清空 LSP 会话池（触发子进程 Drop/kill）并删除真实 socket 文件，禁止在未回收子进程时直接 process::exit。"
+  r61,Shutdown 使用真实 socket 路径,daemon/shutdown MUST 使用服务器持有的 socket_path 删除套接字文件，不得依赖可能未设置的 LSPZ_SOCKET 环境变量。
+  r68,文档同步 SSOT,"系统 MUST 通过 LspSession::open_or_update_document 作为文档打开/更新的唯一实现；MCP daemon 路径 MUST 经 daemon RPC 调用该逻辑，禁止固定 didOpen version=1。"
+  r71,"Per-session 锁",系统 MUST 在 LSP 请求/通知等待期间仅锁定目标会话；get_or_spawn 的 initialize MUST NOT 在持有全局池锁时 await，以免阻塞其他会话查找。
+  r73,请求等待期间缓冲通知,"LspSession::send_request MUST 将交错的服务器通知缓冲；wait_for_notification 系列 MUST 优先消费缓冲，不得静默丢弃。"
   r10,Daemon 状态计数,DaemonStatus MUST 在接受连接时递增 total_connections、在分发请求时递增 total_requests，并在 daemon/status 中报告自启动以来的 uptime_secs。
   r11,接受首个空诊断通知,"In-process MCP get_diagnostics MUST 与 daemon 路径一致：将目标 URI 的首个 publishDiagnostics（可为空数组）视为终态，禁止为等待非空诊断而空转直至超时。"
   r12,file URI 百分号解码,"系统 MUST 在将 file:// URI 转为本地路径前进行百分号解码，使含空格/非 ASCII 的路径可被读取。"
   r13,回收已死 LSP 子进程,LspPool 在查找/复用会话前 MUST 检测子进程已退出（try_wait），并移除死会话以便重新 spawn，不得一直复用到 idle reaper。
   r14,owns_daemon Drop 关闭,DaemonClient 在 owns_daemon=true 被 Drop 时 MUST 尽力发送 daemon/shutdown（或等价终止），不得仅依赖 10min idle TTL。
-scenarios[15]{req_id,id,given,when,then}:
-  r1,"mcp-start",MCP 服务器配置,启动 lspz mcp,服务器开始监听 MCP 请求
-  r2,"tool-diagnostics",MCP 客户端调用 get_diagnostics,MCP 服务器处理,返回压缩后的诊断信息
-  r2,"tool-completions",MCP 客户端调用 get_completions,MCP 服务器处理,返回压缩后的补全信息
-  r3,"session-reuse",相同工作空间的多个请求,LspPool 处理,复用现有 LSP 会话
-  r4,"auto-detect-rs",.rs 文件,工具调用,"自动使用 rust-analyzer"
-  r5,"graceful-sigint",Daemon 持有已 spawn 的 LSP 子进程,收到 SIGINT 或 daemon/shutdown,会话池被清空、socket 文件被删除、子进程被终止后再退出
-  r6,"socket-path","Daemon 以 --socket 路径启动且未设置 LSPZ_SOCKET",客户端调用 daemon/shutdown,该 socket 文件被删除
-  r7,"daemon-sync",同一 URI 第二次工具调用,DaemonMcpServer 同步文档,会话发送 didChange 且 version 递增而非再次 didOpen
-  r8,"spawn-no-global-await",会话 A 正在 initialize,会话 B 查找已存在的 key,B 不被 A 的 initialize await 阻塞
-  r9,"buffer-during-request",send_request 等待响应期间收到 publishDiagnostics,随后 wait_for_notification publishDiagnostics,返回先前缓冲的通知 params
-  r10,"status-counters",Daemon 已运行并处理过连接与请求,daemon/status,total_connections 与 total_requests 大于 0 且 uptime_secs 大于等于 0
-  r11,"empty-is-terminal",干净源文件首次 publishDiagnostics 为空,get_diagnostics,立即返回空结果且不消耗完整 10s 预算
-  r12,"decode-space","URI file:///tmp/my%20file.rs",MCP 读取文件内容,成功打开 /tmp/my file.rs
-  r13,"reap-dead",池中会话的 LSP 子进程已退出,再次 get_or_spawn 同 key,旧会话被移除并创建新会话
-  r14,"drop-shutdown","MCP 客户端 auto-start 了 daemon",客户端 Drop,向 daemon 发出 shutdown 请求
+scenarios[15]{req_id,id,given,when,then,feature}:
+  r19,"mcp-start",MCP 服务器配置,启动 lspz mcp,服务器开始监听 MCP 请求,true
+  r29,"tool-diagnostics",MCP 客户端调用 get_diagnostics,MCP 服务器处理,返回压缩后的诊断信息,true
+  r29,"tool-completions",MCP 客户端调用 get_completions,MCP 服务器处理,返回压缩后的补全信息,true
+  r38,"session-reuse",相同工作空间的多个请求,LspPool 处理,复用现有 LSP 会话,true
+  r47,"auto-detect-rs",.rs 文件,工具调用,"自动使用 rust-analyzer",true
+  r54,"graceful-sigint",Daemon 持有已 spawn 的 LSP 子进程,收到 SIGINT 或 daemon/shutdown,会话池被清空、socket 文件被删除、子进程被终止后再退出,true
+  r61,"socket-path","Daemon 以 --socket 路径启动且未设置 LSPZ_SOCKET",客户端调用 daemon/shutdown,该 socket 文件被删除,true
+  r68,"daemon-sync",同一 URI 第二次工具调用,DaemonMcpServer 同步文档,会话发送 didChange 且 version 递增而非再次 didOpen,true
+  r71,"spawn-no-global-await",会话 A 正在 initialize,会话 B 查找已存在的 key,B 不被 A 的 initialize await 阻塞,true
+  r73,"buffer-during-request",send_request 等待响应期间收到 publishDiagnostics,随后 wait_for_notification publishDiagnostics,返回先前缓冲的通知 params,true
+  r10,"status-counters",Daemon 已运行并处理过连接与请求,daemon/status,total_connections 与 total_requests 大于 0 且 uptime_secs 大于等于 0,true
+  r11,"empty-is-terminal",干净源文件首次 publishDiagnostics 为空,get_diagnostics,立即返回空结果且不消耗完整 10s 预算,true
+  r12,"decode-space","URI file:///tmp/my%20file.rs",MCP 读取文件内容,成功打开 /tmp/my file.rs,true
+  r13,"reap-dead",池中会话的 LSP 子进程已退出,再次 get_or_spawn 同 key,旧会话被移除并创建新会话,true
+  r14,"drop-shutdown","MCP 客户端 auto-start 了 daemon",客户端 Drop,向 daemon 发出 shutdown 请求,true
