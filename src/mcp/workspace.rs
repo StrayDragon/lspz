@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 
 use rmcp::model::ClientInfo;
 use rmcp::service::{Peer, RoleServer};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use crate::languages::DEFAULT_LANGUAGES;
 use crate::uri::{path_from_file_uri, path_to_file_uri};
@@ -28,6 +28,8 @@ pub struct ResolvedWorkspace {
     pub root: String,
     /// MCP root directories when `roots/list` succeeded (for path confinement).
     pub mcp_roots: Vec<PathBuf>,
+    /// How this workspace was obtained (`mcp_roots` | `fallback` | `process_cwd`).
+    pub source: &'static str,
 }
 
 /// Directory names skipped while scanning (build/deps/vcs noise).
@@ -55,25 +57,48 @@ pub async fn resolve_workspace(
     fallback: Option<&str>,
 ) -> Option<ResolvedWorkspace> {
     if let Some(ws) = try_list_roots(peer).await {
+        info!(
+            workspace = %ws.root,
+            source = ws.source,
+            mcp_roots = ws.mcp_roots.len(),
+            "workspace resolved"
+        );
         return Some(ws);
     }
     if let Some(fb) = fallback.filter(|s| !s.is_empty()) {
-        return Some(ResolvedWorkspace {
+        let ws = ResolvedWorkspace {
             root: normalize_root(fb),
             mcp_roots: Vec::new(),
-        });
+            source: "fallback",
+        };
+        info!(
+            workspace = %ws.root,
+            source = ws.source,
+            "workspace resolved (no usable MCP roots; using fallback)"
+        );
+        return Some(ws);
     }
-    std::env::current_dir().ok().map(|p| ResolvedWorkspace {
+    let ws = std::env::current_dir().ok().map(|p| ResolvedWorkspace {
         root: normalize_root(&p.to_string_lossy()),
         mcp_roots: Vec::new(),
-    })
+        source: "process_cwd",
+    })?;
+    info!(
+        workspace = %ws.root,
+        source = ws.source,
+        "workspace resolved (no MCP roots / fallback; using process cwd)"
+    );
+    Some(ws)
 }
 
 async fn try_list_roots(peer: &Peer<RoleServer>) -> Option<ResolvedWorkspace> {
     let info = peer.peer_info()?;
     log_client_info(info.as_ref());
     if info.capabilities.roots.is_none() {
-        debug!("MCP client did not advertise roots capability; skipping roots/list");
+        info!(
+            client = %info.client_info.name,
+            "MCP client did not advertise roots capability; will use fallback/cwd"
+        );
         return None;
     }
 
@@ -84,7 +109,14 @@ async fn try_list_roots(peer: &Peer<RoleServer>) -> Option<ResolvedWorkspace> {
             for root in &result.roots {
                 match path_from_file_uri(&root.uri) {
                     Ok(path) => {
-                        mcp_roots.push(std::fs::canonicalize(&path).unwrap_or(path));
+                        let canon = std::fs::canonicalize(&path).unwrap_or(path);
+                        info!(
+                            uri = %root.uri,
+                            path = %canon.display(),
+                            name = ?root.name,
+                            "MCP root received"
+                        );
+                        mcp_roots.push(canon);
                     }
                     Err(e) => {
                         warn!(uri = %root.uri, error = %e, "Skipping unusable MCP root URI");
@@ -93,8 +125,11 @@ async fn try_list_roots(peer: &Peer<RoleServer>) -> Option<ResolvedWorkspace> {
             }
             let first = mcp_roots.first()?.clone();
             let s = normalize_root(&first.to_string_lossy());
-            info!(root = %s, roots = mcp_roots.len(), "Resolved workspace from MCP roots");
-            Some(ResolvedWorkspace { root: s, mcp_roots })
+            Some(ResolvedWorkspace {
+                root: s,
+                mcp_roots,
+                source: "mcp_roots",
+            })
         }
         Err(e) => {
             warn!(error = %e, "roots/list failed; falling back to cwd");
@@ -244,11 +279,13 @@ pub(crate) fn count_diag_severities_in_toon(toon: &str) -> (u32, u32, u32, u32) 
 /// Build a dense TOON overview table plus optional per-file bodies.
 pub fn format_workspace_scan_toon(
     workspace: &str,
+    source: &str,
     rows: &[(String, u32, u32, u32, u32)],
     bodies: &[String],
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!("workspace: {workspace}\n"));
+    out.push_str(&format!("workspace_source: {source}\n"));
     out.push_str(&format!("scanned[{}]", rows.len()));
     out.push_str("{path,errors,warnings,infos,hints}:\n");
     for (path, e, w, i, h) in rows {
@@ -272,11 +309,13 @@ pub fn format_workspace_scan_toon(
 /// Build a dense TOON overview for a no-`uri` symbols workspace scan.
 pub fn format_workspace_symbols_scan_toon(
     workspace: &str,
+    source: &str,
     rows: &[(String, u32)],
     bodies: &[String],
 ) -> String {
     let mut out = String::new();
     out.push_str(&format!("workspace: {workspace}\n"));
+    out.push_str(&format!("workspace_source: {source}\n"));
     out.push_str(&format!("scanned[{}]", rows.len()));
     out.push_str("{path,symbols}:\n");
     for (path, n) in rows {
@@ -346,9 +385,11 @@ mod tests {
     fn format_scan_has_dense_header() {
         let text = format_workspace_scan_toon(
             "/proj",
+            "process_cwd",
             &[("src/main.rs".into(), 1, 2, 0, 0)],
             &["uri: file:///proj/src/main.rs\ndiagnostics[0]{severity,message,code,range,count}:\n".into()],
         );
+        assert!(text.contains("workspace_source: process_cwd"));
         assert!(text.contains("scanned[1]{path,errors,warnings,infos,hints}:"));
         assert!(text.contains("  src/main.rs,1,2,0,0"));
         assert!(text.contains("---\nuri:"));
@@ -389,9 +430,11 @@ mod tests {
     fn symbols_scan_format_is_dense() {
         let text = format_workspace_symbols_scan_toon(
             "/proj",
+            "mcp_roots",
             &[("src/lib.rs".into(), 3)],
             &["uri: file:///proj/src/lib.rs\nsymbols[1]{name,kind,range,detail,container}:\n  Foo,class,1:0-10:1,,\n".into()],
         );
+        assert!(text.contains("workspace_source: mcp_roots"));
         assert!(text.contains("scanned[1]{path,symbols}:"));
         assert!(text.contains("  src/lib.rs,3"));
         assert_eq!(
