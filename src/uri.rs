@@ -60,6 +60,29 @@ fn from_hex(b: u8) -> Result<u8, String> {
     }
 }
 
+/// Convert a local filesystem path into a `file://` URI.
+///
+/// Absolute paths are preferred. Relative paths are used as-is (callers should
+/// canonicalize when a stable URI is required). Spaces and non-ASCII bytes are
+/// percent-encoded.
+pub fn path_to_file_uri(path: &std::path::Path) -> String {
+    let raw = path.to_string_lossy();
+    let mut encoded = String::with_capacity(raw.len() + 16);
+    for b in raw.bytes() {
+        match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'/' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(b as char);
+            }
+            _ => encoded.push_str(&format!("%{b:02X}")),
+        }
+    }
+    if encoded.starts_with('/') {
+        format!("file://{encoded}")
+    } else {
+        format!("file:///{encoded}")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,5 +108,13 @@ mod tests {
     #[test]
     fn rejects_non_file() {
         assert!(path_from_file_uri("http://example.com/x").is_err());
+    }
+
+    #[test]
+    fn path_to_file_uri_roundtrip_space() {
+        let uri = path_to_file_uri(std::path::Path::new("/tmp/my file.rs"));
+        assert_eq!(uri, "file:///tmp/my%20file.rs");
+        let p = path_from_file_uri(&uri).unwrap();
+        assert_eq!(p, PathBuf::from("/tmp/my file.rs"));
     }
 }

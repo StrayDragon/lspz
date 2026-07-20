@@ -7,14 +7,14 @@ use crate::languages::{default_args_by_extension, lookup_by_extension};
 use rmcp::{
     ErrorData, ServerHandler,
     model::{
-        CallToolRequestParams, CallToolResult, Content, ErrorCode, ListToolsResult,
+        CallToolRequestParams, CallToolResult, ContentBlock, ErrorCode, ListToolsResult,
         PaginatedRequestParams, ServerCapabilities, ServerInfo, Tool,
     },
     service::{RequestContext, RoleServer},
 };
 use serde_json::Value;
 use tokio::sync::Mutex;
-use tracing::info;
+use tracing::{info, warn};
 
 use super::pool::LspPool;
 
@@ -24,8 +24,9 @@ fn tool_definitions() -> Vec<Tool> {
     vec![
         Tool::new(
             "get_diagnostics",
-            "Get LSP diagnostics for a file. Returns TOON format (token-optimized tabular) \
-             with severity, message, code, range, count. \
+            "Get LSP diagnostics for a file. Returns dense TOON (token-optimized tabular). \
+             `uri` is optional: when omitted, resolve the client workspace (MCP roots, else cwd), \
+             scan a small set of source files, and return a max-column overview plus per-file details. \
              Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetDiagnosticsInput::json_schema()),
         ),
@@ -38,8 +39,9 @@ fn tool_definitions() -> Vec<Tool> {
         ),
         Tool::new(
             "get_symbols",
-            "Retrieve document symbols. Returns TOON format \
-             with name, kind, range, detail, container. \
+            "Retrieve document symbols. Returns dense TOON. \
+             `uri` is optional: omit to scan the MCP workspace (roots → cwd) \
+             and return a max-column overview plus per-file symbol tables. \
              Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetSymbolsInput::json_schema()),
         ),
@@ -50,7 +52,9 @@ fn tool_definitions() -> Vec<Tool> {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct GetDiagnosticsInput {
-    pub uri: String,
+    /// Target file URI. When omitted/empty, lspz resolves the MCP workspace
+    /// (roots → cwd) and scans a capped set of source files.
+    pub uri: Option<String>,
     pub backend: Option<String>,
     pub language: Option<String>,
     pub backend_args: Option<Vec<String>>,
@@ -68,7 +72,9 @@ pub struct GetCompletionsInput {
 
 #[derive(Debug, serde::Deserialize)]
 pub struct GetSymbolsInput {
-    pub uri: String,
+    /// Target file URI. When omitted/empty, resolve MCP workspace and scan
+    /// a capped set of source files for document symbols.
+    pub uri: Option<String>,
     pub backend: Option<String>,
     pub language: Option<String>,
     pub backend_args: Option<Vec<String>>,
@@ -211,14 +217,123 @@ impl McpServer {
         }
         result
     }
-    async fn handle_diagnostics(&self, input: GetDiagnosticsInput) -> Result<String, ErrorData> {
-        let (language, backend) = resolve_language_backend(
-            &input.uri,
-            input.language.as_deref(),
-            input.backend.as_deref(),
-        )?;
-        let root = self.cached_workspace_root(&input.uri);
-        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
+    async fn handle_diagnostics(
+        &self,
+        input: GetDiagnosticsInput,
+        peer: &rmcp::service::Peer<RoleServer>,
+    ) -> Result<String, ErrorData> {
+        let uri = input
+            .uri
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let ws = super::workspace::resolve_workspace(peer, None).await;
+        let mcp_roots = ws.as_ref().map(|w| w.mcp_roots.clone()).unwrap_or_default();
+        match uri {
+            Some(uri) => {
+                self.handle_diagnostics_for_uri(
+                    uri,
+                    input.language.as_deref(),
+                    input.backend.as_deref(),
+                    input.backend_args.as_deref(),
+                    &mcp_roots,
+                )
+                .await
+            }
+            None => {
+                self.handle_diagnostics_workspace_scan(input, peer, ws)
+                    .await
+            }
+        }
+    }
+
+    async fn handle_diagnostics_workspace_scan(
+        &self,
+        input: GetDiagnosticsInput,
+        _peer: &rmcp::service::Peer<RoleServer>,
+        ws: Option<super::workspace::ResolvedWorkspace>,
+    ) -> Result<String, ErrorData> {
+        let workspace = match ws {
+            Some(w) => w,
+            None => {
+                return Err(ErrorData::invalid_request(
+                    "Cannot resolve workspace (no MCP roots and no cwd). Pass `uri` explicitly."
+                        .to_string(),
+                    None,
+                ));
+            }
+        };
+        let root_path = std::path::Path::new(&workspace.root);
+        let files =
+            super::workspace::discover_source_files(root_path, super::workspace::MAX_SCAN_FILES);
+        if files.is_empty() {
+            return Ok(super::workspace::format_workspace_scan_toon(
+                &workspace.root,
+                &[],
+                &[],
+            ));
+        }
+
+        let mut rows = Vec::new();
+        let mut bodies = Vec::new();
+        for path in files {
+            let uri = super::workspace::file_uri_for_path(&path);
+            let rel = path
+                .strip_prefix(root_path)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            match self
+                .handle_diagnostics_for_uri(
+                    &uri,
+                    input.language.as_deref(),
+                    input.backend.as_deref(),
+                    input.backend_args.as_deref(),
+                    &workspace.mcp_roots,
+                )
+                .await
+            {
+                Ok(body) => {
+                    let (e, w, i, h) = super::workspace::count_diag_severities_in_toon(&body);
+                    rows.push((rel, e, w, i, h));
+                    // Only attach per-file bodies that have findings to keep
+                    // agent context dense (overview table is always present).
+                    if e + w + i + h > 0 {
+                        bodies.push(body);
+                    }
+                }
+                Err(err) => {
+                    warn!(file = %rel, error = %err.message, "workspace scan skipped file");
+                    rows.push((rel, 0, 0, 0, 0));
+                }
+            }
+        }
+        Ok(super::workspace::format_workspace_scan_toon(
+            &workspace.root,
+            &rows,
+            &bodies,
+        ))
+    }
+
+    async fn handle_diagnostics_for_uri(
+        &self,
+        uri: &str,
+        language: Option<&str>,
+        backend: Option<&str>,
+        backend_args: Option<&[String]>,
+        mcp_roots: &[std::path::PathBuf],
+    ) -> Result<String, ErrorData> {
+        let (language, backend) = resolve_language_backend(uri, language, backend)?;
+        let root = self.cached_workspace_root(uri);
+        let extra = merge_backend_args(uri, backend_args);
+
+        let path =
+            crate::uri::path_from_file_uri(uri).map_err(|e| ErrorData::invalid_request(e, None))?;
+        super::workspace::ensure_path_under_roots(&path, mcp_roots)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+        let content = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
         let session = {
             LspPool::get_or_spawn(&self.pool, &language, &backend, root.as_deref(), &extra)
@@ -227,21 +342,15 @@ impl McpServer {
         };
         let mut session = session.lock().await;
 
-        let path = crate::uri::path_from_file_uri(&input.uri)
-            .map_err(|e| ErrorData::invalid_request(e, None))?;
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
-
         // Open the document on first call, or send didChange on subsequent calls.
         // This avoids re-sending didOpen for already-open documents, which can
         // cause the LSP server to reset its state and return stale diagnostics.
         session
-            .open_or_update_document(&input.uri, &language, &content)
+            .open_or_update_document(uri, &language, &content)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
-        let target_uri = input.uri.clone();
+        let target_uri = uri.to_string();
         // Wait for the first publishDiagnostics for this URI.
         //
         // Per LSP, the first notification after didOpen/didChange is the
@@ -332,14 +441,117 @@ impl McpServer {
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))
     }
 
-    async fn handle_symbols(&self, input: GetSymbolsInput) -> Result<String, ErrorData> {
-        let (language, backend) = resolve_language_backend(
-            &input.uri,
-            input.language.as_deref(),
-            input.backend.as_deref(),
-        )?;
-        let root = self.cached_workspace_root(&input.uri);
-        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
+    async fn handle_symbols(
+        &self,
+        input: GetSymbolsInput,
+        peer: &rmcp::service::Peer<RoleServer>,
+    ) -> Result<String, ErrorData> {
+        let uri = input
+            .uri
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty());
+        let ws = super::workspace::resolve_workspace(peer, None).await;
+        let mcp_roots = ws.as_ref().map(|w| w.mcp_roots.clone()).unwrap_or_default();
+        match uri {
+            Some(uri) => {
+                self.handle_symbols_for_uri(
+                    uri,
+                    input.language.as_deref(),
+                    input.backend.as_deref(),
+                    input.backend_args.as_deref(),
+                    &mcp_roots,
+                )
+                .await
+            }
+            None => self.handle_symbols_workspace_scan(input, ws).await,
+        }
+    }
+
+    async fn handle_symbols_workspace_scan(
+        &self,
+        input: GetSymbolsInput,
+        ws: Option<super::workspace::ResolvedWorkspace>,
+    ) -> Result<String, ErrorData> {
+        let workspace = match ws {
+            Some(w) => w,
+            None => {
+                return Err(ErrorData::invalid_request(
+                    "Cannot resolve workspace (no MCP roots and no cwd). Pass `uri` explicitly."
+                        .to_string(),
+                    None,
+                ));
+            }
+        };
+        let root_path = std::path::Path::new(&workspace.root);
+        let files =
+            super::workspace::discover_source_files(root_path, super::workspace::MAX_SCAN_FILES);
+        if files.is_empty() {
+            return Ok(super::workspace::format_workspace_symbols_scan_toon(
+                &workspace.root,
+                &[],
+                &[],
+            ));
+        }
+
+        let mut rows = Vec::new();
+        let mut bodies = Vec::new();
+        for path in files {
+            let uri = super::workspace::file_uri_for_path(&path);
+            let rel = path
+                .strip_prefix(root_path)
+                .unwrap_or(&path)
+                .to_string_lossy()
+                .into_owned();
+            match self
+                .handle_symbols_for_uri(
+                    &uri,
+                    input.language.as_deref(),
+                    input.backend.as_deref(),
+                    input.backend_args.as_deref(),
+                    &workspace.mcp_roots,
+                )
+                .await
+            {
+                Ok(body) => {
+                    let n = super::workspace::count_symbol_rows_in_toon(&body);
+                    rows.push((rel, n));
+                    if n > 0 {
+                        bodies.push(body);
+                    }
+                }
+                Err(err) => {
+                    warn!(file = %rel, error = %err.message, "workspace symbols scan skipped file");
+                    rows.push((rel, 0));
+                }
+            }
+        }
+        Ok(super::workspace::format_workspace_symbols_scan_toon(
+            &workspace.root,
+            &rows,
+            &bodies,
+        ))
+    }
+
+    async fn handle_symbols_for_uri(
+        &self,
+        uri: &str,
+        language: Option<&str>,
+        backend: Option<&str>,
+        backend_args: Option<&[String]>,
+        mcp_roots: &[std::path::PathBuf],
+    ) -> Result<String, ErrorData> {
+        let (language, backend) = resolve_language_backend(uri, language, backend)?;
+        let root = self.cached_workspace_root(uri);
+        let extra = merge_backend_args(uri, backend_args);
+
+        let path =
+            crate::uri::path_from_file_uri(uri).map_err(|e| ErrorData::invalid_request(e, None))?;
+        super::workspace::ensure_path_under_roots(&path, mcp_roots)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+        let content = tokio::fs::read_to_string(&path)
+            .await
+            .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
 
         let session = {
             LspPool::get_or_spawn(&self.pool, &language, &backend, root.as_deref(), &extra)
@@ -348,15 +560,9 @@ impl McpServer {
         };
         let mut session = session.lock().await;
 
-        let path = crate::uri::path_from_file_uri(&input.uri)
-            .map_err(|e| ErrorData::invalid_request(e, None))?;
-        let content = tokio::fs::read_to_string(&path)
-            .await
-            .map_err(|e| ErrorData::internal_error(format!("Cannot read file: {e}"), None))?;
-
         // Open the document on first call, or send didChange on subsequent calls.
         session
-            .open_or_update_document(&input.uri, &language, &content)
+            .open_or_update_document(uri, &language, &content)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -364,7 +570,7 @@ impl McpServer {
             .send_request(
                 "textDocument/documentSymbol",
                 serde_json::json!({
-                    "textDocument": { "uri": input.uri },
+                    "textDocument": { "uri": uri },
                 }),
             )
             .await
@@ -389,7 +595,9 @@ impl Default for McpServer {
 impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
-            "lspz MCP server — exposes LSP diagnostics, completions, and symbols as MCP tools. ",
+            "lspz MCP server — exposes LSP diagnostics, completions, and symbols as MCP tools. \
+             Prefer omitting `uri` on get_diagnostics to scan the client workspace (MCP roots / cwd) \
+             and receive a dense TOON overview suitable for coding agents (Cursor, etc.).",
         )
     }
 
@@ -404,7 +612,7 @@ impl ServerHandler for McpServer {
     async fn call_tool(
         &self,
         request: CallToolRequestParams,
-        _context: RequestContext<RoleServer>,
+        context: RequestContext<RoleServer>,
     ) -> Result<CallToolResult, ErrorData> {
         let CallToolRequestParams {
             name, arguments, ..
@@ -416,9 +624,9 @@ impl ServerHandler for McpServer {
                     arguments.unwrap_or_default(),
                 ))
                 .map_err(|e| ErrorData::invalid_request(e.to_string(), None))?;
-                let result = self.handle_diagnostics(input).await?;
+                let result = self.handle_diagnostics(input, &context.peer).await?;
                 info!("get_diagnostics completed");
-                Ok(CallToolResult::success(vec![Content::text(result)]))
+                Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
             "get_completions" => {
                 let input: GetCompletionsInput = serde_json::from_value(serde_json::Value::Object(
@@ -427,16 +635,16 @@ impl ServerHandler for McpServer {
                 .map_err(|e| ErrorData::invalid_request(e.to_string(), None))?;
                 let result = self.handle_completions(input).await?;
                 info!("get_completions completed");
-                Ok(CallToolResult::success(vec![Content::text(result)]))
+                Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
             "get_symbols" => {
                 let input: GetSymbolsInput = serde_json::from_value(serde_json::Value::Object(
                     arguments.unwrap_or_default(),
                 ))
                 .map_err(|e| ErrorData::invalid_request(e.to_string(), None))?;
-                let result = self.handle_symbols(input).await?;
+                let result = self.handle_symbols(input, &context.peer).await?;
                 info!("get_symbols completed");
-                Ok(CallToolResult::success(vec![Content::text(result)]))
+                Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
             _ => Err(ErrorData::new(
                 ErrorCode::METHOD_NOT_FOUND,
@@ -458,12 +666,14 @@ impl JsonSchema for GetDiagnosticsInput {
         serde_json::json!({
             "type": "object",
             "properties": {
-                "uri": { "type": "string", "description": "File URI (e.g. file:///path/to/file.go)" },
+                "uri": {
+                    "type": "string",
+                    "description": "File URI (e.g. file:///path/to/file.go). Optional: omit to scan the MCP workspace (roots → cwd) and return a dense overview table."
+                },
                 "backend": { "type": "string", "description": "Backend LSP server command (e.g. gopls, rust-analyzer). Auto-detected from file extension if omitted." },
                 "language": { "type": "string", "description": "Language identifier (e.g. go, rust). Auto-detected from file extension if omitted." },
                 "backend_args": { "type": "array", "items": { "type": "string" }, "description": "Extra CLI arguments passed to the backend LSP server (appended to defaults)." }
-            },
-            "required": ["uri"]
+            }
         })
     }
 }
@@ -490,12 +700,14 @@ impl JsonSchema for GetSymbolsInput {
         serde_json::json!({
             "type": "object",
             "properties": {
-                "uri": { "type": "string", "description": "File URI" },
+                "uri": {
+                    "type": "string",
+                    "description": "File URI. Optional: omit to scan the MCP workspace (roots → cwd) and return a dense symbols overview."
+                },
                 "backend": { "type": "string", "description": "Backend LSP server command. Auto-detected from file extension if omitted." },
                 "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." },
                 "backend_args": { "type": "array", "items": { "type": "string" }, "description": "Extra CLI arguments passed to the backend LSP server (appended to defaults)." }
-            },
-            "required": ["uri"]
+            }
         })
     }
 }

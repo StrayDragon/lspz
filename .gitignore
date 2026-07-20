@@ -200,3 +200,6 @@ yarn-debug.log*
 dist/
 coverage/
 .synode/
+
+# llman SDD local index cache (pageindex trees, etc.)
+llmanspec/.context/
