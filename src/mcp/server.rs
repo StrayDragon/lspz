@@ -269,6 +269,7 @@ impl McpServer {
         if files.is_empty() {
             return Ok(super::workspace::format_workspace_scan_toon(
                 &workspace.root,
+                workspace.source,
                 &[],
                 &[],
             ));
@@ -310,6 +311,7 @@ impl McpServer {
         }
         Ok(super::workspace::format_workspace_scan_toon(
             &workspace.root,
+            workspace.source,
             &rows,
             &bodies,
         ))
@@ -489,6 +491,7 @@ impl McpServer {
         if files.is_empty() {
             return Ok(super::workspace::format_workspace_symbols_scan_toon(
                 &workspace.root,
+                workspace.source,
                 &[],
                 &[],
             ));
@@ -528,6 +531,7 @@ impl McpServer {
         }
         Ok(super::workspace::format_workspace_symbols_scan_toon(
             &workspace.root,
+            workspace.source,
             &rows,
             &bodies,
         ))

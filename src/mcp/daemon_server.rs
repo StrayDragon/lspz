@@ -166,6 +166,7 @@ impl DaemonMcpServer {
         if files.is_empty() {
             return Ok(crate::mcp::workspace::format_workspace_scan_toon(
                 &workspace.root,
+                workspace.source,
                 &[],
                 &[],
             ));
@@ -205,6 +206,7 @@ impl DaemonMcpServer {
         }
         Ok(crate::mcp::workspace::format_workspace_scan_toon(
             &workspace.root,
+            workspace.source,
             &rows,
             &bodies,
         ))
@@ -395,6 +397,7 @@ impl DaemonMcpServer {
         if files.is_empty() {
             return Ok(crate::mcp::workspace::format_workspace_symbols_scan_toon(
                 &workspace.root,
+                workspace.source,
                 &[],
                 &[],
             ));
@@ -434,6 +437,7 @@ impl DaemonMcpServer {
         }
         Ok(crate::mcp::workspace::format_workspace_symbols_scan_toon(
             &workspace.root,
+            workspace.source,
             &rows,
             &bodies,
         ))
