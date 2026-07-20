@@ -41,13 +41,14 @@ lspz = { version = "0.11", default-features = false, features = ["agent-sdk"] }
 lspz proxy --backend rust-analyzer
 ```
 
-**MCP 服务器** — 把 LSP 能力暴露为 MCP 工具，给 Claude Desktop 等客户端用（需 `--features mcp`）：
+**MCP 服务器** — 把 LSP 能力暴露为 MCP 工具，给 Cursor / Claude Desktop 等客户端用（需 `--features mcp`）：
 
 ```bash
 cargo install lspz --features mcp
 lspz mcp
 ```
 
+对 Cursor 等编码 Agent：`get_diagnostics` / `get_symbols` 的 `uri` 可省略——会通过 MCP Roots（否则进程 cwd）解析工作区，扫描少量源文件并返回 dense TOON 总览。`get_completions` 仍需要 `uri` + 光标位置。
 ## 压缩效果
 
 用 tiktoken 在真实 LSP 服务器输出上测的。TOON（Token-Oriented Object Notation）是默认输出格式。

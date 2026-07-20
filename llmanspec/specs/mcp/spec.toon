@@ -2,7 +2,7 @@ kind: llman.sdd.spec
 name: mcp
 purpose: MCP 服务器集成，将 LSP 能力暴露为 MCP 工具供 Claude Desktop 等客户端使用。
 valid_scope[2]: src/mcp/,tests/
-requirements[14]{req_id,title,statement}:
+requirements[19]{req_id,title,statement}:
   r19,MCP 服务器,系统 MUST 实现 MCP 服务器协议，暴露 LSP 能力为 MCP 工具。
   r29,工具注册,系统 MUST 注册 get_diagnostics、get_completions、get_symbols 等 MCP 工具。
   r38,会话管理,系统 MUST 通过 LspPool 管理多个 LSP 会话（按语言/工作区复用）。
@@ -17,7 +17,12 @@ requirements[14]{req_id,title,statement}:
   r12,file URI 百分号解码,"系统 MUST 在将 file:// URI 转为本地路径前进行百分号解码，使含空格/非 ASCII 的路径可被读取。"
   r13,回收已死 LSP 子进程,LspPool 在查找/复用会话前 MUST 检测子进程已退出（try_wait），并移除死会话以便重新 spawn，不得一直复用到 idle reaper。
   r14,owns_daemon Drop 关闭,DaemonClient 在 owns_daemon=true 被 Drop 时 MUST 尽力发送 daemon/shutdown（或等价终止），不得仅依赖 10min idle TTL。
-scenarios[15]{req_id,id,given,when,then,feature}:
+  r75,MCP Roots 与 peer 上下文,"MCP 服务器在客户端完成连接/initialize 后 MUST 获取并缓存 MCP Roots（若客户端声明该能力），并保留 peer_info/client_info；Roots 请求失败时 MUST WARN 并 fail-open（不中断会话），不得假装已绑定工作区。"
+  r76,可选 URI 与工作区解析,"MCP 工具 get_diagnostics 与 get_symbols 的 uri 参数 MUST 为可选；当 uri 缺省或为空时，系统 MUST 按 MCP Roots → 进程 cwd → detect_workspace_root 顺序解析工作区根；当 uri 非空时 MUST 继续支持显式 file://（或可规范化路径）。"
+  r77,无 URI 诊断摘要流,"当 get_diagnostics 在无有效 uri 且已解析到工作区时，系统 MUST 扫描/触发该工作区内相关 LSP 诊断工作，并返回面向 Agent 的 max-column/compact TOON 摘要（含截断上限），禁止因摘要失败而中断 MCP 会话（失败时 MUST 返回可行动错误文本）。"
+  r78,Cursor 类客户端兼容,"系统 MUST 支持 Cursor 等编码 Agent MCP 客户端：在其提供 Roots（及可识别的 client/peer 信息）时，允许省略 file:// uri 完成默认诊断摘要流；不得要求此类客户端为默认诊断调用填写绝对 URI。"
+  r79,Roots 内路径约束,"当会话已缓存非空 MCP Roots 时，显式 file://（或规范化后的本地路径）若落在所有 root 之外，工具调用 MUST 拒绝并返回明确错误；不得静默读取 Roots 外路径。无 Roots 时行为保持现状（不在本需求扩大为全局沙箱）。"
+scenarios[22]{req_id,id,given,when,then,feature}:
   r19,"mcp-start",MCP 服务器配置,启动 lspz mcp,服务器开始监听 MCP 请求,true
   r29,"tool-diagnostics",MCP 客户端调用 get_diagnostics,MCP 服务器处理,返回压缩后的诊断信息,true
   r29,"tool-completions",MCP 客户端调用 get_completions,MCP 服务器处理,返回压缩后的补全信息,true
@@ -33,3 +38,10 @@ scenarios[15]{req_id,id,given,when,then,feature}:
   r12,"decode-space","URI file:///tmp/my%20file.rs",MCP 读取文件内容,成功打开 /tmp/my file.rs,true
   r13,"reap-dead",池中会话的 LSP 子进程已退出,再次 get_or_spawn 同 key,旧会话被移除并创建新会话,true
   r14,"drop-shutdown","MCP 客户端 auto-start 了 daemon",客户端 Drop,向 daemon 发出 shutdown 请求,true
+  r75,"roots-cached",Cursor 类客户端已连接且声明 Roots 能力,MCP initialize/连接完成,服务器缓存至少一条 root URI 并记录 client/peer 标识,true
+  r75,"roots-fail-open",客户端声明 Roots 但 list/roots 请求失败,连接完成,会话仍可用且日志含 WARN，不伪称已绑定 root,true
+  r76,"empty-uri-resolve","已缓存 root file:///proj 且未传 uri",调用 get_diagnostics,使用 /proj（或等价 file URI）作为工作区根继续处理,true
+  r76,"explicit-uri","客户端传入 file:///proj/src/main.rs",调用 get_diagnostics,按该 URI 打开/诊断，不因存在 Roots 而忽略显式 URI,true
+  r77,"workspace-toon-summary",工作区已解析且 LSP 可返回诊断,无 uri 调用 get_diagnostics,"返回 compact/max-column TOON 摘要且行数不超过配置上限",true
+  r78,"cursor-omit-uri",peer/client 标识为 Cursor 类且 Roots 非空,无参或空 uri 调用 get_diagnostics,成功返回摘要而非 uri required 校验错误,true
+  r79,"outside-roots-reject","已缓存 root file:///proj","调用工具 uri=file:///etc/passwd",返回明确越界错误且不读取该文件,true
