@@ -5,10 +5,10 @@
 //!
 //! ## Workspace resolution
 //!
-//! Coding agents (Cursor, etc.) may omit `uri` on `get_diagnostics` /
-//! `get_symbols`. The server then resolves the workspace via MCP Roots
-//! (when advertised), falling back to process cwd, scans a capped set of
-//! source files, and returns a dense TOON overview.
+//! Coding agents should call `set_workspace` (or pass `workspace`) then use
+//! project-relative `path` / `paths`. Absolute `file://` URIs remain supported.
+//! MCP Roots are best-effort; untrusted cwd fallbacks such as `$HOME` are
+//! rejected for scans instead of silently reading unrelated files.
 
 mod daemon_server;
 mod pool;
