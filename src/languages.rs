@@ -125,13 +125,65 @@ pub fn generate_language_table() -> String {
     rows.join("\n")
 }
 
-/// Check if a command exists in PATH.
+/// Check if a backend binary is resolvable via PATH or default install layouts.
 fn which(cmd: &str) -> bool {
-    std::process::Command::new("which")
-        .arg(cmd)
-        .stdout(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    crate::tool_path::resolve_tool(cmd).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+    use std::sync::Mutex;
+
+    static ENV_MUTEX: Mutex<()> = Mutex::new(());
+
+    fn touch_exe(path: &std::path::Path) {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent).unwrap();
+        }
+        fs::write(path, b"#!/bin/sh\n").unwrap();
+        let mut perms = fs::metadata(path).unwrap().permissions();
+        perms.set_mode(0o755);
+        fs::set_permissions(path, perms).unwrap();
+    }
+
+    #[test]
+    fn test_which_finds_local_bin_with_lean_path() {
+        let _guard = ENV_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let empty = root.path().join("empty");
+        fs::create_dir_all(&empty).unwrap();
+        let backend = "basedpyright-langserver";
+        touch_exe(&home.join(".local").join("bin").join(backend));
+
+        let prev_home = std::env::var_os("HOME");
+        let prev_path = std::env::var_os("PATH");
+        // SAFETY: serialized by ENV_MUTEX; restored before unlock.
+        unsafe {
+            std::env::set_var("HOME", &home);
+            std::env::set_var("PATH", &empty);
+        }
+        let ok = which(backend);
+        unsafe {
+            match prev_home {
+                Some(v) => std::env::set_var("HOME", v),
+                None => std::env::remove_var("HOME"),
+            }
+            match prev_path {
+                Some(v) => std::env::set_var("PATH", v),
+                None => std::env::remove_var("PATH"),
+            }
+        }
+        assert!(ok, "lean PATH should still resolve ~/.local/bin backend");
+    }
+
+    #[test]
+    fn test_generate_language_table_contains_status_column() {
+        let table = generate_language_table();
+        assert!(table.contains("| Extensions | Language | Backend | Status |"));
+        assert!(table.contains("`rust`"));
+    }
 }

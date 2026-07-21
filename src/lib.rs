@@ -27,6 +27,7 @@ pub mod interceptors;
 pub mod languages;
 pub mod metrics;
 pub mod proxy;
+pub mod tool_path;
 pub mod transport;
 pub mod uri;
 
