@@ -1,10 +1,36 @@
-<svg width="200" height="200" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <!-- L型原始管道 (较粗) -->
-  <path d="M5 4V16H11" stroke="#455A64" stroke-width="3.5" stroke-linecap="square"/>
-  <!-- 代理中介节点 -->
-  <circle cx="12" cy="16" r="2.5" fill="#FFC107"/>
-  <!-- S型压缩管道 (渐细效果通过路径表达) -->
-  <path d="M13 16C13 16 19 16 19 13C19 10 15 10 15 7C15 4 21 4 21 4" stroke="#2ECC71" stroke-width="1.5" stroke-linecap="round"/>
-  <!-- 反向代理小箭头 -->
-  <path d="M10 19L12 21L14 19" stroke="#FFC107" stroke-width="1" stroke-linecap="round" stroke-linejoin="round"/>
+<svg width="200" height="200" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 背景框 (可选，如需透明可删除此行) -->
+  <rect width="100" height="100" fill="#ffffff" />
+
+  <g transform="translate(0, -2)">
+    <!-- L & Z 组合型原始框架 (较粗) -->
+    <!-- M 15 25 V 75 H 75 构成了 L 的左壁和全底座 -->
+    <!-- M 31 25 H 75 L 31 75 构成了 Z 的顶和斜对角线 -->
+    <path d="M 15 25 V 75 H 75 M 31 25 H 75 L 31 75"
+          stroke="#455A64" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- S 型细管延展线 (连接至主框架边缘) -->
+    <path d="M 58 35 L 75 25 M 28 61 L 15 75"
+          stroke="#2ECC71" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- S 型压缩管道主体 (曲率平滑的几何折线) -->
+    <path d="M 58 35 H 38 C 33 35 33 48 38 48 H 51 C 56 48 56 61 51 61 H 28"
+          stroke="#2ECC71" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- P 型侧边节点管道 (保持原有的独立性与右下角布局) -->
+    <path d="M 71 95 V 71 C 83 71 83 83 71 83"
+          stroke="#2ECC71" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- 数据交互中介节点 -->
+    <!-- 顶部连接点 -->
+    <circle cx="58" cy="35" r="2.5" fill="#FFC107"/>
+    <!-- 底部连接点 -->
+    <circle cx="28" cy="61" r="2.5" fill="#FFC107"/>
+    <!-- P节点入口端 -->
+    <circle cx="71" cy="71" r="2.5" fill="#FFC107"/>
+
+    <!-- 代理走向小箭头 -->
+    <path d="M 78 90 H 86 L 82 86 M 86 90 L 82 94"
+          stroke="#FFC107" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
 </svg>
