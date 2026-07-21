@@ -126,6 +126,19 @@ git clone https://github.com/straydragon/lspz && cd lspz
 cargo install --path .
 ```
 
+### 语言服务器（无需改 PATH）
+
+推荐用包管理器默认布局安装后端；lspz 会按 PATH → `~/.local/bin` → uv tools / cargo / go（及可选 npm/bun）顺序自动发现，**不必** `export PATH`：
+
+```bash
+# 示例：Python（basedpyright）
+uv tool install basedpyright
+
+# 示例：Rust / Go（若尚未在 PATH）
+# rustup component add rust-analyzer
+# go install golang.org/x/tools/gopls@latest
+```
+
 ## 快速验证
 
 ```bash
