@@ -24,9 +24,10 @@ fn tool_definitions() -> Vec<Tool> {
     vec![
         Tool::new(
             "get_diagnostics",
-            "Get LSP diagnostics for a file. Returns dense TOON (token-optimized tabular). \
-             `uri` is optional: when omitted, resolve the client workspace (MCP roots, else cwd), \
-             scan a small set of source files, and return a max-column overview plus per-file details. \
+            "Get LSP diagnostics. Returns dense TOON. \
+             Prefer `path`/`paths` (project-relative OK) with `workspace` or prior `set_workspace`. \
+             Absolute `uri` (file://) still works. Omit targets only when workspace is known \
+             (roots / session / explicit) to scan a small source set. \
              Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetDiagnosticsInput::json_schema()),
         ),
@@ -34,16 +35,23 @@ fn tool_definitions() -> Vec<Tool> {
             "get_completions",
             "Request LSP completions at a cursor position. Returns TOON format \
              with label, kind, detail, documentation. \
+             Pass `uri` (file:// or absolute) or `path` (relative needs workspace). \
              Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetCompletionsInput::json_schema()),
         ),
         Tool::new(
             "get_symbols",
             "Retrieve document symbols. Returns dense TOON. \
-             `uri` is optional: omit to scan the MCP workspace (roots → cwd) \
-             and return a max-column overview plus per-file symbol tables. \
+             Prefer `path`/`paths` with `workspace` or prior `set_workspace`. \
+             Omit targets only when workspace is known to scan a small source set. \
              Language and backend are auto-detected from file extension if omitted.",
             rmcp::model::object(GetSymbolsInput::json_schema()),
+        ),
+        Tool::new(
+            "set_workspace",
+            "Bind this MCP session to a project workspace root (absolute path or file://). \
+             Subsequent get_diagnostics/get_symbols/get_completions can use project-relative paths.",
+            rmcp::model::object(SetWorkspaceInput::json_schema()),
         ),
     ]
 }
@@ -51,18 +59,30 @@ fn tool_definitions() -> Vec<Tool> {
 // ─── Input Types ───────────────────────────────────────────────────────────
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GetDiagnosticsInput {
-    /// Target file URI. When omitted/empty, lspz resolves the MCP workspace
-    /// (roots → cwd) and scans a capped set of source files.
+    /// Target file URI (`file://…` or absolute path). Optional when using path(s).
     pub uri: Option<String>,
+    /// Single filesystem path (relative to workspace or absolute).
+    pub path: Option<String>,
+    /// Multiple filesystem paths (relative to workspace or absolute).
+    pub paths: Option<Vec<String>>,
+    /// Project workspace root (absolute path or `file://`). Preferred over session/roots.
+    pub workspace: Option<String>,
     pub backend: Option<String>,
     pub language: Option<String>,
     pub backend_args: Option<Vec<String>>,
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GetCompletionsInput {
-    pub uri: String,
+    /// Target file URI (`file://…` or absolute path). Optional when `path` is set.
+    pub uri: Option<String>,
+    /// Filesystem path (relative needs workspace).
+    pub path: Option<String>,
+    /// Project workspace root for relative `path`.
+    pub workspace: Option<String>,
     pub backend: Option<String>,
     pub language: Option<String>,
     pub line: u32,
@@ -71,13 +91,26 @@ pub struct GetCompletionsInput {
 }
 
 #[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct GetSymbolsInput {
-    /// Target file URI. When omitted/empty, resolve MCP workspace and scan
-    /// a capped set of source files for document symbols.
+    /// Target file URI. Optional when using path(s).
     pub uri: Option<String>,
+    /// Single filesystem path (relative to workspace or absolute).
+    pub path: Option<String>,
+    /// Multiple filesystem paths.
+    pub paths: Option<Vec<String>>,
+    /// Project workspace root (absolute path or `file://`).
+    pub workspace: Option<String>,
     pub backend: Option<String>,
     pub language: Option<String>,
     pub backend_args: Option<Vec<String>>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct SetWorkspaceInput {
+    /// Absolute project root path or `file://` URI.
+    pub workspace: String,
 }
 
 /// Extract file extension from a `file://` URI.
@@ -102,18 +135,6 @@ pub(crate) fn merge_backend_args(uri: &str, user_args: Option<&[String]>) -> Vec
     merged
 }
 
-/// Project root marker files to look for when detecting workspace root.
-const ROOT_MARKERS: &[&str] = &[
-    "pyproject.toml",
-    "pyrightconfig.json",
-    "Cargo.toml",
-    "go.mod",
-    "tsconfig.json",
-    "package.json",
-    "compile_commands.json",
-    ".clangd",
-];
-
 /// Detect workspace root by walking up from a file path looking for project markers.
 ///
 /// Returns a canonicalized absolute path (resolves symlinks) so that different
@@ -125,12 +146,10 @@ pub(crate) fn detect_workspace_root(uri: &str) -> Option<String> {
         dir = dir.parent()?;
     }
     loop {
-        for marker in ROOT_MARKERS {
-            if dir.join(marker).exists() {
-                return std::fs::canonicalize(dir)
-                    .map(|p| p.to_string_lossy().to_string())
-                    .ok();
-            }
+        if super::workspace::has_project_marker(dir) {
+            return std::fs::canonicalize(dir)
+                .map(|p| p.to_string_lossy().to_string())
+                .ok();
         }
         dir = dir.parent()?;
     }
@@ -194,6 +213,8 @@ pub(crate) fn resolve_language_backend(
 pub struct McpServer {
     pool: Arc<Mutex<LspPool>>,
     root_cache: Arc<std::sync::Mutex<std::collections::HashMap<String, Option<String>>>>,
+    /// Session-scoped workspace bind (`set_workspace` / explicit workspace param).
+    session_workspace: super::workspace::SessionWorkspace,
 }
 
 impl McpServer {
@@ -202,7 +223,35 @@ impl McpServer {
         Self {
             pool: Arc::new(Mutex::new(LspPool::new())),
             root_cache: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            session_workspace: super::workspace::SessionWorkspace::new(),
         }
+    }
+
+    fn apply_explicit_workspace(&self, workspace: Option<&str>) -> Result<(), ErrorData> {
+        if let Some(ws) = workspace.map(str::trim).filter(|s| !s.is_empty()) {
+            self.session_workspace
+                .set(ws)
+                .map_err(|e| ErrorData::invalid_request(e, None))?;
+        }
+        Ok(())
+    }
+
+    async fn resolve_ws(
+        &self,
+        peer: &rmcp::service::Peer<RoleServer>,
+        explicit: Option<&str>,
+    ) -> Result<super::workspace::ResolvedWorkspace, ErrorData> {
+        super::workspace::resolve_workspace(peer, None, Some(&self.session_workspace), explicit)
+            .await
+            .map_err(|e| ErrorData::invalid_request(e, None))
+    }
+
+    fn handle_set_workspace(&self, input: SetWorkspaceInput) -> Result<String, ErrorData> {
+        let root = self
+            .session_workspace
+            .set(&input.workspace)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+        Ok(super::workspace::format_set_workspace_toon(&root))
     }
 
     fn cached_workspace_root(&self, uri: &str) -> Option<String> {
@@ -222,47 +271,111 @@ impl McpServer {
         input: GetDiagnosticsInput,
         peer: &rmcp::service::Peer<RoleServer>,
     ) -> Result<String, ErrorData> {
-        let uri = input
-            .uri
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty());
-        let ws = super::workspace::resolve_workspace(peer, None).await;
-        let mcp_roots = ws.as_ref().map(|w| w.mcp_roots.clone()).unwrap_or_default();
-        match uri {
-            Some(uri) => {
-                self.handle_diagnostics_for_uri(
-                    uri,
+        self.apply_explicit_workspace(input.workspace.as_deref())?;
+        let specs = super::workspace::collect_target_specs(&super::workspace::TargetPathInputs {
+            uri: input.uri.as_deref(),
+            path: input.path.as_deref(),
+            paths: input.paths.as_deref(),
+        });
+        let ws = self.resolve_ws(peer, input.workspace.as_deref()).await;
+        let workspace_root = ws.as_ref().ok().map(|w| w.root.as_str());
+        let mcp_roots = ws
+            .as_ref()
+            .ok()
+            .map(|w| w.mcp_roots.clone())
+            .unwrap_or_default();
+
+        if specs.is_empty() {
+            let workspace = ws?;
+            super::workspace::ensure_plausible_for_untrusted(&workspace)
+                .map_err(|e| ErrorData::invalid_request(e, None))?;
+            return self
+                .handle_diagnostics_workspace_scan(&input, workspace)
+                .await;
+        }
+
+        let uris = super::workspace::resolve_target_uris(&specs, workspace_root)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+
+        if uris.len() == 1 {
+            return self
+                .handle_diagnostics_for_uri(
+                    &uris[0],
                     input.language.as_deref(),
                     input.backend.as_deref(),
                     input.backend_args.as_deref(),
                     &mcp_roots,
                 )
-                .await
+                .await;
+        }
+
+        let workspace = match ws {
+            Ok(w) => w,
+            Err(_) => {
+                let root = detect_workspace_root(&uris[0]).unwrap_or_else(|| {
+                    crate::uri::path_from_file_uri(&uris[0])
+                        .ok()
+                        .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+                        .unwrap_or_default()
+                });
+                super::workspace::ResolvedWorkspace {
+                    root,
+                    mcp_roots: mcp_roots.clone(),
+                    source: "explicit",
+                }
             }
-            None => {
-                self.handle_diagnostics_workspace_scan(input, peer, ws)
-                    .await
+        };
+        self.handle_diagnostics_for_uris(&uris, &input, &workspace)
+            .await
+    }
+
+    async fn handle_diagnostics_for_uris(
+        &self,
+        uris: &[String],
+        input: &GetDiagnosticsInput,
+        workspace: &super::workspace::ResolvedWorkspace,
+    ) -> Result<String, ErrorData> {
+        let root_path = std::path::Path::new(&workspace.root);
+        let mut rows = Vec::new();
+        let mut bodies = Vec::new();
+        for uri in uris {
+            let rel = super::workspace::display_rel_path(root_path, uri);
+            match self
+                .handle_diagnostics_for_uri(
+                    uri,
+                    input.language.as_deref(),
+                    input.backend.as_deref(),
+                    input.backend_args.as_deref(),
+                    &workspace.mcp_roots,
+                )
+                .await
+            {
+                Ok(body) => {
+                    let (e, w, i, h) = super::workspace::count_diag_severities_in_toon(&body);
+                    rows.push((rel, e, w, i, h));
+                    if e + w + i + h > 0 {
+                        bodies.push(body);
+                    }
+                }
+                Err(err) => {
+                    warn!(file = %rel, error = %err.message, "multi-path diagnostics skipped file");
+                    rows.push((rel, 0, 0, 0, 0));
+                }
             }
         }
+        Ok(super::workspace::format_workspace_scan_toon(
+            &workspace.root,
+            workspace.source,
+            &rows,
+            &bodies,
+        ))
     }
 
     async fn handle_diagnostics_workspace_scan(
         &self,
-        input: GetDiagnosticsInput,
-        _peer: &rmcp::service::Peer<RoleServer>,
-        ws: Option<super::workspace::ResolvedWorkspace>,
+        input: &GetDiagnosticsInput,
+        workspace: super::workspace::ResolvedWorkspace,
     ) -> Result<String, ErrorData> {
-        let workspace = match ws {
-            Some(w) => w,
-            None => {
-                return Err(ErrorData::invalid_request(
-                    "Cannot resolve workspace (no MCP roots and no cwd). Pass `uri` explicitly."
-                        .to_string(),
-                    None,
-                ));
-            }
-        };
         let root_path = std::path::Path::new(&workspace.root);
         let files =
             super::workspace::discover_source_files(root_path, super::workspace::MAX_SCAN_FILES);
@@ -398,13 +511,43 @@ impl McpServer {
     }
 
     async fn handle_completions(&self, input: GetCompletionsInput) -> Result<String, ErrorData> {
-        let (language, backend) = resolve_language_backend(
-            &input.uri,
-            input.language.as_deref(),
-            input.backend.as_deref(),
-        )?;
-        let root = self.cached_workspace_root(&input.uri);
-        let extra = merge_backend_args(&input.uri, input.backend_args.as_deref());
+        self.apply_explicit_workspace(input.workspace.as_deref())?;
+        let specs = super::workspace::collect_target_specs(&super::workspace::TargetPathInputs {
+            uri: input.uri.as_deref(),
+            path: input.path.as_deref(),
+            paths: None,
+        });
+        if specs.is_empty() {
+            return Err(ErrorData::invalid_request(
+                "get_completions requires `uri` or `path`".to_string(),
+                None,
+            ));
+        }
+        if specs.len() > 1 {
+            return Err(ErrorData::invalid_request(
+                "get_completions accepts a single `uri` or `path`".to_string(),
+                None,
+            ));
+        }
+        let workspace_root = input
+            .workspace
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(|s| {
+                super::workspace::normalize_workspace_input(s)
+                    .map_err(|e| ErrorData::invalid_request(e, None))
+            })
+            .transpose()?
+            .or_else(|| self.session_workspace.get());
+        let uri =
+            super::workspace::resolve_target_to_file_uri(&specs[0], workspace_root.as_deref())
+                .map_err(|e| ErrorData::invalid_request(e, None))?;
+
+        let (language, backend) =
+            resolve_language_backend(&uri, input.language.as_deref(), input.backend.as_deref())?;
+        let root = self.cached_workspace_root(&uri);
+        let extra = merge_backend_args(&uri, input.backend_args.as_deref());
 
         let session = {
             LspPool::get_or_spawn(&self.pool, &language, &backend, root.as_deref(), &extra)
@@ -413,7 +556,7 @@ impl McpServer {
         };
         let mut session = session.lock().await;
 
-        let path = crate::uri::path_from_file_uri(&input.uri)
+        let path = crate::uri::path_from_file_uri(&uri)
             .map_err(|e| ErrorData::invalid_request(e, None))?;
         let content = tokio::fs::read_to_string(&path)
             .await
@@ -421,7 +564,7 @@ impl McpServer {
 
         // Open the document on first call, or send didChange on subsequent calls.
         session
-            .open_or_update_document(&input.uri, &language, &content)
+            .open_or_update_document(&uri, &language, &content)
             .await
             .map_err(|e| ErrorData::internal_error(e.to_string(), None))?;
 
@@ -429,7 +572,7 @@ impl McpServer {
             .send_request(
                 "textDocument/completion",
                 serde_json::json!({
-                    "textDocument": { "uri": input.uri },
+                    "textDocument": { "uri": uri },
                     "position": { "line": input.line, "character": input.character },
                 }),
             )
@@ -448,43 +591,109 @@ impl McpServer {
         input: GetSymbolsInput,
         peer: &rmcp::service::Peer<RoleServer>,
     ) -> Result<String, ErrorData> {
-        let uri = input
-            .uri
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty());
-        let ws = super::workspace::resolve_workspace(peer, None).await;
-        let mcp_roots = ws.as_ref().map(|w| w.mcp_roots.clone()).unwrap_or_default();
-        match uri {
-            Some(uri) => {
-                self.handle_symbols_for_uri(
-                    uri,
+        self.apply_explicit_workspace(input.workspace.as_deref())?;
+        let specs = super::workspace::collect_target_specs(&super::workspace::TargetPathInputs {
+            uri: input.uri.as_deref(),
+            path: input.path.as_deref(),
+            paths: input.paths.as_deref(),
+        });
+        let ws = self.resolve_ws(peer, input.workspace.as_deref()).await;
+        let workspace_root = ws.as_ref().ok().map(|w| w.root.as_str());
+        let mcp_roots = ws
+            .as_ref()
+            .ok()
+            .map(|w| w.mcp_roots.clone())
+            .unwrap_or_default();
+
+        if specs.is_empty() {
+            let workspace = ws?;
+            super::workspace::ensure_plausible_for_untrusted(&workspace)
+                .map_err(|e| ErrorData::invalid_request(e, None))?;
+            return self.handle_symbols_workspace_scan(&input, workspace).await;
+        }
+
+        let uris = super::workspace::resolve_target_uris(&specs, workspace_root)
+            .map_err(|e| ErrorData::invalid_request(e, None))?;
+
+        if uris.len() == 1 {
+            return self
+                .handle_symbols_for_uri(
+                    &uris[0],
                     input.language.as_deref(),
                     input.backend.as_deref(),
                     input.backend_args.as_deref(),
                     &mcp_roots,
                 )
-                .await
-            }
-            None => self.handle_symbols_workspace_scan(input, ws).await,
+                .await;
         }
+
+        let workspace = match ws {
+            Ok(w) => w,
+            Err(_) => {
+                let root = detect_workspace_root(&uris[0]).unwrap_or_else(|| {
+                    crate::uri::path_from_file_uri(&uris[0])
+                        .ok()
+                        .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+                        .unwrap_or_default()
+                });
+                super::workspace::ResolvedWorkspace {
+                    root,
+                    mcp_roots: mcp_roots.clone(),
+                    source: "explicit",
+                }
+            }
+        };
+        self.handle_symbols_for_uris(&uris, &input, &workspace)
+            .await
+    }
+
+    async fn handle_symbols_for_uris(
+        &self,
+        uris: &[String],
+        input: &GetSymbolsInput,
+        workspace: &super::workspace::ResolvedWorkspace,
+    ) -> Result<String, ErrorData> {
+        let root_path = std::path::Path::new(&workspace.root);
+        let mut rows = Vec::new();
+        let mut bodies = Vec::new();
+        for uri in uris {
+            let rel = super::workspace::display_rel_path(root_path, uri);
+            match self
+                .handle_symbols_for_uri(
+                    uri,
+                    input.language.as_deref(),
+                    input.backend.as_deref(),
+                    input.backend_args.as_deref(),
+                    &workspace.mcp_roots,
+                )
+                .await
+            {
+                Ok(body) => {
+                    let n = super::workspace::count_symbol_rows_in_toon(&body);
+                    rows.push((rel, n));
+                    if n > 0 {
+                        bodies.push(body);
+                    }
+                }
+                Err(err) => {
+                    warn!(file = %rel, error = %err.message, "multi-path symbols skipped file");
+                    rows.push((rel, 0));
+                }
+            }
+        }
+        Ok(super::workspace::format_workspace_symbols_scan_toon(
+            &workspace.root,
+            workspace.source,
+            &rows,
+            &bodies,
+        ))
     }
 
     async fn handle_symbols_workspace_scan(
         &self,
-        input: GetSymbolsInput,
-        ws: Option<super::workspace::ResolvedWorkspace>,
+        input: &GetSymbolsInput,
+        workspace: super::workspace::ResolvedWorkspace,
     ) -> Result<String, ErrorData> {
-        let workspace = match ws {
-            Some(w) => w,
-            None => {
-                return Err(ErrorData::invalid_request(
-                    "Cannot resolve workspace (no MCP roots and no cwd). Pass `uri` explicitly."
-                        .to_string(),
-                    None,
-                ));
-            }
-        };
         let root_path = std::path::Path::new(&workspace.root);
         let files =
             super::workspace::discover_source_files(root_path, super::workspace::MAX_SCAN_FILES);
@@ -600,8 +809,9 @@ impl ServerHandler for McpServer {
     fn get_info(&self) -> ServerInfo {
         ServerInfo::new(ServerCapabilities::builder().enable_tools().build()).with_instructions(
             "lspz MCP server — exposes LSP diagnostics, completions, and symbols as MCP tools. \
-             Prefer omitting `uri` on get_diagnostics to scan the client workspace (MCP roots / cwd) \
-             and receive a dense TOON overview suitable for coding agents (Cursor, etc.).",
+             Call `set_workspace` with the project root (or pass `workspace` on each tool call), \
+             then use project-relative `path`/`paths`. Absolute `file://` URIs still work. \
+             Omit targets only when workspace is known (roots / session / explicit project root).",
         )
     }
 
@@ -650,6 +860,15 @@ impl ServerHandler for McpServer {
                 info!("get_symbols completed");
                 Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
             }
+            "set_workspace" => {
+                let input: SetWorkspaceInput = serde_json::from_value(serde_json::Value::Object(
+                    arguments.unwrap_or_default(),
+                ))
+                .map_err(|e| ErrorData::invalid_request(e.to_string(), None))?;
+                let result = self.handle_set_workspace(input)?;
+                info!("set_workspace completed");
+                Ok(CallToolResult::success(vec![ContentBlock::text(result)]))
+            }
             _ => Err(ErrorData::new(
                 ErrorCode::METHOD_NOT_FOUND,
                 format!("Unknown tool: {name}"),
@@ -669,10 +888,24 @@ impl JsonSchema for GetDiagnosticsInput {
     fn json_schema() -> serde_json::Value {
         serde_json::json!({
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "uri": {
                     "type": "string",
-                    "description": "File URI (e.g. file:///path/to/file.go). Optional: omit to scan the MCP workspace (roots → cwd) and return a dense overview table."
+                    "description": "File URI (file://…) or absolute path. Optional when using path/paths."
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Project-relative or absolute filesystem path."
+                },
+                "paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Multiple project-relative or absolute filesystem paths."
+                },
+                "workspace": {
+                    "type": "string",
+                    "description": "Project workspace root (absolute path or file://). Preferred over session bind / MCP roots."
                 },
                 "backend": { "type": "string", "description": "Backend LSP server command (e.g. gopls, rust-analyzer). Auto-detected from file extension if omitted." },
                 "language": { "type": "string", "description": "Language identifier (e.g. go, rust). Auto-detected from file extension if omitted." },
@@ -686,15 +919,18 @@ impl JsonSchema for GetCompletionsInput {
     fn json_schema() -> serde_json::Value {
         serde_json::json!({
             "type": "object",
+            "additionalProperties": false,
             "properties": {
-                "uri": { "type": "string", "description": "File URI" },
+                "uri": { "type": "string", "description": "File URI (file://…) or absolute path. Optional when path is set." },
+                "path": { "type": "string", "description": "Project-relative or absolute filesystem path." },
+                "workspace": { "type": "string", "description": "Project workspace root for relative path." },
                 "backend": { "type": "string", "description": "Backend LSP server command. Auto-detected from file extension if omitted." },
                 "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." },
                 "line": { "type": "integer", "description": "Line number (0-based)" },
                 "character": { "type": "integer", "description": "Character offset (0-based)" },
                 "backend_args": { "type": "array", "items": { "type": "string" }, "description": "Extra CLI arguments passed to the backend LSP server (appended to defaults)." }
             },
-            "required": ["uri", "line", "character"]
+            "required": ["line", "character"]
         })
     }
 }
@@ -703,15 +939,45 @@ impl JsonSchema for GetSymbolsInput {
     fn json_schema() -> serde_json::Value {
         serde_json::json!({
             "type": "object",
+            "additionalProperties": false,
             "properties": {
                 "uri": {
                     "type": "string",
-                    "description": "File URI. Optional: omit to scan the MCP workspace (roots → cwd) and return a dense symbols overview."
+                    "description": "File URI or absolute path. Optional when using path/paths."
+                },
+                "path": {
+                    "type": "string",
+                    "description": "Project-relative or absolute filesystem path."
+                },
+                "paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Multiple project-relative or absolute filesystem paths."
+                },
+                "workspace": {
+                    "type": "string",
+                    "description": "Project workspace root (absolute path or file://)."
                 },
                 "backend": { "type": "string", "description": "Backend LSP server command. Auto-detected from file extension if omitted." },
                 "language": { "type": "string", "description": "Language identifier. Auto-detected from file extension if omitted." },
                 "backend_args": { "type": "array", "items": { "type": "string" }, "description": "Extra CLI arguments passed to the backend LSP server (appended to defaults)." }
             }
+        })
+    }
+}
+
+impl JsonSchema for SetWorkspaceInput {
+    fn json_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "workspace": {
+                    "type": "string",
+                    "description": "Absolute project root path or file:// URI to bind for this MCP session."
+                }
+            },
+            "required": ["workspace"]
         })
     }
 }
