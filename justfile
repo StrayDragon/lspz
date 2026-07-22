@@ -66,3 +66,33 @@ compress-demo:
 # Run full benchmark suite.
 bench-all:
     cargo bench
+
+# --- MCP / Inspector ---
+
+# Release binary used by MCP Inspector recipes.
+lspz_mcp_bin := "./target/release/lspz"
+
+# Build release `lspz` with MCP feature (stdio tools).
+build-mcp:
+    cargo build --release --features mcp,cli
+
+# MCP Inspector UI against in-process `lspz mcp --no-daemon` (http://localhost:6274).
+# Logs: ~/.cache/lspz-mcp.log — look for `workspace resolved` / `workspace_source`.
+mcp-inspector: build-mcp
+    npx -y @modelcontextprotocol/inspector \
+        -e LSPZ_LOG_LEVEL=info \
+        -- {{lspz_mcp_bin}} mcp --no-daemon
+
+# CLI: list MCP tools.
+mcp-inspector-list: build-mcp
+    npx -y @modelcontextprotocol/inspector --cli \
+        -- {{lspz_mcp_bin}} mcp --no-daemon \
+        --method tools/list
+
+# CLI: no-uri `get_diagnostics` (workspace scan; prints `workspace_source`).
+mcp-inspector-scan: build-mcp
+    npx -y @modelcontextprotocol/inspector --cli \
+        -- {{lspz_mcp_bin}} mcp --no-daemon \
+        --method tools/call \
+        --tool-name get_diagnostics \
+        --tool-arg '{}'
