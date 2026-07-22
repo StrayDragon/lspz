@@ -82,17 +82,3 @@ mcp-inspector: build-mcp
     npx -y @modelcontextprotocol/inspector \
         -e LSPZ_LOG_LEVEL=info \
         -- {{lspz_mcp_bin}} mcp --no-daemon
-
-# CLI: list MCP tools.
-mcp-inspector-list: build-mcp
-    npx -y @modelcontextprotocol/inspector --cli \
-        -- {{lspz_mcp_bin}} mcp --no-daemon \
-        --method tools/list
-
-# CLI: no-uri `get_diagnostics` (workspace scan; prints `workspace_source`).
-mcp-inspector-scan: build-mcp
-    npx -y @modelcontextprotocol/inspector --cli \
-        -- {{lspz_mcp_bin}} mcp --no-daemon \
-        --method tools/call \
-        --tool-name get_diagnostics \
-        --tool-arg '{}'
