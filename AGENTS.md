@@ -151,7 +151,7 @@ Project conventions for lspz (LSP compression proxy).
 
 ### 文档生成规则 (SSOT)
 
-> **详细规则**: 参见 `llmanspec/specs/ssot-rules/spec.toon`
+> **详细规则**: 参见 `llmanspec/specs/ssot-rules/ssot-rules.feature`
 
 #### 两层文档体系
 
