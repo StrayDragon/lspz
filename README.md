@@ -12,6 +12,8 @@
 
   **lsp** **z**ip — 压缩 LSP 消息，给 AI 智能体省 token
 
+  姊妹项目：[dapz](https://github.com/straydragon/dapz) — 压缩 DAP 消息，给 AI 智能体省 token
+
 </div>
 
 ---
