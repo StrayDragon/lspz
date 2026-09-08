@@ -48,7 +48,7 @@ cargo install lspz --features mcp
 lspz mcp
 ```
 
-对 Cursor 等编码 Agent：`get_diagnostics` / `get_symbols` 的 `uri` 可省略——会通过 MCP Roots（否则进程 cwd）解析工作区，扫描少量源文件并返回 dense TOON 总览。`get_completions` 仍需要 `uri` + 光标位置。
+对 Cursor 等编码 Agent：`get_diagnostics` / `get_symbols` 的 `uri` 可省略，改传 `path` / `paths`（支持项目相对路径）；配合 `workspace` 参数或 `set_workspace` 工具做会话级绑定。未显式指定时按 MCP Roots 解析工作区；不可信的目录（如 `$HOME`）会被拒绝并给出可行动的错误，不会误扫无关文件。`get_completions` 仍需要 `uri` + 光标位置。
 ## 压缩效果
 
 用 tiktoken 在真实 LSP 服务器输出上测的。TOON（Token-Oriented Object Notation）是默认输出格式。
