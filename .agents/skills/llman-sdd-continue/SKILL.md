@@ -1,120 +1,87 @@
 ---
 name: "llman-sdd-continue"
-description: "继续已有 llman SDD 变更，创建下一个缺失工件。"
+description: "继续已有 change：补建下一个缺失工件。"
 metadata:
-  version: "0.0.68"
-  llman_sdd:
-    bdd_mode: "off"
-    skill_set: "optional"
+  version: "0.5.0"
 ---
 
 # LLMAN SDD Continue
 
-使用此 skill 继续已有变更，创建下一个缺失的 artifact。
+继续已有 change，创建下一个缺失工件。
 
 ## 步骤
-1. 确定 change id：
-   - 若用户已提供，直接使用。
-   - 否则运行 `llman sdd list --json` 并询问要继续哪个 change。
-   - 始终说明："使用变更：<id>"。
-2. 阅读变更目录：`llmanspec/changes/<id>/`。
-## 阶段守卫（`stage` / `readyToImplement`）
-
-用权威 JSON 判定（勿凭「完整工件」口头说法）：
-
-```bash
-llman sdd show <id> --json --type change
-```
-
-解读字段：`stage`、`specsLanded`、`skipSpecsLanding`、`readyToImplement`。
-
-| 条件 | 动作 |
-|------|------|
-| `stage=draft`（仅 proposal.md） | STOP。长大到 Designed（proposal + tasks；design 按需）→ Branch binding → Specs landing。draft 不能直接 apply/verify。若已有 proposal+design+tasks 仍是 `draft`：未 start/attach —— 在默认分支干净树跑 `change start`，或手动建分支后 `change attach`。**不要**建 `changes/<id>/specs/`，**不要**先在默认分支改 live specs。 |
-| `stage=designed` | STOP。先 `change start` / `attach`（Branch binding）。 |
-| `stage=full` 且 `readyToImplement=false` | STOP。在**绑定分支**完成 Specs landing（编辑 `llmanspec/specs/**` 并 commit），或设 `skip_specs_landing`。**不要**再跑 `change start`。丢失绑定分支 specs → checkout/重建 + 必要时 `attach --force`。 |
-| `readyToImplement=true` | 可通过 apply/verify 前置检查。`changes/<id>/specs/` 预期**不存在**，勿当缺失。 |
-3. 确定下一个要创建的 artifact（按顺序）：
+1. 确定 change id：用户给了就用；否则跑 `llman-sdd list --json` 让用户选。始终说明「使用变更：<id>」。
+2. 读 `llmanspec/changes/<id>/`。
+> 阶段判定：用 `llman-sdd show <id> --output json --type change` 的 `stage` / `readyToImplement`；完整判定表见 llman-sdd-apply。
+3. 按顺序确定下一个缺失工件：
    1) `proposal.md`
-   2) `design.md`（仅当涉及设计权衡时）
+   2) `design.md`（仅有设计权衡时）
    3) `tasks.md`
-   4) `llman sdd change start <id>`（或分支已存在时用 `change attach <id>`）——Branch binding
-   5) 在**绑定分支**上编辑 live `llmanspec/specs/<capability>/<capability>.feature` 并 commit——Specs landing（无合约变更可设 `skip_specs_landing: true`）
-4. 只创建**一个**缺失 artifact（或在绑定分支上做一次 live spec/feature 编辑）。
-   - continue 模式**不要**实现应用代码。
-   - **不要**创建 `*.feature.delta.toon` 或 `changes/<id>/specs/` 下的文件。
-   - **不要**在未 start/attach 前改公共 `llmanspec/specs/**`。
-5. 若所有 artifact 已齐全，按 `llman sdd show <id> --json` 建议下一步：
-   - `readyToImplement=false` → 先完成 Specs landing（或 `skip_specs_landing`）；**不要**建议 apply
-   - `readyToImplement=true` → 实施：`llman-sdd-apply`
-   - verify 之后 → 归档：`llman-sdd-archive`
-   - 校验：`llman sdd validate <id> --strict --no-interactive`
-   - 审查：`llman sdd change diff <id>`（只读）
+   4) `llman-sdd change start <id>`（分支已存在用 `change attach <id>`）——绑定分支
+   5) 在**绑定分支**编辑 `llmanspec/specs/<capability>.feature`（扁平，或目录主文件）并 commit——落地 specs（无合约变更设 `needs_specs_change: false`）
+4. 只创建**一个**缺失工件（或一次绑定分支上的 spec 编辑）。
+   - 不写应用代码；**不要**建 `changes/<id>/specs/`；**不要**在 start/attach 前改 `llmanspec/specs/**`。
+5. 工件已齐全时，按 `llman-sdd show <id> --output json` 建议下一步：
+   - specs-landed 门未过 → 先落地 specs（或 `needs_specs_change: false`）；**不要**建议 apply
+   - specs-landed 门已绿（即使实施中期 `readyToImplement=false`、tasks 未完）→ `llman-sdd-apply`
+   - verify 之后 → `llman-sdd-archive`
+   - 校验：`llman-sdd validate <id> --strict`；审查：`llman-sdd change diff <id>`（只读）
 
-## Git-native 生命周期（权威全图）
+## Git 分支生命周期（权威全图）
 
-勿混淆两层：**Git-native 生命周期**（Branch binding → Specs landing → `readyToImplement`）与 **Skill 导航**（explore→propose→apply→verify→archive）。Specs landing **不是**独立 skill。
+两层别混：**分支生命周期**（绑定分支 → 落地 specs → `readyToImplement`）与 **skill 导航**（explore→propose→apply→verify→archive）。落地 specs **不是**独立 skill。
 
 ```mermaid
 flowchart TB
-  subgraph main_ok["允许短暂在默认分支"]
-    A["change new → Draft<br/>仅 proposal.md"]
-    B["充实 design + tasks → Designed"]
+  subgraph main_ok["可短暂在默认分支"]
+    A["change new → draft<br/>仅 proposal.md"]
+    B1["补 design.md → designed"]
+    B2["补 tasks.md → planned"]
   end
 
-  subgraph gate_start["Branch binding"]
+  subgraph bind["绑定分支"]
     C{"工作区干净<br/>且在默认分支？"}
-    D["change start<br/>建 sdd/&lt;id&gt; + 写 branch/base_sha"]
+    D["change start<br/>建 sdd/&lt;id&gt; + 写 branch/base_branch/base_sha"]
     E["或手动 checkout -b<br/>再 change attach"]
   end
 
   subgraph specs_only["仅在本 change 分支"]
-    F["编辑 live llmanspec/specs/**<br/>toon / feature"]
-    G["commit → Specs landing<br/>base...HEAD 含 specs 路径"]
+    F["编辑 llmanspec/specs/**（.feature）"]
+    G["commit → 落地 specs<br/>现算 merge-base...HEAD 含 specs 路径"]
   end
 
-  subgraph implement["实现"]
+  subgraph implement["实施与收口"]
     H["apply：按 tasks 改代码<br/>可继续改 specs"]
     I["verify"]
-    J["finalize / archive<br/>ff-merge → 默认分支才首次合入 specs"]
+    J["finalize：合并（默认 squash）→ 改名 → 自动提交 archive(sdd): &lt;id&gt;<br/>specs 首次进入目标分支"]
   end
 
-  A --> B --> C
+  A --> B1 --> B2 --> C
   C -->|是| D --> F
   C -->|已在 feature| E --> F
   F --> G --> H --> I --> J
 ```
 
 硬规则：
-1. **先** `change start` / `attach`（Branch binding / 分支绑定）进入 Full；**再**在绑定的非默认分支编辑 `llmanspec/specs/**` 并 commit（Specs landing / 合约落地）。
-2. 无 live 合约变更时可设 frontmatter `skip_specs_landing: true`。进入 apply 前 `llman sdd show <id> --json` 的 `readyToImplement` 须为 true（`Full ∧ (specsLanded ∨ skip)`）。
-3. **禁止**为过干净树门禁把 live specs commit 到默认分支；已 attach 时不要重复 `start`。
-行动前先阅读 `llmanspec/config.yaml`，并遵循其中的 `context` 与 `rules`（若有）。
+1. **先** `change start` / `attach` 绑定分支（进入 full）；**再**在绑定的非默认分支编辑 `llmanspec/specs/**` 并 commit（落地 specs）。
+2. 无合约编辑的 change 设 frontmatter `needs_specs_change: false`。`stage=full` 且 specs-landed 门通过（specsLanded ∨ needs_specs_change=false）即可进 apply；`readyToImplement=true`（gateChecks 全过，含 tasks-done）是 verify/finalize 前的完成信号。diff 范围一律现算 merge-base；存储的 `base_sha` 仅审计。
+3. 收口一律 `llman-sdd change finalize <id>`：自动提交 `archive(sdd): <id>`（实现 diff + 改名一笔）；`--no-commit` 跳过自动提交。change 分支上提交自由（分段或 finalize 一次收尾均可）。
+4. **禁止**为过干净树门禁把 specs commit 到默认分支；已 attach 勿重复 `start`。
 
-常用命令：
-- `llman sdd context --task "<描述>" --paths "<文件>"`（找相关 specs）。使用 pageindex agentic tree 后端（需 `LLMAN_SDD_INDEX_CHAT_MODEL`）。可用 `LLMAN_SDD_INDEX_BACKEND` 预设。
-- `llman sdd list`（列出变更）
-- `llman sdd list --specs`（列出 specs 及 purpose/scope 元数据）
-- `llman sdd show <id>`（展示 change/spec；`--type change --output json` 含 `stage` / `specsLanded` / `skipSpecsLanding` / `readyToImplement`——apply 门禁看 `readyToImplement`，勿凭「完整工件」）
-- `llman sdd validate <id>`（校验 change 或 spec）
-- `llman sdd validate --all`（批量校验）
-- `llman sdd index rebuild`（重建 pageindex 树索引——不需要模型）
-- `llman sdd index check`（检查索引新鲜度）
-- `llman sdd change new <id>`（仅创建规划壳草稿 `changes/<id>/proposal.md`；不写 live specs）
-- `llman sdd change start <id> [--worktree]`（Designed→Full：干净树且在默认分支 → 创建 `sdd/<id>` 分支 + attach；仅 Branch binding，不等于 Specs landing，不等于可 apply）
-- `llman sdd change attach <id> [--force]`（绑定已有非默认 feature 分支 + base SHA；拒绝绑到默认分支）
-- `llman sdd change finalize <id> [--no-check]`（**推荐单 commit 收尾**——verify 之后；不要求干净树；门禁 + 自动 ff-merge + 文档改名）
-- `llman sdd change checkpoint <id> [--no-check]`（干净工作区 + 归档前门禁；严格 sha = HEAD；finalize 的 fallback）
-- `llman sdd change diff <id> [--export-patch <path>]`（只读 `base...HEAD` 审查/导出）
-- `llman sdd change archive <id>`（封存：自动 ff-merge 到默认分支，再改名到 `changes/archive/`；单 commit 收尾优先 `finalize`）
-- `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结已归档目录）
-- `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备份恢复）
-- `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
-- `llman sdd project migrate --kind spec-md2toon`（`.md`+fence → 独立 `.toon`；`partitioned` 已移除）
+Worktree 决策表：
+
+| 工作形态 | 命令 | 判据 |
+|---|---|---|
+| 单检出 | `llman-sdd change start <id>` | 在默认分支且树干净；直接切到新分支 |
+| 保留当前检出 / 并行 change | `llman-sdd change start <id> --worktree` | 分支建于独立 worktree（`sdd.worktree_root` / `sdd.worktree_naming` 可调，缺省仓库根兄弟目录），当前检出不动，输出含 worktree 路径；配 `--base <branch>` 记录非默认分叉源 |
+| 已在 feature 分支（含手工 wt/git-worktree） | `llman-sdd change attach <id>` | 分支已存在；`--base <branch>` 显式记录分叉源 |
+
+finalize 目标定位：目标分支被其他 worktree 持有时，`llman-sdd change finalize <id>` / `llman-sdd change archive <id>` 自动在该 worktree 内完成合并、改名与提交（输出含 `executed in target worktree <path>`）；持有 worktree 脏时中止报错并列出处置选项（零写入）。
+> 命令细节用 `llman-sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 校验修复（单轨 feature-as-spec）：
 
-1）缺少头注释（`missing # capability: header comment`）：
-每个 `llmanspec/specs/<capability>/<capability>.feature` 必须以以下注释开头：
+1）缺头注释（`missing # capability: header comment`）：每个 capability `.feature`（`llmanspec/specs/<capability>.feature` 或目录内同名主文件）必须以下列注释开头：
 ```
 # language: zh-CN
 # capability: <capability>
@@ -122,51 +89,38 @@ flowchart TB
 # scope: src/
 ```
 
-2）tag 语法（`@human constraint scenario must carry an @req:<req_id> tag` / `orphan acceptance scenario`）：
-- 规则：`@req:<id> @human` —— statement 放场景描述（须含 MUST/SHALL）。
-- 验收：`@executable` 且至少一个 `@req:<id>` 挂到规则。
-- `@manual` 须与 `@human` 同用；禁止 `@human` 与 `@executable` 同场景。
+2）原生分层格式（`rule must carry an @req:<req_id> tag on the rule header`）：
+- 规范样式只有一种：`@req:<id>` 挂在 `规则:` 块头标签,块内嵌套 `场景:`(假如/当/那么)是可执行示例——默认首选。
+- 仅当需求无法程序化表达或暂不转写时才保留无嵌套场景的 `规则:`(裸规则):描述自由文本,无 MUST/SHALL 强制;validate 以聚合计数提示,review `pending` 信号计量,specs-compact 负责压降。
+- 历史标签 `@executable`/`@rule`/`@human`/`@manual` 不再使用、解析惰性;旧文件报结构问题时运行 `llman-sdd spec migrate-native` 迁移。
+- 不在任何 `规则:` 内的顶层 `场景:` 是功能级示例:无规则句柄、不告警、不参与规则统计(Gherkin 原生语义)。
 
-3）遗留 `spec.toon`（`legacy spec.toon found ... run ... toon2features`）：
-运行 `llman sdd project migrate --kind toon2features --yes`，审阅 diff 后提交。
-
-Git-native 护栏：
-- **Branch binding** → **Specs landing**：先 `change start` / `attach`，再在绑定的非默认分支编辑 live `.feature` 并 commit。
-- 锁定规则：修改/删除既有 `@human` 场景会触发门禁，除非 proposal frontmatter 带 `rules_edit_acked: true`。
-- apply 前须 `readyToImplement=true`（或 `skip_specs_landing`）。收尾优先 `change finalize`。
-- 勿使用 `change delta` / solidify / `*.feature.delta.toon`。
+分支护栏：
+- 先 `change start` / `attach` 绑定分支，再在绑定的非默认分支编辑 `.feature` 并 commit（落地 specs）。
+- 锁定规则（报告制）：改/删既有 `规则:` 块只出 WARNING，不阻断 validate / finalize / `change diff`；报告按 `@req:<id>` 指明被改规则。控制点：git 分支对比 + `llman-sdd review` / `change diff`。旧锁定确认元数据（frontmatter `rules_touched` / `agent_acked`、`@agent` tag、`--yes` 确认语义）已全部删除，无别名无兼容层。
+- `stage=full` 且 specs-landed 门通过（specsLanded ∨ `needs_specs_change: false`）即可进 apply；verify/finalize 须 `readyToImplement=true`（完成信号）。收口优先 `change finalize`。
 
 ## Context
-- 执行前先确认当前 change/spec 状态。
-- 优先使用 `llman sdd context --task --paths` 获取相关 specs，而非全量读取或猜测。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先用 `llman-sdd context --task --paths` 定位。
 
 ## Goal
-- 明确本次命令/skill 要达成的可验证结果。
+- 达成一个可验证结果；报告附结果路径与校验状态。
 
 ## Constraints
-- 变更保持最小化且范围明确。
-- 标识符或意图不明确时禁止猜测。
-- 在读取 spec 全文前，先使用 `llman sdd context --task --paths` 获取相关 specs。
-- 判断变更规模后选择路径：行为合约变更走完整 SDD（Branch binding → Specs landing → `readyToImplement` → apply）；实现变更走快速路径（live specs 仍须绑定分支）。
-- 勿混淆 Skill 导航与 Git-native 生命周期；勿在默认分支编辑 live `llmanspec/specs/**`。
+- 遵守正文硬约束（不复读）。先判断规模选路径：合约变更走完整 SDD，实现层走 quick；不确定选完整 SDD。改动最小；已知校验错误禁止强行继续。
 
 ## Workflow
-- 以 `llman sdd` 命令结果为事实来源。
-- 涉及文件/规范变更时执行校验。
-- 首选 `llman sdd context` 获取相关 specs，而非全量读取或猜测。
-- 当 context 不可用时，按错误提示处理（重建 index 或降级到 `list --specs --json`）。
+- 每步以 `llman-sdd` 命令结果为事实来源；改动工件后必跑 `llman-sdd validate`；命令细节见 `llman-sdd <cmd> --help`。
 
 ## Decision Policy
-- 高影响歧义必须先澄清。
-- 已知校验错误下禁止强行继续。
+- 高影响歧义先澄清再继续；事实自己查证，只有决策问用户。
 
 ## Output Contract
-- 汇总已执行动作。
-- 给出结果路径与校验状态。
+- 先给人读摘要（结论 / 风险 / 待决策），机器细节随后。
 
 ## Ethics Governance
-- `ethics.risk_level`：按 `low|medium|high|critical` 标注风险等级。
-- `ethics.prohibited_actions`：列出绝对禁止执行的动作。
-- `ethics.required_evidence`：列出高影响输出前必须具备的证据。
-- `ethics.refusal_contract`：定义何时拒答以及安全替代响应方式。
-- `ethics.escalation_policy`：定义何时必须升级为用户确认/人工复核。
+- `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
+- `ethics.prohibited_actions`：违反正文「硬约束」的动作；未经用户明确要求的 push / PR / 外部上传。
+- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman-sdd validate` 为准。
+- `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
+- `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。

@@ -1,141 +1,97 @@
 ---
 name: "llman-sdd-explore"
-description: "进入 llman SDD 探索模式：理清思路、调查需求、分析问题。仅思考，禁止写代码。用于意图不明确或需要分析后再行动的场景。"
+description: "探索模式：理清思路、调查需求、分析问题；只思考不写代码。意图不明或需先分析再行动时用。"
 metadata:
-  version: "0.0.68"
-  llman_sdd:
-    bdd_mode: "off"
-    skill_set: "default"
+  version: "0.5.0"
 ---
 
 # LLMAN SDD Explore
 
-当用户希望在开始实现之前先理清思路、调查问题或澄清需求时，使用此 skill。
+在开始实现前理清思路、调查问题、澄清需求时用此 skill。
 
-**重要：探索模式只用于思考，不用于实现。**
-- 你可以阅读文件、搜索代码、调查代码库。
-- 你可以创建/更新规划壳工件（proposal/design/tasks）。
-- live specs：**只读**，除非 change 已 Branch-bound 且你在该分支上；否则 STOP 并建议 `llman-sdd-propose` / `change start`。
-- 你绝对不能在探索模式下写应用代码或实现功能。
+**探索模式只思考，不实现：**
+- 可以读文件、搜代码、调查代码库。
+- 可以建/改规划文档（proposal/design/tasks）。
+- `llmanspec/specs/**` **只读**——除非 change 已绑定分支且你在该分支上；否则 STOP 并建议 `llman-sdd-propose` / `change start`。
+- 禁止写应用代码。
 
 ## Pipeline 位置
 
-## Git-native 生命周期（摘要）
+## Git 分支生命周期（摘要）
 
-勿混淆：**Skill 导航** ≠ **Git-native 生命周期**。全图见根 `AGENTS.md`「领域概念区分」或 `llman-sdd-propose` 内嵌全图。
+**Skill 导航** ≠ **分支生命周期**。全图见根 `AGENTS.md` 或 `llman-sdd-propose` 内嵌图。
 
 硬规则：
-1. **先** Branch binding（`change start` / `attach`）→ Full；**再** Specs landing（绑定分支编辑并 commit `llmanspec/specs/**`）。
-2. 无 live 合约变更 → `skip_specs_landing: true`。apply 前须 `readyToImplement=true`。
-3. **禁止**在默认分支 commit live specs；已 attach 勿重复 `start`。
-
-### Skill 导航（非生命周期；仅指示当前 skill）
+1. **先**绑定分支（`change start` / `attach`）→ full；**再**落地 specs（绑定分支上编辑并 commit `llmanspec/specs/**`）。
+2. 无合约编辑 → `needs_specs_change: false`。`stage=full` 且 specs-landed 门通过即可进 apply；`readyToImplement=true`（全门绿）是 verify/finalize 前的完成信号。
+3. 收口用 `change finalize`（自动提交 `archive(sdd): <id>`；`--no-commit` 跳过）。
+4. **禁止**在默认分支 commit specs；已 attach 勿重复 `start`。
+5. worktree（可选）：`change start --worktree` 在独立 worktree 建分支、不动当前检出（`--base <branch>` 记录分叉源）；finalize 目标被其他 worktree 持有时自动在该 worktree 内执行（输出标注位置）。
 
 ```mermaid
 flowchart LR
-    explore["★ llman-sdd-explore ★<br/>探索（你现在在这里）"]
-    explore --> propose["llman-sdd-propose<br/>提案（含 Branch binding 与 Specs landing）"]
-    propose --> apply["llman-sdd-apply<br/>实施"]
-    apply --> verify["llman-sdd-verify<br/>验证"]
-    verify --> archive["llman-sdd-archive<br/>归档"]
+    explore["★ llman-sdd-explore"] --> propose["llman-sdd-propose"]
+    propose --> apply["llman-sdd-apply"]
+    apply --> verify["llman-sdd-verify"]
+    verify --> archive["llman-sdd-archive"]
 
     style explore fill:#fff3cd,stroke:#ffc107,stroke-width:3px
 ```
 
-> 📍 你现在在探索阶段（仅思考）→ 常规路径下一步 `llman-sdd-propose`（提案）
-> 📎 如果是小改动（不改行为合约），可直接走 `llman-sdd-quick`（快速路径）
-> 🗺️ Skill 导航 ≠ Git-native 生命周期
+> 📍 你在探索阶段 → 下一步通常 `llman-sdd-propose`；小改动（不改合约）走 `llman-sdd-quick`。
 
-## 探索姿态
-- 好奇而不教条
-- 以真实代码为依据
-- 需要时用 ASCII 图可视化
-- 同时保留多个选项与权衡
+## 姿态
+- 好奇而不教条，以真实代码为依据。
+- 需要时用 ASCII 图可视化；同时保留多个选项与权衡。
 
 ## 建议动作
-1. 使用 `llman sdd context --task "<任务>" --paths "<文件>"` 快速定位相关 specs。
-   - 阅读 context 的 `direct` 列出的 spec 全文（这些是必须理解的合约）。
-   - 如果 context 不可用，运行 `llman sdd index rebuild`（默认 `pageindex`，无需模型）后重试。
+1. 用 `llman-sdd context --task "<任务>" --paths "<文件>"` 定位相关 specs，通读其 `direct` 列出的 spec 全文（这些是必须理解的合约）。
+   - context 不可用 → 先 `llman-sdd index check`：stale/缺失则 `llman-sdd index rebuild`（默认 pageindex，免模型）后重试；fresh 仍不可用（`LLMAN_SDD_INDEX_CHAT_MODEL` 未设）→ 改用 `llman-sdd list --specs` + 直读 `.feature`——勿循环 rebuild。
 2. 澄清目标与约束（问 1–3 个问题）。
-3. **逐问深挖分支（可选，仅当用户显式触发时进入）**：触发词为「深挖」「grill」「逐个问」「彻底理清」。进入后一问一答走清决策：
-   - **一次只问一个问题**，并附你的推荐答案，等用户反馈后再继续下一个。
-   - **事实 vs 决策分离**：能通过读 capability `.feature`/代码/运行命令查证的事实，自行查证，**不问**用户；只有**决策**（取舍、偏好、范围边界）才交给用户。
-   - **术语校准**：遇到术语冲突或模糊词时立即指出（「你的 spec 定义 'X' 为 A，但你刚说成 B——哪个对？」）；解决后：若 change 已 Branch binding 且在绑定分支上，可更新 live `.feature`（Specs landing）；否则只记入 `proposal.md`，**禁止**在默认分支改 live specs。MUST NOT 另建 `CONTEXT.md` 词表作为第二权威。
-   - **决策回写**：已解决的决策回写到该 change 的 `proposal.md`「Open Questions」段（规划壳；可短暂在默认分支）。
-   - **完成判据**：每个待定决策都已解决或被显式推迟。未触发时保持默认（问 1–3 个问题）行为不变。
-4. 如果某个 change id 相关，阅读 `llmanspec/changes/<id>/` 下的 artifacts。
-   - 诊断校验错误时优先跑 `llman sdd validate <spec> --strict --no-check`（fast mode，跳过可能耗时的 `bdd.run_command`），先解决结构门禁（Gherkin / `@req` 链接 / 双写 / req_id 唯一性），再跑 full mode（`--check` 或 `cargo test --features bdd`）。错误输出中的 `FAIL <item_type>/<id>` 行会逐条指明失败项。
+3. **逐问深挖分支（可选，用户显式触发才进入）**：触发词「深挖」「grill」「逐个问」「彻底理清」。进入后一问一答走清决策：
+   - 一次只问一个问题，附你的推荐答案，等反馈再问下一个。
+   - 事实 vs 决策分离：能读 `.feature`/代码/跑命令查证的事实自行查证，**不问**用户；只有决策（取舍、偏好、范围边界）才问。
+   - 术语校准：术语冲突或模糊立即指出（「spec 定义 'X' 为 A，你刚说成 B——哪个对？」）；解决后：已绑定分支且当前在绑定分支上 → 更新 `.feature`；否则只记入 `proposal.md`，禁止在默认分支改 specs。MUST NOT 另建 `CONTEXT.md` 词表当第二权威。
+   - 决策回写：已解决的决策写进该 change 的 `proposal.md`「Open Questions」段。
+   - 完成判据：每个待定决策都已解决或显式推迟。未触发时保持默认（问 1–3 个问题）。
+4. 涉及某个 change id 时，读 `llmanspec/changes/<id>/` 下的工件。
+   - 诊断校验错误先跑 `llman-sdd validate <spec> --strict` 过结构门禁（Gherkin / `@req` 链接 / 双写 / req_id 唯一性）；配置了 `bdd.run_command` 时 validate 缺省执行该 harness（`--no-check` 跳过）。失败项在缺省 TOON 输出的 `items[].issues[]` 逐条指明；`--output human` 输出人读 `FAIL <item_type>/<id>` 行。
 5. 探索 2–3 个选项与权衡。
-6. 判断变更规模（triage），确定是否需要走完整 SDD 流程。
-7. 当结论逐渐清晰时，建议用户把它记录下来（不要自动写入）：
-   - 范围变化 / 设计决策 / 工作项 → 规划壳（`proposal.md` / `design.md` / `tasks.md`）
-   - 约束 / 可执行 harness → **仅建议**写入 live `llmanspec/specs/**`（每 capability 一个 `.feature`）；实际编辑须先 Branch binding，再 Specs landing。探索模式未 binding 时只记到 proposal，勿直接改 live specs。
-
-> Git-native：先 `change start`/`attach`（Branch binding）进入 Full，再在绑定分支编辑 live `.feature`（Specs landing）；无 `change delta` / solidify / feature_delta。
+6. 判断变更规模，确定是否走完整 SDD。
+7. 结论清晰时建议用户记录（勿自动写）：
+   - 范围/设计/工作项 → 规划文档（`proposal.md` / `design.md` / `tasks.md`）
+   - 约束/可执行 harness → **仅建议**写入 `llmanspec/specs/**`；实际编辑须先绑定分支。未绑定时只记 proposal。
 
 ## 退出探索模式
-当用户准备开始实现时，根据变更规模选择路径：
-- 行为合约变更 → `llman-sdd-propose`（创建提案工件）
-- 小改动 / 不改合约 → `llman-sdd-quick`（快速路径）
-- `readyToImplement=true` → `llman-sdd-apply`（按 tasks 实施）
-若用户在探索模式中要求你开始实现，STOP 并提醒其先退出探索模式。
+- 行为合约变更 → `llman-sdd-propose`
+- 小改动 / 不改合约 → `llman-sdd-quick`
+- change 已落地 specs（`stage=full`、specs-landed 门绿）→ `llman-sdd-apply`
+若用户在探索中要求开始实现，STOP 并提醒先退出探索模式。
 
-> 💡 探索完成 → 下一步 `llman-sdd-propose`（提案）或 `llman-sdd-quick`（快速路径）
-
-行动前先阅读 `llmanspec/config.yaml`，并遵循其中的 `context` 与 `rules`（若有）。
-
-常用命令：
-- `llman sdd context --task "<描述>" --paths "<文件>"`（找相关 specs）。使用 pageindex agentic tree 后端（需 `LLMAN_SDD_INDEX_CHAT_MODEL`）。可用 `LLMAN_SDD_INDEX_BACKEND` 预设。
-- `llman sdd list`（列出变更）
-- `llman sdd list --specs`（列出 specs 及 purpose/scope 元数据）
-- `llman sdd show <id>`（展示 change/spec；`--type change --output json` 含 `stage` / `specsLanded` / `skipSpecsLanding` / `readyToImplement`——apply 门禁看 `readyToImplement`，勿凭「完整工件」）
-- `llman sdd validate <id>`（校验 change 或 spec）
-- `llman sdd validate --all`（批量校验）
-- `llman sdd index rebuild`（重建 pageindex 树索引——不需要模型）
-- `llman sdd index check`（检查索引新鲜度）
-- `llman sdd change new <id>`（仅创建规划壳草稿 `changes/<id>/proposal.md`；不写 live specs）
-- `llman sdd change start <id> [--worktree]`（Designed→Full：干净树且在默认分支 → 创建 `sdd/<id>` 分支 + attach；仅 Branch binding，不等于 Specs landing，不等于可 apply）
-- `llman sdd change attach <id> [--force]`（绑定已有非默认 feature 分支 + base SHA；拒绝绑到默认分支）
-- `llman sdd change finalize <id> [--no-check]`（**推荐单 commit 收尾**——verify 之后；不要求干净树；门禁 + 自动 ff-merge + 文档改名）
-- `llman sdd change checkpoint <id> [--no-check]`（干净工作区 + 归档前门禁；严格 sha = HEAD；finalize 的 fallback）
-- `llman sdd change diff <id> [--export-patch <path>]`（只读 `base...HEAD` 审查/导出）
-- `llman sdd change archive <id>`（封存：自动 ff-merge 到默认分支，再改名到 `changes/archive/`；单 commit 收尾优先 `finalize`）
-- `llman sdd archive freeze [--before YYYY-MM-DD] [--keep-recent N] [--dry-run]`（冻结已归档目录）
-- `llman sdd archive thaw [--change <id> ...] [--dest <path>]`（从冷备份恢复）
-- `llman sdd graph [CHANGE] [--format mermaid] [--scope active|archived|all] [--depth N]`（生成变更依赖图）
-- `llman sdd project migrate --kind spec-md2toon`（`.md`+fence → 独立 `.toon`；`partitioned` 已移除）
+> 命令细节用 `llman-sdd <cmd> --help` 查看；命令参考以 CLI 为准，skill 不内嵌命令表。
+> 文中「规约」= 本项目 `llmanspec/specs/` 下的 `.feature` 文件；用 `llman-sdd list --specs` / `llman-sdd show <capability>` 查全文。
 
 ## Context
-- 执行前先确认当前 change/spec 状态。
-- 优先使用 `llman sdd context --task --paths` 获取相关 specs，而非全量读取或猜测。
+- 先查状态再动手：change/spec 状态以 `llman-sdd show/list/validate` 输出为准；读 spec 全文前先用 `llman-sdd context --task --paths` 定位。
 
 ## Goal
-- 明确本次命令/skill 要达成的可验证结果。
+- 达成一个可验证结果；报告附结果路径与校验状态。
 
 ## Constraints
-- 变更保持最小化且范围明确。
-- 标识符或意图不明确时禁止猜测。
-- 在读取 spec 全文前，先使用 `llman sdd context --task --paths` 获取相关 specs。
-- 判断变更规模后选择路径：行为合约变更走完整 SDD（Branch binding → Specs landing → `readyToImplement` → apply）；实现变更走快速路径（live specs 仍须绑定分支）。
-- 勿混淆 Skill 导航与 Git-native 生命周期；勿在默认分支编辑 live `llmanspec/specs/**`。
+- 遵守正文硬约束（不复读）。先判断规模选路径：合约变更走完整 SDD，实现层走 quick；不确定选完整 SDD。改动最小；已知校验错误禁止强行继续。
 
 ## Workflow
-- 以 `llman sdd` 命令结果为事实来源。
-- 涉及文件/规范变更时执行校验。
-- 首选 `llman sdd context` 获取相关 specs，而非全量读取或猜测。
-- 当 context 不可用时，按错误提示处理（重建 index 或降级到 `list --specs --json`）。
+- 每步以 `llman-sdd` 命令结果为事实来源；改动工件后必跑 `llman-sdd validate`；命令细节见 `llman-sdd <cmd> --help`。
 
 ## Decision Policy
-- 高影响歧义必须先澄清。
-- 已知校验错误下禁止强行继续。
+- 高影响歧义先澄清再继续；事实自己查证，只有决策问用户。
 
 ## Output Contract
-- 汇总已执行动作。
-- 给出结果路径与校验状态。
+- 先给人读摘要（结论 / 风险 / 待决策），机器细节随后。
 
 ## Ethics Governance
-- `ethics.risk_level`：按 `low|medium|high|critical` 标注风险等级。
-- `ethics.prohibited_actions`：列出绝对禁止执行的动作。
-- `ethics.required_evidence`：列出高影响输出前必须具备的证据。
-- `ethics.refusal_contract`：定义何时拒答以及安全替代响应方式。
-- `ethics.escalation_policy`：定义何时必须升级为用户确认/人工复核。
+- `ethics.risk_level`：low——仅读写本仓库与 `llmanspec/`，无外发动作；正文另有声明时从其声明。
+- `ethics.prohibited_actions`：违反正文「硬约束」的动作；未经用户明确要求的 push / PR / 外部上传。
+- `ethics.required_evidence`：结论须有命令输出或文件路径佐证；门禁状态以 `llman-sdd validate` 为准。
+- `ethics.refusal_contract`：门禁 CRITICAL 未清零 → 拒绝进入下一阶段；自修复达上限 → 报告 blocker。
+- `ethics.escalation_policy`：改动 SDD 合约/模板或执行不可逆动作前，暂停并请用户确认。
