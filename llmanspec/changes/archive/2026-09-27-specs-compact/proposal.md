@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/specs-compact
+base_branch: main
+base_sha: eae9c003c11cfbb16973bb3ac19c942f81ce7aa1
 ---
 
 ## Why

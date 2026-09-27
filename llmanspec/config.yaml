@@ -10,11 +10,13 @@ extra_skills:
   - llman-sdd-ff
   - llman-sdd-validate
 
-# BDD 集成（可选，取消注释以启用）
-# bdd:
+# BDD 集成：本仓 specs 的可执行场景（嵌套 场景:）由 Rust 测试套件验证，
+# close-out 门禁（finalize/archive）据此运行自动化验证。无占位符 → 每 sweep 执行一次。
+bdd:
+  run_command: "cargo test --workspace --all-features"
+# 可选框架字段（未启用，本项目无 Gherkin runner）：
 #   framework: pytest-bdd
 #   feature_dir: tests/features/
-#   # default_language: zh-CN
-#   # run_command: "pytest {feature_dir} -k {feature_name} -v"
-#   # verify_prompt: |
-#   #   将测试失败映射到对应的 requirement ID。
+#   default_language: zh-CN
+#   verify_prompt: |
+#     将测试失败映射到对应的 requirement ID。
