@@ -2,7 +2,7 @@
 name: "llman-sdd-validate"
 description: "校验 change 与 specs，给出修复提示。"
 metadata:
-  version: "0.6.0"
+  version: "0.7.0"
 ---
 
 # LLMAN SDD 校验
