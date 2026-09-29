@@ -1,5 +1,8 @@
 ---
 depends_on: []
+branch: sdd/bind-r62-lsp-compat
+base_branch: main
+base_sha: fc930bfc7eb4a763047f1af1d2cfa10590655426
 ---
 
 # 绑定 r62 LSP 兼容性为可执行场景

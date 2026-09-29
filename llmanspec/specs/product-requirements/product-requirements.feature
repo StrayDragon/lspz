@@ -52,3 +52,17 @@
   @req:r62
   规则: LSP 兼容性
     系统 MUST 保持所有 LSP 标准接口的兼容性。
+    场景: e2e-handshake
+      假如 真实 LSP 服务器经 lspz proxy 启动
+      当 Agent 发送 initialize 握手并订阅诊断
+      那么 握手成功且通知按 LSP 3.17 语义送达
+
+    场景: passthrough-unmodified
+      假如 非目标 LSP 消息
+      当 Proxy 接收
+      那么 透明转发且字节不改写
+
+    场景: response-id-preserved
+      假如 目标响应被压缩
+      当 压缩处理
+      那么 JSON-RPC id 保持不变
