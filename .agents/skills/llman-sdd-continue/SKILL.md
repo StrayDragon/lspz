@@ -2,7 +2,7 @@
 name: "llman-sdd-continue"
 description: "继续已有 change：补建下一个缺失工件。"
 metadata:
-  version: "0.5.0"
+  version: "0.6.0"
 ---
 
 # LLMAN SDD Continue
